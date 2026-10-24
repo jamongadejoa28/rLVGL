@@ -1,0 +1,16 @@
+[workspace]
+changelog_update = true
+dependencies_update = false
+git_release_enable = true
+pr_labels = ["release"]
+semver_check = true
+
+[[package]]
+name = "xtask"
+release = false
+publish = false
+
+[[package]]
+name = "font-conv"
+release = false
+publish = false

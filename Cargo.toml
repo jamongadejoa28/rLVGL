@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/ferrovgl-core",
+    "crates/ferrovgl-draw-sw",
+    "crates/ferrovgl-fonts",
+    "crates/ferrovgl-widgets",
+    "crates/ferrovgl-sdl",
+    "crates/ferrovgl-wasm",
+    "crates/ferrovgl-embedded",
+    "crates/ferrovgl-test",
+    "crates/ferrovgl",
+    "xtask",
+    "tools/font-conv",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jamongadejoa28/ferrovgl"
+homepage = "https://github.com/jamongadejoa28/ferrovgl"
+authors = ["ferrovgl contributors"]
+keywords = ["gui", "embedded", "no-std", "graphics", "lvgl"]
+categories = ["gui", "embedded", "no-std", "graphics", "rendering"]
+
+[workspace.dependencies]
+ferrovgl-core = { path = "crates/ferrovgl-core", version = "0.1.0", default-features = false }
+ferrovgl-draw-sw = { path = "crates/ferrovgl-draw-sw", version = "0.1.0", default-features = false }
+ferrovgl-fonts = { path = "crates/ferrovgl-fonts", version = "0.1.0", default-features = false }
+ferrovgl-widgets = { path = "crates/ferrovgl-widgets", version = "0.1.0", default-features = false }
+ferrovgl-sdl = { path = "crates/ferrovgl-sdl", version = "0.1.0" }
+ferrovgl-wasm = { path = "crates/ferrovgl-wasm", version = "0.1.0" }
+ferrovgl-embedded = { path = "crates/ferrovgl-embedded", version = "0.1.0", default-features = false }
+ferrovgl-test = { path = "crates/ferrovgl-test", version = "0.1.0" }
+font-conv = { path = "tools/font-conv", version = "0.1.0" }
+
+bitflags = { version = "2", default-features = false }
+libm = "0.2"
+log = { version = "0.4", default-features = false }
+png = "0.17"
+sdl2 = "0.37"
+wasm-bindgen = "0.2"
+embedded-graphics = "0.8"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unused_qualifications = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"
+# Ports of C code legitimately use these patterns; keep the noise down.
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+many_single_char_names = "allow"
+identity_op = "allow"
+erasing_op = "allow"
+manual_range_contains = "allow"
+
+[profile.release]
+debug = 1
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,8 @@
+[book]
+title = "ferrovgl"
+authors = ["ferrovgl contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/jamongadejoa28/ferrovgl"

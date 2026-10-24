@@ -1,0 +1,21 @@
+[package]
+name = "ferrovgl-sdl"
+description = "SDL2 window, mouse and keyboard backend for ferrovgl (desktop simulator)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ferrovgl-core = { workspace = true, features = ["std"] }
+ferrovgl-draw-sw = { workspace = true, features = ["std"] }
+ferrovgl-widgets = { workspace = true, features = ["std"] }
+sdl2 = { workspace = true }
+
+[lints]
+workspace = true

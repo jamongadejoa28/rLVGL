@@ -1,0 +1,22 @@
+[package]
+name = "ferrovgl-embedded"
+description = "embedded-graphics and embedded-hal adapters for ferrovgl (no_std)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+ferrovgl-core = { workspace = true }
+embedded-graphics = { workspace = true }
+
+[lints]
+workspace = true

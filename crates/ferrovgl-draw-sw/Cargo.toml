@@ -1,0 +1,36 @@
+[package]
+name = "ferrovgl-draw-sw"
+description = "Software renderer for ferrovgl (port of LVGL v9.6.0 src/draw/sw), no_std"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-l8", "cf-al88", "cf-a8", "cf-i1"]
+std = ["ferrovgl-core/std"]
+complex = []
+complex-gradients = []
+cf-rgb565 = []
+cf-rgb888 = []
+cf-xrgb8888 = []
+cf-argb8888 = []
+cf-l8 = []
+cf-al88 = []
+cf-a8 = []
+cf-i1 = []
+
+[dependencies]
+ferrovgl-core = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

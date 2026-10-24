@@ -1,0 +1,37 @@
+[package]
+name = "ferrovgl"
+description = "Pure-Rust reimplementation of LVGL v9.6.0: embedded GUI library with no_std core, software renderer, widgets and desktop/web backends"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[features]
+default = ["draw-sw", "fonts", "widgets"]
+std = ["ferrovgl-core/std", "ferrovgl-draw-sw?/std", "ferrovgl-widgets?/std"]
+draw-sw = ["dep:ferrovgl-draw-sw"]
+fonts = ["dep:ferrovgl-fonts"]
+widgets = ["dep:ferrovgl-widgets"]
+sdl = ["std", "dep:ferrovgl-sdl"]
+embedded = ["dep:ferrovgl-embedded"]
+
+[dependencies]
+ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot"] }
+ferrovgl-draw-sw = { workspace = true, optional = true, features = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-l8", "cf-al88", "cf-a8", "cf-i1"] }
+ferrovgl-fonts = { workspace = true, optional = true, features = ["montserrat-14", "default-montserrat-14"] }
+ferrovgl-widgets = { workspace = true, optional = true, features = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "theme-default", "theme-simple"] }
+ferrovgl-sdl = { workspace = true, optional = true }
+ferrovgl-embedded = { workspace = true, optional = true }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
