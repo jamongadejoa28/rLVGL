@@ -2,7 +2,11 @@
 //!
 //! Needs the optional fonts: run with `--all-features` (CI does).
 
-#![cfg(all(feature = "montserrat-28", feature = "montserrat-28-compressed", feature = "unscii-8"))]
+#![cfg(all(
+    feature = "montserrat-28",
+    feature = "montserrat-28-compressed",
+    feature = "unscii-8"
+))]
 
 use ferrovgl_core::font::{Font, GlyphDsc};
 use ferrovgl_fonts::{MONTSERRAT_28, MONTSERRAT_28_COMPRESSED, UNSCII_8};

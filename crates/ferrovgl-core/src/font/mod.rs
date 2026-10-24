@@ -9,7 +9,58 @@
 
 pub mod fmt_txt;
 
+use alloc::rc::Rc;
+
 pub use fmt_txt::FmtTxtFont;
+
+/// A shared handle to a font: either a `'static` font (built-in fonts) or a
+/// reference-counted one (loaded at runtime). Mirrors `const lv_font_t *`.
+///
+/// Equality is pointer identity, exactly like comparing `lv_font_t *` in C.
+#[derive(Clone)]
+pub enum FontRef {
+    /// A font living in static memory (`&lv_font_montserrat_14`).
+    Static(&'static (dyn Font + Sync)),
+    /// A font owned by reference counting (TTF, binfont, ...).
+    Shared(Rc<dyn Font>),
+}
+
+impl FontRef {
+    /// Borrow the font behind the handle.
+    #[inline]
+    pub fn as_font(&self) -> &dyn Font {
+        match self {
+            FontRef::Static(f) => *f,
+            FontRef::Shared(f) => f.as_ref(),
+        }
+    }
+
+    /// Address of the font, used for identity comparison and cache keys.
+    #[inline]
+    pub fn addr(&self) -> usize {
+        match self {
+            FontRef::Static(f) => (*f as *const (dyn Font + Sync)).cast::<u8>() as usize,
+            FontRef::Shared(f) => Rc::as_ptr(f).cast::<u8>() as usize,
+        }
+    }
+}
+
+impl PartialEq for FontRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.addr() == other.addr()
+    }
+}
+
+impl Eq for FontRef {}
+
+impl core::fmt::Debug for FontRef {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            FontRef::Static(_) => write!(f, "FontRef::Static({:#x})", self.addr()),
+            FontRef::Shared(_) => write!(f, "FontRef::Shared({:#x})", self.addr()),
+        }
+    }
+}
 
 /// `lv_font_glyph_format_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]

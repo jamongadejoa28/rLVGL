@@ -12,14 +12,21 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-l8", "cf-al88", "cf-a8", "cf-i1"]
+# `complex-gradients` (LV_USE_DRAW_SW_COMPLEX_GRADIENTS) and
+# `cf-argb8888-premultiplied` stay on by default because the upstream
+# reference images are rendered with tests/configs/full.defconfig
+# (CONFIG_LV_USE_DRAW_SW_COMPLEX_GRADIENTS=y); the lv_conf_template.h
+# default is 0, so embedded builds disable it with --no-default-features.
+default = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb565-swapped", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-l8", "cf-al88", "cf-a8", "cf-i1"]
 std = ["ferrovgl-core/std"]
 complex = []
 complex-gradients = []
 cf-rgb565 = []
+cf-rgb565-swapped = []
 cf-rgb888 = []
 cf-xrgb8888 = []
 cf-argb8888 = []
+cf-argb8888-premultiplied = []
 cf-l8 = []
 cf-al88 = []
 cf-a8 = []

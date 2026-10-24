@@ -23,7 +23,7 @@ embedded = ["dep:ferrovgl-embedded"]
 
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot"] }
-ferrovgl-draw-sw = { workspace = true, optional = true, features = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-l8", "cf-al88", "cf-a8", "cf-i1"] }
+ferrovgl-draw-sw = { workspace = true, optional = true, features = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-l8", "cf-al88", "cf-a8", "cf-i1"] }
 ferrovgl-fonts = { workspace = true, optional = true, features = ["montserrat-14", "default-montserrat-14"] }
 ferrovgl-widgets = { workspace = true, optional = true, features = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "theme-default", "theme-simple"] }
 ferrovgl-sdl = { workspace = true, optional = true }

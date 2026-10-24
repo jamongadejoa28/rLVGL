@@ -18,13 +18,30 @@
 
 extern crate alloc;
 
+pub mod core;
+pub mod display;
+pub mod draw;
 pub mod font;
+pub mod group;
+pub mod indev;
+pub mod layouts;
 pub mod misc;
+pub mod theme;
 
-pub use font::{Font, GlyphDsc, GlyphFormat};
+pub use core::{AsyncJob, Obj, ObjClass, ObjData, ObjFlags, ObjId, Ui, UiConfig, WidgetState};
+pub use display::{DisplayDriver, DisplayId, RenderMode, Rotation, ScreenLoadAnim};
+pub use draw::{DrawCtx, DrawTask, DrawTaskRef, DrawTaskType, DrawUnit, Layer, LayerId};
+pub use font::{Font, FontRef, GlyphDsc, GlyphFormat};
+pub use group::GroupId;
+pub use indev::{IndevDriver, IndevId, IndevReadData, IndevType};
+pub use misc::anim::{Anim, AnimId, AnimPath};
 pub use misc::area::{Align, Area, Dir, Point, PointPrecise};
 pub use misc::color::{Color, Color16, Color32, ColorFormat, Opa};
+pub use misc::event::{Event, EventCode, EventParam, LvResult};
+pub use misc::style::{Part, State, Style, StyleProp, StyleSelector, StyleValue};
+pub use misc::timer::TimerId;
 pub use misc::types::{ValuePrecise, coord};
+pub use theme::ThemeId;
 
 /// Version of LVGL whose semantics this crate reimplements.
 pub const LVGL_VERSION: &str = "9.6.0";

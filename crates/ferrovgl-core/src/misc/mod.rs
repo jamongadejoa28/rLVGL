@@ -1,11 +1,18 @@
 //! Utilities mirrored from LVGL's `src/misc`: geometry, colours, math,
-//! containers.
+//! containers, styles, events, timers, animations.
 
+pub mod anim;
 pub mod area;
 pub mod arena;
 pub mod color;
+pub mod event;
 pub mod math;
+pub mod palette;
+pub mod style;
+pub mod style_gen;
 pub mod text;
+pub mod tick;
+pub mod timer;
 pub mod types;
 
 /// Report a failed argument check (`LV_CHECK_ARG`).
