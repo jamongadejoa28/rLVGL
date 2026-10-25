@@ -17,8 +17,17 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["std"] }
 ferrovgl-draw-sw = { workspace = true, features = ["std"] }
-ferrovgl-widgets = { workspace = true, features = ["std"] }
+ferrovgl-widgets = { workspace = true, features = ["std", "label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "observer", "theme-default", "theme-simple"] }
+ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "default-montserrat-14"] }
+ferrovgl-examples = { workspace = true, features = ["std"] }
 wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+web-sys = { workspace = true, features = [
+    "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlSelectElement", "HtmlOptionElement",
+    "CanvasRenderingContext2d", "ImageData", "Performance", "DomRect", "CssStyleDeclaration",
+    "Event", "EventTarget", "MouseEvent", "PointerEvent", "KeyboardEvent", "WheelEvent", "FocusEvent", "AddEventListenerOptions",
+    "console",
+] }
 
 [lints]
 workspace = true

@@ -20,6 +20,7 @@ sdl2 = { workspace = true }
 [dev-dependencies]
 ferrovgl-core = { workspace = true, features = ["flex", "grid"] }
 ferrovgl-fonts = { workspace = true, features = ["montserrat-14"] }
+ferrovgl-examples = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

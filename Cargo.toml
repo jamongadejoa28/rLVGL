@@ -9,10 +9,13 @@ members = [
     "crates/ferrovgl-wasm",
     "crates/ferrovgl-embedded",
     "crates/ferrovgl-test",
+    "crates/ferrovgl-examples",
     "crates/ferrovgl",
     "xtask",
     "tools/font-conv",
 ]
+# Standalone packages with their own lockfiles.
+exclude = ["fuzz", "tools/nostd-size"]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,6 +37,7 @@ ferrovgl-sdl = { path = "crates/ferrovgl-sdl", version = "0.1.0" }
 ferrovgl-wasm = { path = "crates/ferrovgl-wasm", version = "0.1.0" }
 ferrovgl-embedded = { path = "crates/ferrovgl-embedded", version = "0.1.0", default-features = false }
 ferrovgl-test = { path = "crates/ferrovgl-test", version = "0.1.0" }
+ferrovgl-examples = { path = "crates/ferrovgl-examples", version = "0.1.0", default-features = false }
 font-conv = { path = "tools/font-conv", version = "0.1.0" }
 
 bitflags = { version = "2", default-features = false }
@@ -42,6 +46,8 @@ log = { version = "0.4", default-features = false }
 png = "0.17"
 sdl2 = "0.37"
 wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = "0.3"
 embedded-graphics = "0.8"
 
 [workspace.lints.rust]

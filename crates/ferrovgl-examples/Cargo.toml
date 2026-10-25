@@ -1,0 +1,31 @@
+[package]
+name = "ferrovgl-examples"
+description = "Ports of the LVGL v9.6.0 lv_example_* functions, shared by the SDL and browser demos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+std = ["ferrovgl-core/std", "ferrovgl-widgets/std"]
+
+[dependencies]
+ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot"] }
+ferrovgl-widgets = { workspace = true, features = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "observer", "theme-default", "theme-simple"] }
+ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "default-montserrat-14"] }
+
+[dev-dependencies]
+ferrovgl-test = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

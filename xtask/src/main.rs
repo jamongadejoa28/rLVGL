@@ -4,6 +4,11 @@
 //! - `fonts [--check]`: convert upstream font C arrays into `.lvfnt` blobs.
 //! - `nostd-check`: build the no_std crates for Cortex-M targets.
 //! - `parity-report`: summarise the parity test results.
+//! - `gen-mapping [--check]`: regenerate `docs/src/mapping.md` (LVGL C API -> ferrovgl).
+//! - `size-report`: measure `.text` of the no_std size probe for Cortex-M targets.
+
+mod mapping;
+mod size;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -20,6 +25,7 @@ const SPARSE_PATHS: &[&str] = &[
     "tests/src",
     "tests/configs",
     "docs/src/details/main-modules",
+    "examples",
 ];
 
 fn main() -> ExitCode {
@@ -30,8 +36,12 @@ fn main() -> ExitCode {
         ["fonts", rest @ ..] => fonts(&root, rest.contains(&"--check")),
         ["nostd-check"] => nostd_check(&root),
         ["parity-report"] => parity_report(&root),
+        ["gen-mapping", rest @ ..] => mapping::gen_mapping(&root, rest.contains(&"--check")),
+        ["size-report", rest @ ..] => size::size_report(&root, rest),
         _ => {
-            eprintln!("usage: cargo xtask <refimgs sync | fonts [--check] | nostd-check | parity-report>");
+            eprintln!(
+                "usage: cargo xtask <refimgs sync | fonts [--check] | nostd-check | parity-report | gen-mapping [--check] | size-report>"
+            );
             Err("unknown command".into())
         }
     };
