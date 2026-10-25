@@ -1049,8 +1049,10 @@ impl Ui {
         scroll_value: &mut Point,
         anim_en: AnimEnable,
     ) {
-        // `lv_obj_is_scrollable(NULL)` is false
+        // `lv_obj_is_scrollable(NULL)`: its `LV_CHECK_OBJ` NULL check fails
+        // (warn / assert) and it returns false
         let Some(parent) = self.obj_get_parent(child) else {
+            crate::misc::check_arg_failed("obj_scroll: invalid object");
             return;
         };
         if !self.obj_is_scrollable(parent) {
