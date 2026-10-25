@@ -19,7 +19,7 @@
 //! it.
 //!
 //! `lv_value_precise_t` is `f32` with `LV_USE_FLOAT` (the parity config) and
-//! `i32` otherwise; [`Precise`] keeps the C conversions and arithmetic of both
+//! `i32` otherwise; `Precise` keeps the C conversions and arithmetic of both
 //! configurations in one code path.
 
 use alloc::boxed::Box;

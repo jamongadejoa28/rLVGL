@@ -34,6 +34,7 @@ pub const BUILTIN_FONTS: &[&str] = &[
     "montserrat_28_compressed",
     "unscii_8",
     "unscii_16",
+    "dejavu_16_persian_hebrew",
 ];
 
 /// Magic bytes at the start of a `.lvfnt` blob.

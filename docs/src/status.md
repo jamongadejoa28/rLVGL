@@ -5,6 +5,42 @@
 컴파일되지 않았지만, 아래 재개 작업으로 **M1 첫 픽셀 종료 조건을
 충족했다.** 과거 감사 수치와 최신 구현/검증 상태를 구분해서 읽어야 한다.
 
+## 8차 재개: Arc·Spinner·Line·LED·Buttonmatrix·Textarea, observer, BiDi
+
+foundation 커밋(`00493f5`)이 위젯 6종·observer·bidi/text_ap 스켈레톤과
+theme apply 분기, feature 연결을 먼저 깔고, 8개 트랙을 worktree에서 병렬로
+포팅한 뒤 트랙마다 다른 에이전트가 C 원본과 교차 리뷰했다.
+
+- `lv_arc.c`, `lv_spinner.c`(arc 상속), `lv_line.c`, `lv_led.c`,
+  `lv_buttonmatrix.c`, `lv_textarea.c` 전 함수와 upstream 테스트를 포팅했다.
+- `lv_observer.c`(subject/observer, obj flag/state 바인딩, bar/slider
+  `bind_value`)를 포팅했다. label/arc/roller/dropdown/scale 바인딩과
+  `test_bindings.c`는 해당 위젯 또는 `lv_label_bind_text`가 없어 미포팅이다.
+- `lv_bidi.c`, `lv_text_ap.c`와 `dejavu_16_persian_hebrew` 폰트를 추가해
+  `checkbox_rtl_1.png`, `label_rtl_dot_long_mode.png`가 일치한다.
+- `arc_2.png`는 upstream 테스트가 `LV_BIN_DECODER_RAM_LOAD`(parity 설정에서
+  꺼짐) 안에 있어 비교 대상이 아니다. `test_led_properties`도
+  `LV_USE_OBJ_PROPERTY`가 꺼져 upstream에서 빈 테스트다.
+- 후속 처리: font-conv 목록에 dejavu 추가(`xtask fonts --check` 대상),
+  `nostd-check` feature 목록에 새 위젯·observer·bidi 반영,
+  checkbox RTL 주석 정리, rustdoc private link 수정.
+
+### 8차 검증 결과
+
+| 검사 | 결과 |
+|---|---|
+| workspace all-features 테스트 | **1246 통과, 0 실패, 83 ignored** |
+| `ferrovgl-test --include-ignored` | **392 통과**; `target/parity` 삭제 후 새 실행에서 고유 참조 PNG **140/140** byte-exact |
+| clippy all-targets/all-features, core/draw-sw/fonts/widgets no-default-features | 경고 0 |
+| nostd-check(새 feature 포함), fonts --check, wasm32, rustdoc `-D warnings` | 통과 |
+
+v0.1 위젯 13종이 모두 구현됐다. 남은 후속 과제:
+- `TestDisplay::wait`가 upstream `lv_test_wait`의 마지막 indev read를 하지
+  않고, `move_to_obj`가 layout을 갱신하는 차이(textarea 에이전트 보고).
+- widgets 크레이트의 `float` feature 전달, `lv_label_bind_text`, 객체 id.
+- worktree에는 git-ignored `tests/upstream`이 없어 에이전트가 심볼릭 링크로
+  우회했다(커밋되지 않음).
+
 ## 7차 재개: Bar·Slider·Switch·Checkbox와 M1-A 독립 감사
 
 기준 커밋 `8fb6442`(6차까지의 미커밋 작업을 검증 후 커밋)에서 출발했다.

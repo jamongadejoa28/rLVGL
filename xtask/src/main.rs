@@ -136,12 +136,15 @@ fn fonts(root: &Path, check: bool) -> Result<()> {
 fn nostd_check(root: &Path) -> Result<()> {
     for target in ["thumbv7em-none-eabihf", "thumbv6m-none-eabi"] {
         for (pkg, features) in [
-            ("ferrovgl-core", "float,flex,grid,snapshot"),
+            (
+                "ferrovgl-core",
+                "float,flex,grid,snapshot,observer,bidi,arabic-persian-chars",
+            ),
             ("ferrovgl-draw-sw", "complex,cf-rgb565,cf-xrgb8888"),
-            ("ferrovgl-fonts", "montserrat-14"),
+            ("ferrovgl-fonts", "montserrat-14,dejavu-16-persian-hebrew"),
             (
                 "ferrovgl-widgets",
-                "label,button,image,theme-default,theme-simple",
+                "label,button,image,bar,slider,switch,checkbox,arc,line,led,spinner,buttonmatrix,textarea,observer,bidi,arabic-persian-chars,theme-default,theme-simple",
             ),
         ] {
             run(Command::new("cargo").current_dir(root).args([

@@ -2,11 +2,9 @@
 //! Run with `--include-ignored` after `cargo xtask refimgs sync`. References
 //! are immutable upstream PNGs; actual pixels come from the Rust object pipeline.
 //!
-//! `test_checkbox_rtl` (`widgets/checkbox_rtl_1.png`) is not ported as a
-//! runnable test: it needs `lv_font_dejavu_16_persian_hebrew` and the BiDi
-//! paragraph algorithm (`LV_USE_BIDI`), neither of which exists in the core
-//! yet. The scene is kept below as documentation for when they land; until
-//! then [`checkbox_rtl_geometry`] covers the RTL marker/text placement of
+//! `test_checkbox_rtl` (`widgets/checkbox_rtl_1.png`) runs in `parity_bidi.rs`,
+//! which has the BiDi/Arabic-Persian text path and the DejaVu Persian/Hebrew
+//! font. [`checkbox_rtl_geometry`] still checks the RTL marker/text placement of
 //! `lv_checkbox_draw()` without pixels.
 
 use std::cell::Cell;
@@ -247,20 +245,3 @@ fn checkbox_rtl_geometry() {
     assert_eq!(rtl_label.width(), ltr_label.width());
     assert_eq!((rtl_label.y1, rtl_label.y2), (ltr_label.y1, ltr_label.y2));
 }
-
-// `test_checkbox_rtl` (not runnable yet, see the module documentation):
-//
-//     let message = "מעבד, או בשמו המלא יחידת עיבוד מרכזית (באנגלית: CPU - Central Processing Unit).";
-//     let screen = ui.obj_create(active_screen);
-//     ui.obj_remove_style_all(screen);
-//     ui.obj_set_size(screen, 800, 480);
-//     ui.obj_center(screen);
-//     ui.obj_set_style_bg_color(screen, Color::WHITE, 0);
-//     ui.obj_set_style_bg_opa(screen, OPA_100, 0);
-//     ui.obj_set_style_pad_all(screen, 0, 0);
-//     let test_checkbox = Checkbox::create(ui, active_screen);
-//     test_checkbox.set_text(ui, message);
-//     ui.obj_set_style_text_font(test_checkbox, &lv_font_dejavu_16_persian_hebrew, 0);
-//     ui.obj_center(test_checkbox);
-//     ui.obj_set_style_base_dir(test_checkbox, BaseDir::Rtl, 0);
-//     screenshot_compare("widgets/checkbox_rtl_1.png");
