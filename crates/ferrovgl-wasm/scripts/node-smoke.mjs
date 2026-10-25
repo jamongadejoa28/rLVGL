@@ -16,19 +16,27 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const pkg = path.resolve(process.argv[2] ?? path.join(here, "../www/pkg"));
 
 // ---- fake DOM ------------------------------------------------------------
+// Listeners keep their options: like the DOM's "inner invoke", a passive
+// listener's preventDefault() does nothing.
 class FakeEventTarget {
   constructor() { this.listeners = new Map(); }
   addEventListener(type, cb, opts) {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
-    this.listeners.get(type).add(cb);
-    this.lastOptions = opts;
+    if (!this.listeners.has(type)) this.listeners.set(type, new Map());
+    this.listeners.get(type).set(cb, opts);
   }
   removeEventListener(type, cb) { this.listeners.get(type)?.delete(cb); }
-  dispatch(type, event) { for (const cb of this.listeners.get(type) ?? []) cb(event); }
+  passive(type) { return [...(this.listeners.get(type)?.values() ?? [])].map((o) => o?.passive === true); }
+  dispatch(type, event) {
+    for (const [cb, opts] of this.listeners.get(type) ?? []) {
+      event.inPassiveListener = opts?.passive === true;
+      cb(event);
+      event.inPassiveListener = false;
+    }
+  }
 }
 class Event {
   constructor(props) { Object.assign(this, props); this.defaultPrevented = false; }
-  preventDefault() { this.defaultPrevented = true; }
+  preventDefault() { if (!this.inPassiveListener) this.defaultPrevented = true; }
 }
 class MouseEvent extends Event {}
 class PointerEvent extends MouseEvent {}
@@ -137,6 +145,10 @@ function frames(n) {
   }
 }
 frames(5);
+// Every listener that calls preventDefault() must be non-passive.
+for (const type of ["pointerdown", "keydown", "wheel", "contextmenu"]) {
+  assert.deepEqual(canvas.passive(type), [false], `${type} listener is not passive`);
+}
 
 // The "Clicked 0x" label of the button card (the spinner animates elsewhere).
 const statusRegion = () => {
@@ -146,13 +158,28 @@ const statusRegion = () => {
 };
 const statusBefore = statusRegion();
 // Click the button at display (240, 62) = CSS (100 + 480, 50 + 124).
-const down = new PointerEvent({ clientX: 580, clientY: 174, button: 0, isPrimary: true, pointerId: 1 });
+const ptr = (props) => new PointerEvent({ clientX: 580, clientY: 174, isPrimary: true, pointerId: 1, ...props });
+const down = ptr({ button: 0, buttons: 1 });
 canvas.dispatch("pointerdown", down);
 assert.ok(down.defaultPrevented && canvas.focused);
 frames(3);
-canvas.dispatch("pointerup", new PointerEvent({ clientX: 580, clientY: 174, button: 0, isPrimary: true, pointerId: 1 }));
+canvas.dispatch("pointerup", ptr({ button: 0, buttons: 0 }));
 frames(6);
-assert.notDeepEqual(statusRegion(), statusBefore, "the click changed the status label");
+const statusClicked = statusRegion();
+assert.notDeepEqual(statusClicked, statusBefore, "the click changed the status label");
+
+// Chorded buttons: a press or release that is not the first or last one
+// arrives as `pointermove`. Releasing left while middle is held still
+// releases (and clicks) the pointer.
+canvas.dispatch("pointerdown", ptr({ button: 0, buttons: 1 }));
+frames(2);
+canvas.dispatch("pointermove", ptr({ button: 1, buttons: 5 }));
+frames(2);
+canvas.dispatch("pointermove", ptr({ button: 0, buttons: 4 }));
+frames(6);
+assert.notDeepEqual(statusRegion(), statusClicked, "the chorded left release clicked");
+canvas.dispatch("pointerup", ptr({ button: 1, buttons: 0 }));
+frames(6);
 
 // Keyboard: Tab is handled (default prevented) and redraws the focus.
 const tab = new KeyboardEvent({ key: "Tab", code: "Tab", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, isComposing: false });

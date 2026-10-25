@@ -36,6 +36,35 @@ pub enum InputEvent {
     Blur,
 }
 
+/// `MouseEvent.buttons` bit of the primary (left) button, touch contact or
+/// pen tip.
+pub const BUTTONS_LEFT: u16 = 1;
+/// `MouseEvent.buttons` bit of the auxiliary (middle) button.
+pub const BUTTONS_MIDDLE: u16 = 4;
+
+/// The events for a change of the pressed buttons from `prev` to `now`
+/// (`MouseEvent.buttons` bits; only [`BUTTONS_LEFT`] and [`BUTTONS_MIDDLE`]
+/// matter), left first, then middle.
+///
+/// Browsers fire `pointerdown` only for the first pressed button and
+/// `pointerup` only for the last released one; other changes arrive as a
+/// `pointermove`. SDL reports every left or middle change as its own
+/// `SDL_MOUSEBUTTONDOWN`/`UP` (`lv_sdl_mouse.c`, `lv_sdl_mousewheel.c`), so
+/// all three handlers compare the `buttons` bits with the last known ones.
+/// `at` is the position of a left press.
+pub fn button_changes(prev: u16, now: u16, at: Point) -> impl Iterator<Item = InputEvent> {
+    let changed = |bit: u16| (prev & bit != now & bit).then_some(now & bit != 0);
+    let left = changed(BUTTONS_LEFT).map(|down| {
+        if down {
+            InputEvent::PointerDown(at)
+        } else {
+            InputEvent::PointerUp
+        }
+    });
+    let middle = changed(BUTTONS_MIDDLE).map(InputEvent::EncoderButton);
+    left.into_iter().chain(middle)
+}
+
 #[derive(Default)]
 struct Sample {
     point: Point,
@@ -155,5 +184,39 @@ impl Inputs {
         if ui.indev(id).is_some() {
             ui.indev_read(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn changes(prev: u16, now: u16) -> Vec<InputEvent> {
+        button_changes(prev, now, Point::new(3, 4)).collect()
+    }
+
+    #[test]
+    fn chorded_buttons_report_every_change() {
+        let p = Point::new(3, 4);
+        assert_eq!(changes(0, 0), []);
+        assert_eq!(changes(0, BUTTONS_LEFT), [InputEvent::PointerDown(p)]);
+        // Left held, middle pressed (a `pointermove` in the browser).
+        assert_eq!(
+            changes(BUTTONS_LEFT, BUTTONS_LEFT | BUTTONS_MIDDLE),
+            [InputEvent::EncoderButton(true)]
+        );
+        // Left released while middle stays down: still a pointer release.
+        assert_eq!(
+            changes(BUTTONS_LEFT | BUTTONS_MIDDLE, BUTTONS_MIDDLE),
+            [InputEvent::PointerUp]
+        );
+        assert_eq!(changes(BUTTONS_MIDDLE, 0), [InputEvent::EncoderButton(false)]);
+        assert_eq!(
+            changes(0, BUTTONS_LEFT | BUTTONS_MIDDLE),
+            [InputEvent::PointerDown(p), InputEvent::EncoderButton(true)]
+        );
+        // The secondary button (2) is ignored.
+        assert_eq!(changes(0, 2), []);
+        assert_eq!(changes(2 | BUTTONS_LEFT, 2), [InputEvent::PointerUp]);
     }
 }

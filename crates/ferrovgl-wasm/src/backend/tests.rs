@@ -384,6 +384,39 @@ fn scenes() {
     }
 }
 
+#[test]
+fn configured_dpi_reaches_the_theme() {
+    use ferrovgl_core::Part;
+    // 800x480 is a large display: card padding 24, radius 12, row gap 14.
+    for (dpi, expect_dpi) in [(None, 130), (Some(260), 260), (Some(80), 80)] {
+        let (mut b, _canvas) = backend(BackendConfig {
+            dpi,
+            ..BackendConfig::default()
+        });
+        assert_eq!(b.ui.display_get_dpi(Some(b.display())), expect_dpi);
+        let dpx = |n: i32| ((expect_dpi * n + 80) / 160).max(1);
+        let screen = b.screen().unwrap();
+        assert_eq!(
+            b.ui.obj_get_style_bg_color(screen, Part::MAIN),
+            Color::hex(0xf5f5f5)
+        );
+        assert_eq!(b.ui.obj_get_style_pad_row(screen, Part::MAIN), dpx(14));
+        let card = b.ui.obj_create(Some(screen));
+        assert_eq!(b.ui.obj_get_style_pad_left(card, Part::MAIN), dpx(24));
+        assert_eq!(b.ui.obj_get_style_radius(card, Part::MAIN), dpx(12));
+        assert_eq!(b.ui.obj_get_style_border_width(card, Part::MAIN), dpx(2));
+        // A later `set_dpi` rebuilds the theme in place for existing objects.
+        b.set_dpi(40);
+        assert_eq!(b.ui.display_get_dpi(Some(b.display())), 40);
+        assert_eq!(
+            b.ui.obj_get_style_pad_left(card, Part::MAIN),
+            (40 * 24 + 80) / 160
+        );
+        assert_eq!(b.ui.obj_get_style_radius(card, Part::MAIN), (40 * 12 + 80) / 160);
+        b.ui.deinit();
+    }
+}
+
 /// `FERROVGL_WASM_DUMP=out.ppm cargo test -p ferrovgl-wasm dump_gallery`
 /// writes what the demo page shows after 400 ms, for a visual check.
 #[test]

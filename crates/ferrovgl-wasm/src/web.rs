@@ -23,8 +23,29 @@ use crate::backend::{Backend, BackendConfig, Surface};
 use crate::convert::{parse_color_format, parse_render_mode};
 use crate::gallery;
 use crate::geometry::{self, CssRect};
-use crate::input::InputEvent;
+use crate::input::{self, BUTTONS_LEFT, InputEvent};
 use crate::keys::{self, Modifiers};
+
+#[wasm_bindgen]
+extern "C" {
+    /// A `MouseEvent` read through getters returning the full-precision
+    /// double. web-sys declares `clientX`/`clientY` as `i32`, which truncates
+    /// fractional CSS pixels before the zoom is divided out
+    /// (`lv_sdl_mouse.c` divides first).
+    type ClientPos;
+    /// `MouseEvent.clientX`
+    #[wasm_bindgen(method, getter, js_name = clientX)]
+    fn client_x(this: &ClientPos) -> f64;
+    /// `MouseEvent.clientY`
+    #[wasm_bindgen(method, getter, js_name = clientY)]
+    fn client_y(this: &ClientPos) -> f64;
+}
+
+/// `(clientX, clientY)` of `e` without truncation.
+fn client_pos(e: &PointerEvent) -> (f64, f64) {
+    let pos: &ClientPos = e.unchecked_ref();
+    (pos.client_x(), pos.client_y())
+}
 
 fn js_error(value: JsValue) -> String {
     value
@@ -57,6 +78,29 @@ struct State {
 }
 
 type Queue = Rc<RefCell<VecDeque<InputEvent>>>;
+
+/// Where the DOM listeners put their events: dropped while the loop is not
+/// running, so a loop that stopped itself (flush error, display deleted)
+/// does not grow the queue for the rest of the page's life.
+#[derive(Clone)]
+struct Sink {
+    queue: Queue,
+    running: Rc<Cell<bool>>,
+}
+
+impl Sink {
+    fn push(&self, event: InputEvent) {
+        if self.running.get() {
+            self.queue.borrow_mut().push_back(event);
+        }
+    }
+
+    fn extend(&self, events: impl IntoIterator<Item = InputEvent>) {
+        if self.running.get() {
+            self.queue.borrow_mut().extend(events);
+        }
+    }
+}
 type FrameCallback = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;
 
 struct Listener {
@@ -189,6 +233,10 @@ impl WebDisplay {
     }
 
     /// `lv_display_set_dpi()` for the current and later scenes.
+    ///
+    /// The current scene's theme is rebuilt for the new DPI
+    /// ([`Backend::set_dpi`]); sizes the scene itself computed with
+    /// `lv_dpx()` at creation keep their values until it is shown again.
     pub fn set_dpi(&self, dpi: i32) {
         let mut state = self.state.borrow_mut();
         state.config.dpi = Some(dpi);
@@ -265,6 +313,8 @@ impl WebDisplay {
         if self.listeners.is_empty() {
             self.install_listeners().map_err(|e| JsError::new(&js_error(e)))?;
         }
+        // Nothing is queued while stopped; drop anything left over.
+        self.queue.borrow_mut().clear();
         self.running.set(true);
         let state = self.state.clone();
         let queue = self.queue.clone();
@@ -287,6 +337,9 @@ impl WebDisplay {
             }
             if running.get() {
                 frame_id.set(request_frame(&holder));
+            } else {
+                // The listeners stay installed but drop events from now on.
+                queue.borrow_mut().clear();
             }
         }));
         self.frame_id.set(request_frame(&self.frame_cb));
@@ -300,6 +353,7 @@ impl WebDisplay {
     /// Stops the loop and removes the listeners.
     pub fn stop(&mut self) {
         self.running.set(false);
+        self.queue.borrow_mut().clear();
         if let (Some(id), Some(window)) = (self.frame_id.take(), web_sys::window()) {
             let _ = window.cancel_animation_frame(id);
         }
@@ -313,6 +367,10 @@ impl WebDisplay {
     fn install_listeners(&mut self) -> Result<(), JsValue> {
         let canvas: EventTarget = self.canvas.clone().into();
         let (w, h) = (self.width() as i32, self.height() as i32);
+        let sink = Sink {
+            queue: self.queue.clone(),
+            running: self.running.clone(),
+        };
 
         let point = {
             let canvas = self.canvas.clone();
@@ -324,70 +382,93 @@ impl WebDisplay {
                     width: r.width(),
                     height: r.height(),
                 };
-                let (x, y) =
-                    geometry::client_to_display(f64::from(e.client_x()), f64::from(e.client_y()), rect, w, h);
+                let (cx, cy) = client_pos(e);
+                let (x, y) = geometry::client_to_display(cx, cy, rect, w, h);
                 Point::new(x, y)
             }
         };
 
-        let q = self.queue.clone();
-        let focus_canvas = self.canvas.clone();
-        let p = point.clone();
-        self.listen(&canvas, "pointerdown", false, move |e| {
+        // Last known `MouseEvent.buttons` of the primary pointer. Every
+        // pointer event compares against it (chorded presses arrive as
+        // `pointermove`), see `input::button_changes`.
+        let buttons = Rc::new(Cell::new(0u16));
+        let changes = {
+            let sink = sink.clone();
+            let buttons = buttons.clone();
+            let canvas = self.canvas.clone();
+            let point = point.clone();
+            move |e: &PointerEvent| {
+                let now = e.buttons();
+                let prev = buttons.replace(now);
+                if prev & BUTTONS_LEFT == 0 && now & BUTTONS_LEFT != 0 {
+                    let _ = canvas.set_pointer_capture(e.pointer_id());
+                    let _ = canvas.focus();
+                }
+                sink.extend(input::button_changes(prev, now, point(e)));
+            }
+        };
+
+        let c = changes.clone();
+        self.listen(&canvas, "pointerdown", true, move |e| {
             let Some(e) = e.dyn_ref::<PointerEvent>() else {
                 return;
             };
             if !e.is_primary() {
                 return;
             }
-            match e.button() {
-                0 => {
-                    let _ = focus_canvas.set_pointer_capture(e.pointer_id());
-                    let _ = focus_canvas.focus();
-                    q.borrow_mut().push_back(InputEvent::PointerDown(p(e)));
-                }
-                1 => q.borrow_mut().push_back(InputEvent::EncoderButton(true)),
-                _ => return,
+            c(e);
+            if matches!(e.button(), 0 | 1) {
+                e.prevent_default();
             }
-            e.prevent_default();
         })?;
 
-        let q = self.queue.clone();
-        let p = point;
+        let s = sink.clone();
+        let c = changes.clone();
         self.listen(&canvas, "pointermove", false, move |e| {
             if let Some(e) = e.dyn_ref::<PointerEvent>()
                 && e.is_primary()
             {
-                q.borrow_mut().push_back(InputEvent::PointerMove(p(e)));
+                s.push(InputEvent::PointerMove(point(e)));
+                c(e);
             }
         })?;
 
-        let q = self.queue.clone();
+        let c = changes;
         self.listen(&canvas, "pointerup", false, move |e| {
-            let Some(e) = e.dyn_ref::<PointerEvent>() else {
-                return;
-            };
-            if !e.is_primary() {
-                return;
+            if let Some(e) = e.dyn_ref::<PointerEvent>()
+                && e.is_primary()
+            {
+                c(e);
             }
-            match e.button() {
-                0 => q.borrow_mut().push_back(InputEvent::PointerUp),
-                1 => q.borrow_mut().push_back(InputEvent::EncoderButton(false)),
-                _ => {}
+        })?;
+
+        // Entering with a button already held (pressed outside the canvas)
+        // is not a press: take over the state without events.
+        let b = buttons.clone();
+        self.listen(&canvas, "pointerenter", false, move |e| {
+            if let Some(e) = e.dyn_ref::<PointerEvent>()
+                && e.is_primary()
+            {
+                b.set(e.buttons());
             }
         })?;
 
         for kind in ["pointerleave", "pointercancel"] {
-            let q = self.queue.clone();
+            let s = sink.clone();
+            let b = buttons.clone();
             self.listen(&canvas, kind, false, move |e| {
                 if e.dyn_ref::<PointerEvent>().is_none_or(|e| e.is_primary()) {
-                    q.borrow_mut().push_back(InputEvent::PointerLeave);
+                    if kind == "pointercancel" {
+                        // The pointer is gone (no `pointerup` follows).
+                        b.set(0);
+                    }
+                    s.push(InputEvent::PointerLeave);
                 }
             })?;
         }
 
-        let q = self.queue.clone();
-        self.listen(&canvas, "keydown", false, move |e| {
+        let s = sink.clone();
+        self.listen(&canvas, "keydown", true, move |e| {
             let Some(e) = e.dyn_ref::<KeyboardEvent>() else {
                 return;
             };
@@ -402,25 +483,21 @@ impl WebDisplay {
             };
             let mapping = keys::map_key(&e.key(), &e.code(), mods);
             if mapping.is_handled() {
-                q.borrow_mut().extend(mapping.keys().map(InputEvent::Key));
+                s.extend(mapping.keys().map(InputEvent::Key));
                 e.prevent_default();
             }
         })?;
 
-        let q = self.queue.clone();
+        let s = sink.clone();
         self.listen(&canvas, "wheel", true, move |e| {
             let Some(e) = e.dyn_ref::<WheelEvent>() else {
                 return;
             };
-            q.borrow_mut()
-                .push_back(InputEvent::Wheel(geometry::wheel_steps(e.delta_y())));
+            s.push(InputEvent::Wheel(geometry::wheel_steps(e.delta_y())));
             e.prevent_default();
         })?;
 
-        let q = self.queue.clone();
-        self.listen(&canvas, "blur", false, move |_| {
-            q.borrow_mut().push_back(InputEvent::Blur);
-        })?;
+        self.listen(&canvas, "blur", false, move |_| sink.push(InputEvent::Blur))?;
 
         self.listen(&canvas, "contextmenu", true, move |e| e.prevent_default())?;
 
@@ -442,14 +519,15 @@ impl WebDisplay {
         &mut self,
         target: &EventTarget,
         kind: &'static str,
-        cancelable: bool,
+        prevents_default: bool,
         f: impl FnMut(Event) + 'static,
     ) -> Result<(), JsValue> {
         let callback = Closure::<dyn FnMut(Event)>::new(f);
         let options = AddEventListenerOptions::new();
-        // `wheel` and `contextmenu` call preventDefault(), which a passive
-        // listener may not do.
-        options.set_passive(!cancelable);
+        // A passive listener's preventDefault() is ignored for every event
+        // type (DOM "inner invoke"), so each listener that calls it
+        // (pointerdown, keydown, wheel, contextmenu) must be non-passive.
+        options.set_passive(!prevents_default);
         target.add_event_listener_with_callback_and_add_event_listener_options(
             kind,
             callback.as_ref().unchecked_ref(),

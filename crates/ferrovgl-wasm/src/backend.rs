@@ -182,6 +182,37 @@ fn checked_dimensions(cfg: &BackendConfig) -> Result<usize, String> {
     Ok(stride)
 }
 
+/// `MODE_DARK` of `lv_theme_default.c` (`theme->base.flags`).
+const THEME_MODE_DARK: u32 = 1;
+
+/// After `lv_display_set_dpi()`: `lv_display_set_dpi()` only stores the value
+/// and `lv_theme_default_init()` reads it once, so a C application changing
+/// the DPI calls the init again. If `display` uses the default theme, re-run
+/// it with the theme's own colors, mode and font, as
+/// `resolution_change_event_cb` does (a no-op when nothing changed).
+fn reinit_default_theme(ui: &mut Ui, display: DisplayId) {
+    use ferrovgl_widgets::theme::default;
+    let Some(theme) = default::get(ui) else {
+        return;
+    };
+    if ui.display_get_theme(Some(display)) != Some(theme) {
+        return;
+    }
+    let Some(base) = ui.theme(theme).cloned() else {
+        return;
+    };
+    if let Some(font) = base.font_normal {
+        default::init(
+            ui,
+            display,
+            base.color_primary,
+            base.color_secondary,
+            base.flags & THEME_MODE_DARK != 0,
+            font,
+        );
+    }
+}
+
 /// A UI context bound to one canvas-like [`Surface`].
 pub struct Backend {
     /// Build and update the application's objects here.
@@ -226,6 +257,7 @@ impl Backend {
         ui.display_set_color_format(display, cf);
         if let Some(dpi) = config.dpi {
             ui.display_set_dpi(display, dpi);
+            reinit_default_theme(&mut ui, display);
         }
         ui.display_set_draw_buffers(display, Some(buf1), buf2);
         ui.display_set_render_mode(display, config.render_mode);
@@ -370,10 +402,14 @@ impl Backend {
         }
     }
 
-    /// `lv_display_set_dpi()`
+    /// `lv_display_set_dpi()`, then `lv_theme_default_init()` again when the
+    /// display uses the default theme (with its own colors, mode and font), which
+    /// rebuilds its styles in place and refreshes every object. Sizes the
+    /// application computed with `lv_dpx()` keep their values.
     pub fn set_dpi(&mut self, dpi: i32) {
         if self.is_alive() {
             self.ui.display_set_dpi(self.display, dpi);
+            reinit_default_theme(&mut self.ui, self.display);
         }
     }
 
