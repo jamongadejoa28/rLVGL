@@ -118,6 +118,19 @@ A dev-dependency on `ferrovgl-test` must be path-only (no `version`) so that
 `cargo publish` strips it. A package does not ship test targets that need
 `ferrovgl-test` (`ferrovgl-examples` leaves out `tests/`).
 
+A repeated local dry run can verify a crate against a stale copy of its
+dependency: cargo treats registry crates as immutable per version, so the
+`ferrovgl-* 0.1.0` packages unpacked under `~/.cargo/registry/src/*/` and the
+artifacts built from them in `target/` are reused even after the sources
+changed (symptom: "cannot find function" in a dependency that has it). Clear
+them before re-running, as CI's clean runner does implicitly:
+
+```sh
+rm -rf ~/.cargo/registry/src/*/ferrovgl-* target/package
+for c in ferrovgl ferrovgl-core ferrovgl-draw-sw ferrovgl-fonts ferrovgl-widgets \
+         ferrovgl-examples ferrovgl-sdl ferrovgl-wasm ferrovgl-embedded; do cargo clean -p "$c"; done
+```
+
 ### 0.1.0
 
 The 0.1.0 entry of `CHANGELOG.md` is written by hand and stays dated
