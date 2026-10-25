@@ -1,5 +1,8 @@
 # ferrovgl-sdl
 
+Part of [ferrovgl](https://github.com/jamongadejoa28/rLVGL) (independent project, not affiliated with
+LVGL LLC). API documentation: <https://docs.rs/ferrovgl-sdl>.
+
 A fixed-size SDL2 window for the pure Rust renderer. The backend owns a `Ui`,
 installs the software draw unit, and displays a single full-size XRGB8888 buffer
 in direct mode. Mouse, keyboard and wheel events feed real pointer, keypad and
@@ -63,3 +66,22 @@ the isolated dummy process. TextInput is fed through the same adapter directly:
 sdl2 0.37's safe `push_event` cannot serialize that event type. The tests also
 cover UTF-8 keys, window filtering, focus loss and UI deletion inside an input
 callback. Human GUI interaction is not part of this automated verification.
+
+## About ferrovgl
+
+This crate is part of [ferrovgl](https://github.com/jamongadejoa28/rLVGL), a pure-Rust reimplementation of
+LVGL v9.6.0. ferrovgl is an independent project and is **not** affiliated
+with, endorsed by, or sponsored by LVGL LLC or LVGL Kft. "LVGL" is a trademark
+of LVGL LLC, used here only to describe compatibility and provenance (see
+[TRADEMARK.md](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/TRADEMARK.md)).
+
+- Repository: <https://github.com/jamongadejoa28/rLVGL>
+- Changelog: [CHANGELOG.md](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/CHANGELOG.md)
+- Minimum supported Rust version: 1.97
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-APACHE)
+or [MIT license](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-MIT) at your option. ferrovgl is derived from
+LVGL (MIT, Copyright LVGL Kft); the upstream notice is reproduced in
+[NOTICE](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/NOTICE), which ships in this package.

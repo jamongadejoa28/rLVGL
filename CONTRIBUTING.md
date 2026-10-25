@@ -81,3 +81,67 @@ The core development cache remains in `target/debug`; see [fuzz/README.md](fuzz/
 for the local native-tool installation and bounded campaigns. The tool installer
 uses `target/tool-build`, which may be removed after installation without
 affecting ordinary or fuzz recompilation; keep `target/tools/bin/cargo-fuzz`.
+
+## Releases
+
+The published crates are `ferrovgl`, `ferrovgl-core`, `ferrovgl-draw-sw`,
+`ferrovgl-fonts`, `ferrovgl-widgets`, `ferrovgl-sdl`, `ferrovgl-wasm`,
+`ferrovgl-embedded` (a placeholder until 0.2, published because the umbrella's
+`embedded` feature depends on it) and `ferrovgl-examples` (a normal dependency
+of `ferrovgl-wasm`). `ferrovgl-test`, `xtask` and `font-conv` are
+`publish = false`. All published crates share the workspace version and are
+released together (`version_group = "ferrovgl"` in `release-plz.toml`).
+
+There is one changelog, [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog). It is
+attached to the umbrella crate, which includes the commits of every other
+published crate; the member crates have no changelog of their own.
+
+Publishing is manual (`.github/workflows/release.yml` only runs on
+`workflow_dispatch`) and irreversible. Before a release, check the packages
+locally:
+
+```sh
+uv run --locked cargo package --workspace --locked --list
+uv run --locked cargo publish --workspace --dry-run --locked
+```
+
+`cargo publish --workspace` orders the crates by their dependencies:
+`ferrovgl-core`, `ferrovgl-draw-sw`, `ferrovgl-embedded`, `ferrovgl-fonts`,
+`ferrovgl-widgets`, `ferrovgl-examples`, `ferrovgl-sdl`, `ferrovgl-wasm`,
+`ferrovgl`. Every package carries `LICENSE-APACHE`, `LICENSE-MIT`, `NOTICE`
+(the LVGL MIT notice) and `TRADEMARK.md` as symlinks to the repository root;
+`ferrovgl-fonts` also carries `OFL.txt` and `data/SOURCE.md`. A dev-dependency
+on `ferrovgl-test` must be path-only (no `version`) so that `cargo publish`
+strips it.
+
+### 0.1.0
+
+The 0.1.0 entry of `CHANGELOG.md` is written by hand. Publish 0.1.0 with
+`release-plz release` (the release workflow), which publishes every crate whose
+version is not on crates.io yet and creates the `ferrovgl-v0.1.0` GitHub
+release from that changelog section. Do not run `release-plz release-pr`
+before 0.1.0 is on crates.io: without a registry baseline it would turn the
+whole history into changelog entries.
+
+### Semver checks after 0.1.0
+
+There is no published baseline before 0.1.0, so no semver check applies to it.
+From the first release-plz PR after 0.1.0 on, `semver_check = true` makes
+release-plz run [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
+against the latest crates.io version of each crate and choose the version bump
+from the result: a breaking change bumps the minor version while the crates
+are `0.x` (0.1.x -> 0.2.0), anything else bumps the patch version. Because
+the crates share a version group, a breaking change in one crate bumps all of
+them. Mark breaking commits with `!` or a `BREAKING CHANGE:` footer so the
+changelog says why.
+
+To check a change locally before opening a PR (needs `cargo install
+cargo-semver-checks --locked`; the baseline is downloaded from crates.io):
+
+```sh
+cargo semver-checks --workspace --exclude ferrovgl-test --exclude xtask --exclude font-conv
+```
+
+`cargo semver-checks` compares the default feature set; add
+`--all-features` for the feature-gated API (the widgets, renderer colour
+formats and fonts are all behind features).

@@ -6,11 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
+documentation = "https://docs.rs/ferrovgl"
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
-readme = "../../README.md"
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+]
 
 [features]
 default = ["draw-sw", "fonts", "widgets"]

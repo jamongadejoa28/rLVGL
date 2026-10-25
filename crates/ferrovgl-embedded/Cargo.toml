@@ -6,10 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-embedded"
+readme = "README.md"
+keywords = ["embedded-graphics", "embedded-hal", "embedded", "gui", "lvgl"]
+categories = ["embedded", "no-std", "gui"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+]
 
 [features]
 default = []
@@ -20,3 +30,7 @@ embedded-graphics = { workspace = true }
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

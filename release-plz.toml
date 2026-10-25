@@ -1,9 +1,82 @@
+# release-plz configuration (https://release-plz.dev/docs/config).
+#
+# All published crates share one version (`version.workspace = true` plus the
+# `ferrovgl` version group) and one Keep-a-Changelog file, `CHANGELOG.md` at
+# the repository root. The changelog belongs to the umbrella crate, which
+# includes the commits of every other published crate; the other crates do not
+# keep their own changelog. The 0.1.0 entry is written by hand; release-plz
+# prepends the entries of later releases. See CONTRIBUTING.md ("Releases").
+
 [workspace]
-changelog_update = true
+changelog_update = false
 dependencies_update = false
-git_release_enable = true
+git_release_enable = false
 pr_labels = ["release"]
+# cargo-semver-checks against the latest crates.io version. Packages without
+# a published version (everything before 0.1.0 is out) are skipped.
 semver_check = true
+
+# --- published crates ------------------------------------------------------
+
+[[package]]
+name = "ferrovgl"
+version_group = "ferrovgl"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+changelog_include = [
+    "ferrovgl-core",
+    "ferrovgl-draw-sw",
+    "ferrovgl-fonts",
+    "ferrovgl-widgets",
+    "ferrovgl-sdl",
+    "ferrovgl-wasm",
+    "ferrovgl-embedded",
+    "ferrovgl-examples",
+]
+git_release_enable = true
+git_release_name = "v{{ version }}"
+
+[[package]]
+name = "ferrovgl-core"
+version_group = "ferrovgl"
+
+[[package]]
+name = "ferrovgl-draw-sw"
+version_group = "ferrovgl"
+
+[[package]]
+name = "ferrovgl-fonts"
+version_group = "ferrovgl"
+
+[[package]]
+name = "ferrovgl-widgets"
+version_group = "ferrovgl"
+
+[[package]]
+name = "ferrovgl-sdl"
+version_group = "ferrovgl"
+
+[[package]]
+name = "ferrovgl-wasm"
+version_group = "ferrovgl"
+
+# Placeholder for the v0.2 embedded-graphics adapters. Published because the
+# umbrella crate's optional `embedded` feature depends on it.
+[[package]]
+name = "ferrovgl-embedded"
+version_group = "ferrovgl"
+
+# The ported lv_example_* functions; a normal dependency of ferrovgl-wasm.
+[[package]]
+name = "ferrovgl-examples"
+version_group = "ferrovgl"
+
+# --- workspace-only crates (`publish = false` in their manifests) ----------
+
+[[package]]
+name = "ferrovgl-test"
+release = false
+publish = false
 
 [[package]]
 name = "xtask"

@@ -6,11 +6,24 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
-include = ["src/**", "data/**", "OFL.txt", "Cargo.toml"]
+documentation = "https://docs.rs/ferrovgl-fonts"
+readme = "README.md"
+keywords = ["font", "bitmap-font", "montserrat", "embedded", "lvgl"]
+categories = ["gui", "embedded", "no-std", "rendering::data-formats"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+    "/OFL.txt",
+    "/data/*.lvfnt",
+    "/data/SOURCE.md",
+    "/tests/**",
+]
 
 [features]
 default = ["montserrat-14", "default-montserrat-14"]

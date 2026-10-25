@@ -6,10 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-widgets"
+readme = "README.md"
+keywords = ["gui", "widgets", "embedded", "no-std", "lvgl"]
+categories = ["gui", "embedded", "no-std"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+]
 
 [features]
 default = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "observer", "float", "bidi", "arabic-persian-chars", "theme-default", "theme-simple"]

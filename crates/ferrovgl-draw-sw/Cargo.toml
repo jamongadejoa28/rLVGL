@@ -6,10 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-draw-sw"
+readme = "README.md"
+keywords = ["rasterizer", "software-renderer", "embedded", "no-std", "lvgl"]
+categories = ["rendering", "graphics", "gui", "embedded", "no-std"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+]
 
 [features]
 # `complex-gradients` (LV_USE_DRAW_SW_COMPLEX_GRADIENTS) and

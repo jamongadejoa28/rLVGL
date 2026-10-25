@@ -6,10 +6,21 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-examples"
+readme = "README.md"
+keywords = ["gui", "examples", "widgets", "embedded", "lvgl"]
+categories = ["gui", "embedded", "no-std"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+    "/tests/**",
+]
 
 [features]
 default = ["complex-gradients"]
@@ -26,7 +37,8 @@ ferrovgl-widgets = { workspace = true, features = ["label", "button", "image", "
 ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "default-montserrat-14"] }
 
 [dev-dependencies]
-ferrovgl-test = { workspace = true }
+# Path-only (no version): `cargo publish` strips it, since ferrovgl-test is not published.
+ferrovgl-test = { path = "../ferrovgl-test" }
 
 # The table covers the reference configuration (complex gradients on).
 [[test]]
