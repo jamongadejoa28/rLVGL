@@ -13,14 +13,14 @@ categories.workspace = true
 
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["std"] }
-ferrovgl-draw-sw = { workspace = true, features = ["std", "complex", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-a8"] }
+ferrovgl-draw-sw = { workspace = true, features = ["std", "complex", "complex-gradients", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-a8"] }
 ferrovgl-widgets = { workspace = true, features = ["std", "label", "button", "image", "theme-default"] }
 sdl2 = { workspace = true }
 
 [dev-dependencies]
 ferrovgl-core = { workspace = true, features = ["flex", "grid"] }
 ferrovgl-fonts = { workspace = true, features = ["montserrat-14"] }
-ferrovgl-examples = { workspace = true, features = ["std"] }
+ferrovgl-examples = { workspace = true, features = ["std", "complex-gradients"] }
 
 [lints]
 workspace = true

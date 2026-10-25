@@ -5,7 +5,7 @@
 //! - `nostd-check`: build the no_std crates for Cortex-M targets.
 //! - `parity-report`: summarise the parity test results.
 //! - `gen-mapping [--check]`: regenerate `docs/src/mapping.md` (LVGL C API -> ferrovgl).
-//! - `size-report`: measure `.text` of the no_std size probe for Cortex-M targets.
+//! - `size-report [--update-baseline]`: measure `.text` of the no_std size probe for Cortex-M targets.
 
 mod mapping;
 mod size;
@@ -40,7 +40,7 @@ fn main() -> ExitCode {
         ["size-report", rest @ ..] => size::size_report(&root, rest),
         _ => {
             eprintln!(
-                "usage: cargo xtask <refimgs sync | fonts [--check] | nostd-check | parity-report | gen-mapping [--check] | size-report>"
+                "usage: cargo xtask <refimgs sync | fonts [--check] | nostd-check | parity-report | gen-mapping [--check] | size-report [--update-baseline]>"
             );
             Err("unknown command".into())
         }

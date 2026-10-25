@@ -7,7 +7,9 @@ one full-size buffer, DPI 130, Montserrat 14, and the software draw unit.
 
 `TestDisplay::new()` leaves the display unthemed for explicit styling.
 `TestDisplay::with_default_theme()` installs the light theme's screen, base
-object and button styles. `create_inputs()` installs synthetic devices. Label parity
+object and button styles. Every constructor creates the pointer, keypad and
+encoder devices right after the display, in `lv_test_indev_create_all()` order;
+`create_inputs()` returns handles to those same devices. Label parity
 tests use real widgets from `ferrovgl-widgets`; a separate low-level glyph
 regression still tests an object's `DRAW_MAIN` callback.
 
@@ -39,9 +41,12 @@ performed by the current test command. Successful reruns delete obsolete PNG
 failure artifacts. Comparison unit tests use temporary directories and do not
 contribute to the upstream parity report.
 
-Changing the display through the public `ui` field is allowed, but screenshots
-require a valid active screen, XRGB8888, direct mode, and one buffer covering the
-entire display. Invalid or changed configurations return an error before drawing.
+Changing the display through the public `ui` field is allowed. As upstream
+`lv_test_display_create()` does, a colour-format or resolution change reallocates
+the draw buffer, and `screenshot_compare` converts every format upstream's
+`buf_to_xrgb8888` handles (RGB565, RGB565 swapped, ARGB8888, premultiplied
+ARGB8888, XRGB8888, RGB888, L8, AL88, I1). Unsupported formats or a malformed
+buffer header return an error before comparing.
 An attempted screenshot is marked incomplete before rendering, so rendering
 failure cannot retain a previous `matched` result.
 
@@ -92,8 +97,12 @@ and CI parity job execute them; missing reference files then fail the tests.
 
 ## Synthetic input and layouts
 
-`let inputs = display.create_inputs();` installs timer-driven pointer, keypad and
-encoder devices. `inputs.set_group(&mut display.ui, Some(group))` connects focus
+`let inputs = display.create_inputs();` returns the timer-driven pointer, keypad
+and encoder devices the constructor created. `TestDisplay` also has the upstream
+helpers directly (`mouse_move_to`, `mouse_click_at`, `key_hit`, `encoder_turn`,
+`wait`, `fast_forward`, `clean_screen`); `wait` ends with the pointer, encoder and
+keypad reads of `lv_test_wait()`. One `TestDisplay` per `#[test]` models the first
+test of an upstream suite; see the crate docs for state upstream carries between tests. `inputs.set_group(&mut display.ui, Some(group))` connects focus
 navigation. `mouse_click_at`, `key_hit`, `encoder_turn` and `encoder_click` follow
 upstream's 50 ms wait sequences. Individual `SyntheticInput` setters update the
 next sample; `display.wait(ms)` drives real input timers, long presses and

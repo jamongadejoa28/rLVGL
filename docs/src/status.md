@@ -5,6 +5,52 @@
 컴파일되지 않았지만, 아래 재개 작업으로 **M1 첫 픽셀 종료 조건을
 충족했다.** 과거 감사 수치와 최신 구현/검증 상태를 구분해서 읽어야 한다.
 
+## 9차 재개: 하네스 정합, core 보완, 브라우저 백엔드, 예제 132개, 매핑·Miri·크기
+
+공유 설정 커밋(`6dd3f7b`: `ferrovgl-examples` 크레이트, web-sys/js-sys,
+xtask 명령 자리, `Cargo.lock` 1회 갱신) 뒤 6개 트랙을 worktree에서 병렬로
+진행하고 트랙마다 다른 에이전트가 리뷰·수정했다. 사용량 한도로 끊긴 4개
+작업은 기존 worktree에서 이어서 마무리했다.
+
+- 하네스: `lv_test_init`/`lv_test_wait`/`lv_test_fast_forward`/indev
+  헬퍼/`lv_test_display_create`/`lv_test_screenshot_compare`를 함수 단위로
+  맞췄다. 장치는 생성 시 바로 만들고, `wait`는 1ms씩 진행 후 pointer·encoder·
+  keypad를 읽고, `move_to_obj`는 레이아웃을 갱신하지 않는다. 스크린샷은
+  upstream이 지원하는 모든 포맷을 변환한다. 남은 차이(테마 기본 적용, fs,
+  gesture 장치, 테스트 간 공유 상태)는 크레이트 문서에 적었다.
+- core: `LV_USE_OBJ_ID`(자동 할당, find/stringify), 객체 ext_data,
+  delete cb 해제 핸들, `lv_label_bind_text`, `lv_arc_bind_value`, widgets
+  `float` feature. 건너뛰었던 observer 테스트를 포팅했다.
+- 브라우저: Canvas2D 백엔드(부분 flush, DPR 좌표, 포인터·키·휠 입력,
+  rAF 루프)와 위젯 갤러리 + 예제 선택 데모. wasm-pack release 1,208,760 B
+  (complex gradients와 예제 포함). node 스모크 통과.
+- 예제: `lv_example_*` **132개**(get_started, styles 23, anim, event,
+  flex/grid/split 전부, scroll 전부, 위젯 13종). 스모크·상호작용·스냅샷 해시
+  테스트와 `cargo run -p ferrovgl-sdl --example lv_examples -- <name>` 실행기.
+  chart/keyboard/table/anim_timeline/대형 asset이 필요한 예제는 미포팅.
+- 매핑: `cargo xtask gen-mapping [--check]`가 `docs/src/mapping.md`를 생성한다.
+  upstream 공개 함수·별칭 2899개 중 1519개 매핑(52.4%), 711 제외, 662 미포팅.
+- Miri: unsafe 두 모듈과 arena, core/draw-sw lib 테스트에서 UB 없음.
+- 크기: `tools/nostd-size`(label+button, gc-sections)와
+  `cargo xtask size-report`(기준 대비 .text 5% 게이트).
+- 후속 처리: SDL/wasm 데모가 패리티 설정대로 complex gradients를 켜도록
+  수정, CI에 wasm 데모·크기·매핑 검사·예제 실행·nightly Miri 확장 추가,
+  parity CI를 `--all-features`로 수정, 하네스 README 갱신.
+
+### 9차 검증 결과
+
+| 검사 | 결과 |
+|---|---|
+| workspace all-features 테스트 | **1467 통과, 0 실패, 83 ignored** |
+| `ferrovgl-test --include-ignored` | **403 통과**; 새 실행에서 참조 PNG **140/140** byte-exact |
+| `ferrovgl-examples --no-default-features` | 156 통과 |
+| SDL 예제 실행기(dummy, 3프레임) | 132/132 |
+| size-report | thumbv7em .text 202,328 B, thumbv6m 207,432 B; 기준 5% 이내 |
+| clippy, nostd-check, fonts/mapping `--check`, wasm clippy, rustdoc | 통과 |
+
+다음 범위: M4(0.1.0) 준비 — API 이름 감사(`#[must_use]`, `#[non_exhaustive]`),
+semver 기준선, CHANGELOG, `cargo publish --dry-run` 순서, 원격 CI 실제 실행.
+
 ## 8차 재개: Arc·Spinner·Line·LED·Buttonmatrix·Textarea, observer, BiDi
 
 foundation 커밋(`00493f5`)이 위젯 6종·observer·bidi/text_ap 스켈레톤과

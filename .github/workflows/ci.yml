@@ -44,6 +44,14 @@ jobs:
       - run: cargo test --workspace --all-features --exclude ferrovgl-sdl --exclude ferrovgl-wasm
       - if: runner.os == 'Linux'
         run: cargo test -p ferrovgl-sdl
+      - if: runner.os == 'Linux'
+        name: Run every ported example headless through the SDL runner
+        run: |
+          cargo build -p ferrovgl-sdl --example lv_examples --locked
+          for n in $(./target/debug/examples/lv_examples --list); do
+            SDL_VIDEODRIVER=dummy ./target/debug/examples/lv_examples "$n" --frames 3 || exit 1
+          done
+      - run: cargo test -p ferrovgl-examples --no-default-features --locked
 
   msrv:
     runs-on: ubuntu-latest
@@ -79,7 +87,31 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: wasm32-unknown-unknown }
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p ferrovgl-wasm --target wasm32-unknown-unknown
+      - run: cargo build -p ferrovgl-wasm --target wasm32-unknown-unknown --locked
+      - run: cargo clippy -p ferrovgl-wasm --target wasm32-unknown-unknown --locked -- -D warnings
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with: { version: v0.15.0 }
+      - run: wasm-pack build crates/ferrovgl-wasm --target web --release --out-dir www/pkg -- --locked
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node crates/ferrovgl-wasm/scripts/node-smoke.mjs
+      - run: ls -l crates/ferrovgl-wasm/www/pkg/ferrovgl_wasm_bg.wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-demo
+          path: crates/ferrovgl-wasm/www
+
+  size-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf, thumbv6m-none-eabi
+          components: llvm-tools
+      - run: cargo xtask size-report >> "$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        run: cargo xtask size-report || true
 
   docs:
     runs-on: ubuntu-latest
@@ -105,7 +137,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask refimgs sync
-      - run: cargo test -p ferrovgl-test -- --include-ignored
+      - name: API mapping page is up to date
+        run: cargo xtask gen-mapping --check
+      - run: cargo test -p ferrovgl-test --all-features --locked -- --include-ignored
       - if: always()
         run: cargo xtask parity-report >> "$GITHUB_STEP_SUMMARY"
       - if: always()

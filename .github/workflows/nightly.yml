@@ -8,12 +8,25 @@ on:
 jobs:
   miri:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env: { MIRIFLAGS: -Zmiri-strict-provenance }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-        with: { components: miri }
-      - run: cargo miri setup
-      - run: cargo miri test -p ferrovgl-core -p ferrovgl-draw-sw --lib
+        with: { components: "miri, rust-src" }
+      # rust-toolchain.toml pins stable, so every miri call names +nightly.
+      - run: cargo +nightly miri setup
+      - name: Miri (unsafe modules + arena)
+        run: |
+          cargo +nightly miri test --locked -p ferrovgl-core --lib -- draw::draw_buf misc::arena
+          cargo +nightly miri test --locked -p ferrovgl-draw-sw --lib -- blend::words
+      - name: Miri (full lib suites)
+        run: cargo +nightly miri test --locked -p ferrovgl-core -p ferrovgl-draw-sw --lib
+      - name: Miri (check-arg-panic tests)
+        run: cargo +nightly miri test --locked -p ferrovgl-core --lib --features check-arg-panic
+        env: { MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-ignore-leaks }
+      - name: Miri (size probe allocator)
+        run: cargo +nightly miri test --manifest-path tools/nostd-size/Cargo.toml --lib --locked
 
   update-check:
     runs-on: ubuntu-latest

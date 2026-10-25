@@ -18,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 # Render with the same draw-sw, core and widget feature set the upstream
 # reference images use (the workspace dependencies have default features off).
 default = ["full-render"]
-full-render = ["ferrovgl-core/default", "ferrovgl-draw-sw/default", "ferrovgl-widgets/default"]
+full-render = ["ferrovgl-core/default", "ferrovgl-draw-sw/default", "ferrovgl-widgets/default", "ferrovgl-examples/complex-gradients"]
 
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["std"] }
