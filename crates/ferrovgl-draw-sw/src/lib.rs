@@ -268,10 +268,10 @@ impl DrawUnit for SwDrawUnit {
 /// `lv_draw_sw_mask_init()` only creates the circle cache mutex upstream;
 /// the cache itself starts empty in [`SwDrawUnit::new`], as does the custom
 /// blend handler list (`lv_ll_init(&draw_sw_blend_handler_ll)`). The unit's
-/// `idx` is the unit count before the registration, like the `unit_cnt`
-/// that `lv_draw_create_unit()` assigns.
+/// `idx` is the unit count after the registration: `lv_draw_create_unit()`
+/// increments `unit_cnt` before assigning it, so the first unit gets 1.
 pub fn init(ui: &mut Ui) {
-    let draw_sw_unit = SwDrawUnit::new(ui.draw_unit_count());
+    let draw_sw_unit = SwDrawUnit::new(ui.draw_unit_count() + 1);
     ui.draw_create_unit(Box::new(draw_sw_unit));
 }
 
