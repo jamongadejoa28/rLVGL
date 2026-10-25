@@ -184,21 +184,53 @@ impl Ui {
 
     /// `lv_obj_remove_event_cb()`: remove every descriptor whose callback is
     /// `cb` (compared by `Rc::ptr_eq`). Returns the number removed.
+    ///
+    /// The C `event_cb == NULL` wildcard is [`Ui::obj_remove_event_cb_opt`].
     pub fn obj_remove_event_cb(&mut self, obj: Obj, cb: &EventCallback) -> u32 {
-        self.obj_remove_event_matching(obj, |dsc| Rc::ptr_eq(&dsc.cb, cb))
+        self.obj_remove_event_cb_opt(obj, Some(cb))
+    }
+
+    /// `lv_obj_remove_event_cb()` with a nullable `event_cb`: `None` (C
+    /// `NULL`) matches every descriptor, so all of them are removed.
+    /// Returns the number removed.
+    pub fn obj_remove_event_cb_opt(&mut self, obj: Obj, cb: Option<&EventCallback>) -> u32 {
+        self.obj_remove_event_matching(obj, |dsc| cb.is_none_or(|cb| Rc::ptr_eq(&dsc.cb, cb)))
     }
 
     /// `lv_obj_remove_event_cb_with_user_data()`: remove every descriptor
     /// whose callback is `cb` and whose `user_data` is `user_data` (both
     /// compared by `Rc::ptr_eq`). Returns the number removed.
+    ///
+    /// The C forms with a `NULL` `event_cb` or a `NULL` `user_data` are
+    /// [`Ui::obj_remove_event_cb_with_user_data_opt`].
     pub fn obj_remove_event_cb_with_user_data(
         &mut self,
         obj: Obj,
         cb: &EventCallback,
         user_data: &Rc<dyn Any>,
     ) -> u32 {
+        self.obj_remove_event_cb_with_user_data_opt(obj, Some(cb), Some(user_data))
+    }
+
+    /// `lv_obj_remove_event_cb_with_user_data()` with nullable arguments:
+    /// `cb == None` matches any callback (C `event_cb == NULL`), and
+    /// `user_data` must equal the descriptor's `user_data` exactly, so
+    /// `None` matches only descriptors registered with `None` (C
+    /// `dsc->user_data == user_data` with both `NULL`). Returns the number
+    /// removed.
+    pub fn obj_remove_event_cb_with_user_data_opt(
+        &mut self,
+        obj: Obj,
+        cb: Option<&EventCallback>,
+        user_data: Option<&Rc<dyn Any>>,
+    ) -> u32 {
         self.obj_remove_event_matching(obj, |dsc| {
-            Rc::ptr_eq(&dsc.cb, cb) && dsc.user_data.as_ref().is_some_and(|u| Rc::ptr_eq(u, user_data))
+            cb.is_none_or(|cb| Rc::ptr_eq(&dsc.cb, cb))
+                && match (dsc.user_data.as_ref(), user_data) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                    _ => false,
+                }
         })
     }
 
@@ -703,6 +735,51 @@ pub(crate) mod tests {
         assert_eq!(ui.obj_get_event_count(obj), 2);
         let ud = ui.obj_get_event_dsc(obj, 0).unwrap().user_data.clone().unwrap();
         assert!(Rc::ptr_eq(&ud, &ud2));
+    }
+
+    /// `lv_obj_remove_event_cb(obj, NULL)` removes every descriptor.
+    #[test]
+    fn remove_event_cb_null_removes_all() {
+        let mut ui = new_ui();
+        let obj = add_obj(&mut ui, &PLAIN_CLASS, None);
+        let cb: EventCallback = Rc::new(|_ui: &mut Ui, _e: &mut Event<'_>| {});
+        let other: EventCallback = Rc::new(|_ui: &mut Ui, _e: &mut Event<'_>| {});
+        assert_eq!(ui.obj_remove_event_cb_opt(obj, None), 0);
+        ui.obj_add_event_cb(obj, cb.clone(), EventCode::CLICKED, None);
+        ui.obj_add_event_cb(obj, other.clone(), EventCode::CLICKED, None);
+        ui.obj_add_event_cb(obj, cb.clone(), EventCode::PRESSED, Some(Rc::new(3u32)));
+        assert_eq!(ui.obj_remove_event_cb_opt(obj, None), 3);
+        assert_eq!(ui.obj_get_event_count(obj), 0);
+    }
+
+    /// `lv_obj_remove_event_cb_with_user_data()` with `NULL` user_data
+    /// and/or `NULL` callback.
+    #[test]
+    fn remove_event_cb_with_null_user_data() {
+        let mut ui = new_ui();
+        let obj = add_obj(&mut ui, &PLAIN_CLASS, None);
+        let cb: EventCallback = Rc::new(|_ui: &mut Ui, _e: &mut Event<'_>| {});
+        let other: EventCallback = Rc::new(|_ui: &mut Ui, _e: &mut Event<'_>| {});
+        let ud1: Rc<dyn Any> = Rc::new(1u32);
+        ui.obj_add_event_cb(obj, cb.clone(), EventCode::ALL, Some(ud1.clone()));
+        ui.obj_add_event_cb(obj, cb.clone(), EventCode::ALL, None);
+        ui.obj_add_event_cb(obj, other.clone(), EventCode::ALL, None);
+        ui.obj_add_event_cb(obj, other.clone(), EventCode::ALL, Some(ud1.clone()));
+        // (cb, NULL): only the cb descriptor registered with NULL user_data.
+        assert_eq!(ui.obj_remove_event_cb_with_user_data_opt(obj, Some(&cb), None), 1);
+        assert_eq!(ui.obj_get_event_count(obj), 3);
+        // (NULL, ud1): any callback registered with ud1.
+        assert_eq!(
+            ui.obj_remove_event_cb_with_user_data_opt(obj, None, Some(&ud1)),
+            2
+        );
+        assert_eq!(ui.obj_get_event_count(obj), 1);
+        let dsc = ui.obj_get_event_dsc(obj, 0).unwrap();
+        assert!(Rc::ptr_eq(&dsc.cb, &other));
+        assert!(dsc.user_data.is_none());
+        // (NULL, NULL): any callback registered with NULL user_data.
+        assert_eq!(ui.obj_remove_event_cb_with_user_data_opt(obj, None, None), 1);
+        assert_eq!(ui.obj_get_event_count(obj), 0);
     }
 
     /// test_event.c: test_event_remove_event_dsc
