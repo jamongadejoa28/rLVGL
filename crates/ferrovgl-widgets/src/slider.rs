@@ -305,8 +305,12 @@ fn state_mut(ui: &mut Ui, obj: Obj) -> Option<&mut SliderState> {
 
 /// `LV_CHECK_OBJ(obj, MY_CLASS, ...)` followed by the `lv_bar_*()` call on the
 /// same object.
+///
+/// The parity config leaves `LV_USE_CHECK_OBJ_CLASSTYPE` off, so upstream
+/// `LV_CHECK_OBJ` only rejects `NULL` and the `lv_bar_*()` call runs on any
+/// bar-derived object. The slider class itself is not required here; only
+/// the accessors that read `lv_slider_t` fields need [`SliderState`].
 fn as_bar(ui: &Ui, obj: Obj) -> Option<Bar> {
-    state(ui, obj)?;
     Bar::from_obj(ui, obj)
 }
 
@@ -900,15 +904,31 @@ mod tests {
     }
 
     #[test]
-    fn non_slider_objects_are_rejected() {
+    fn bar_objects_reach_the_bar_api() {
         let (mut ui, slider) = setup();
         let parent = ui.obj_get_parent(slider.obj());
         let bar = Bar::create(&mut ui, parent);
+        assert!(Slider::from_obj(&ui, bar.obj()).is_none());
+        // `LV_USE_CHECK_OBJ_CLASSTYPE=n`: `LV_CHECK_OBJ` only checks for `NULL`,
+        // so the `lv_slider_*()` forwarders reach `lv_bar_*()` on a plain bar.
         let fake = Slider(bar.obj());
         fake.set_value(&mut ui, 40, false);
-        assert_eq!(bar.value(&ui), 0);
+        assert_eq!(bar.value(&ui), 40);
+        assert_eq!(fake.value(&ui), 40);
+        fake.set_range(&mut ui, -10, 10);
+        assert_eq!((fake.min_value(&ui), fake.max_value(&ui)), (-10, 10));
+        fake.set_mode(&mut ui, SliderMode::Symmetrical);
+        assert_eq!(fake.mode(&ui), SliderMode::Symmetrical);
+        assert!(fake.is_symmetrical(&ui));
+        fake.set_orientation(&mut ui, SliderOrientation::Vertical);
+        assert_eq!(fake.orientation(&ui), SliderOrientation::Vertical);
+        // Fields that only exist in `lv_slider_t` stay unavailable.
+        assert!(!fake.is_dragged(&ui));
+        assert_eq!(fake.value_to_set(&ui), None);
+        // A deleted object is still rejected.
+        ui.obj_delete(bar.obj());
+        fake.set_value(&mut ui, 5, false);
         assert_eq!(fake.value(&ui), 0);
-        assert!(Slider::from_obj(&ui, bar.obj()).is_none());
     }
 
     #[test]
