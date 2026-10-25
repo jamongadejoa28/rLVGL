@@ -16,7 +16,7 @@ publish = false
 ferrovgl-core = { workspace = true, features = ["std", "float", "flex", "grid", "snapshot"] }
 ferrovgl-draw-sw = { workspace = true, features = ["std", "complex", "complex-gradients", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-rgb888", "cf-rgb565", "cf-l8", "cf-a8"] }
 ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "montserrat-28"] }
-ferrovgl-widgets = { workspace = true, features = ["std", "label", "button", "image", "theme-default", "theme-simple"] }
+ferrovgl-widgets = { workspace = true, features = ["std", "label", "button", "image", "bar", "slider", "switch", "checkbox", "theme-default", "theme-simple"] }
 png = { workspace = true }
 
 [lints]

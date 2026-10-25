@@ -5,6 +5,42 @@
 컴파일되지 않았지만, 아래 재개 작업으로 **M1 첫 픽셀 종료 조건을
 충족했다.** 과거 감사 수치와 최신 구현/검증 상태를 구분해서 읽어야 한다.
 
+## 7차 재개: Bar·Slider·Switch·Checkbox와 M1-A 독립 감사
+
+기준 커밋 `8fb6442`(6차까지의 미커밋 작업을 검증 후 커밋)에서 출발했다.
+foundation 에이전트가 default/simple theme의 스타일 전체(`my_theme_styles_t`
+66개)를 이름 있는 필드로 옮기고 네 위젯의 클래스·API 스켈레톤과 theme apply
+분기를 먼저 커밋했다(`4911e93`). 이후 위젯 4종과 M1-A 감사 13개 그룹을
+worktree에서 병렬로 진행하고, 위젯마다 다른 에이전트가 C 원본과 교차 리뷰했다.
+
+- `lv_bar.c`, `lv_slider.c`(bar 상태 임베드), `lv_switch.c`, `lv_checkbox.c`
+  전 함수와 `test_bar.c`/`test_slider.c`/`test_switch.c`/`test_checkbox.c`를
+  포팅했다. 새 참조 이미지 **14장** byte-exact: bar 9, slider 3, switch 1,
+  checkbox 1. `bar_2.png`는 upstream이 화면을 공유해 이전 테스트의 flex/pad
+  설정을 물려받는 점까지 재현해야 일치했다.
+- `checkbox_rtl_1.png`는 BiDi 알고리즘, Arabic/Persian 처리,
+  `dejavu_16_persian_hebrew` 폰트가 없어 미포팅이다(기하 테스트만 대체).
+  observer binding(`lv_bar_bind_value`, `lv_slider_bind_value`)도 core
+  observer가 없어 미포팅이다.
+- M1-A 감사: blend 4그룹은 발견 0건. style·text·timer/tick·grad·mask·draw
+  core·anim/palette·rect/label/mask·theme 9그룹에서 찾은 차이를 반영했다.
+  예: fade mask의 `LV_OPA_MIX2` u8 절단, anim 속도 clamp 순서
+  (`MAX(min, MIN(v, max))`), bg image 소스 판별, theme 전역 공유 의미,
+  timer/anim ext_data. 기존 참조 82장은 모두 그대로 일치한다.
+- `ferrovgl-test`가 새 위젯 feature를 켜도록 `Cargo.toml`을 보강했다.
+
+### 7차 검증 결과
+
+| 검사 | 결과 |
+|---|---|
+| workspace all-features 테스트 | **1015 통과, 0 실패, 60 ignored** |
+| `ferrovgl-test --include-ignored` | **173 통과**; 고유 참조 PNG 82 + 14 = **96장** RGB byte-exact |
+| clippy all-targets/all-features, core/draw-sw/widgets no-default-features | 경고 0 |
+| nostd-check, wasm32 widgets check, rustdoc | 통과 |
+
+다음 범위: arc, line, led, spinner, buttonmatrix, textarea 위젯과 테마,
+BiDi/Arabic·추가 폰트, observer, 객체 id.
+
 ## 6차 재개: Button·Image·테마 확장과 event/draw buffer 감사
 
 Button/테마, Image, M1-A event/draw buffer 원본 감사를 세 에이전트에
