@@ -4,11 +4,18 @@
 //! `src/widgets/bar/lv_bar_private.h`.
 //!
 //! The animation variable of upstream (`&bar->cur_value_anim` /
-//! `&bar->start_value_anim`) is the bar object plus a distinct custom exec
-//! tag per value, so `lv_anim_delete(anim_info, NULL)` deletes exactly the
-//! animation of one value. Observer binding (`lv_bar_bind_value`) and the
-//! `LV_USE_OBJ_PROPERTY` table need core subsystems that are not implemented
-//! and are not exposed.
+//! `&bar->start_value_anim`) is not the bar object, so
+//! `lv_anim_delete(obj, NULL)` (object deletion, `lv_screen_load_anim()`, user
+//! code) never touches it. The port uses an [`AnimTarget::Tag`] derived from
+//! the bar's slot index and the value (see `anim_var()`), and the exec /
+//! completed callbacks capture the bar handle instead of decoding `a->var`.
+//! `lv_bar_destructor()` deletes both animations explicitly, as upstream.
+//!
+//! Not ported: observer binding (`lv_bar_bind_value()`,
+//! `bar_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) waits
+//! for core observer/subject support. The `LV_USE_OBJ_PROPERTY` table
+//! (`lv_bar_properties[]`, `lv_bar_set_value_helper()`,
+//! `lv_bar_set_start_value_helper()`) is compiled out by the parity config.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -17,7 +24,7 @@ use ferrovgl_core::core::obj::{OBJ_CLASS, ObjClassEditable, ObjClassGroupDef};
 use ferrovgl_core::core::ui::DPI_DEF;
 use ferrovgl_core::draw::grad::GradDir;
 use ferrovgl_core::draw::{BlurDsc, DrawImageDsc, MaskRectDsc, RectDsc};
-use ferrovgl_core::misc::anim::{Anim, AnimEnable, AnimExec, AnimId, AnimTarget};
+use ferrovgl_core::misc::anim::{Anim, AnimEnable, AnimExec, AnimTarget};
 use ferrovgl_core::misc::style::ImageSrc;
 use ferrovgl_core::misc::text::BaseDir;
 use ferrovgl_core::{Area, ColorFormat, Event, EventCode, EventParam, LvResult, Obj, ObjClass, Part, Ui};
@@ -38,6 +45,9 @@ const BAR_ANIM_STATE_NORM: i32 = 8;
 const ANIM_TAG_CUR_VALUE: u32 = 0x4c42_4143;
 /// Exec tag of `lv_bar_anim` animating `start_value_anim`.
 const ANIM_TAG_START_VALUE: u32 = 0x4c42_4153;
+/// High bit of the [`AnimTarget::Tag`] that stands for `&bar->*_value_anim`,
+/// keeping it away from small application tags.
+const ANIM_VAR_BASE: u32 = 0x8000_0000;
 
 /// `lv_bar_mode_t`, with the upstream discriminants.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -333,16 +343,16 @@ impl From<Bar> for Obj {
     }
 }
 
-/// `LV_CLAMP(min, val, max)`: `LV_MIN(LV_MAX(val, min), max)`, which unlike
-/// `i32::clamp` does not panic when `min > max`.
+/// `LV_CLAMP(min, val, max)`: `LV_MAX(min, LV_MIN(val, max))`, which unlike
+/// `i32::clamp` does not panic when `min > max` (then `min` wins).
 trait ClampC {
     fn clamp_c(self, min: i32, max: i32) -> i32;
 }
 
 impl ClampC for i32 {
     fn clamp_c(self, min: i32, max: i32) -> i32 {
-        let v = if self > min { self } else { min };
-        if v < max { v } else { max }
+        let v = if self < max { self } else { max };
+        if min > v { min } else { v }
     }
 }
 
@@ -450,8 +460,8 @@ fn constructor(_class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
 
 /// `lv_bar_destructor()`
 fn destructor(_class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
-    ui.anim_delete(AnimTarget::Obj(obj), Some(&anim_exec(BarValue::Cur)));
-    ui.anim_delete(AnimTarget::Obj(obj), Some(&anim_exec(BarValue::Start)));
+    ui.anim_delete(anim_var(obj, BarValue::Cur), None);
+    ui.anim_delete(anim_var(obj, BarValue::Start), None);
 }
 
 /// An end of `lv_bar_t::indic_area` that `draw_indic()` addresses through
@@ -525,17 +535,23 @@ fn draw_indic(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
 
     /*Respect padding and minimum width/height too*/
     let mut ia = bar_coords;
-    ia.x1 += bg_left;
-    ia.x2 -= bg_right;
-    ia.y1 += bg_top;
-    ia.y2 -= bg_bottom;
+    ia.x1 = ia.x1.wrapping_add(bg_left);
+    ia.x2 = ia.x2.wrapping_sub(bg_right);
+    ia.y1 = ia.y1.wrapping_add(bg_top);
+    ia.y2 = ia.y2.wrapping_sub(bg_bottom);
 
     if hor && ia.height() < BAR_SIZE_MIN {
-        ia.y1 = obj_coords.y1 + (barh / 2) - (BAR_SIZE_MIN / 2);
-        ia.y2 = ia.y1 + BAR_SIZE_MIN;
+        ia.y1 = obj_coords
+            .y1
+            .wrapping_add(barh / 2)
+            .wrapping_sub(BAR_SIZE_MIN / 2);
+        ia.y2 = ia.y1.wrapping_add(BAR_SIZE_MIN);
     } else if !hor && ia.width() < BAR_SIZE_MIN {
-        ia.x1 = obj_coords.x1 + (barw / 2) - (BAR_SIZE_MIN / 2);
-        ia.x2 = ia.x1 + BAR_SIZE_MIN;
+        ia.x1 = obj_coords
+            .x1
+            .wrapping_add(barw / 2)
+            .wrapping_sub(BAR_SIZE_MIN / 2);
+        ia.x2 = ia.x1.wrapping_add(BAR_SIZE_MIN);
     }
     let indic_max_w = ia.width();
     let indic_max_h = ia.height();
@@ -591,7 +607,7 @@ fn draw_indic(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
     /*An area with width 0 is {x1 = 0 x2 = -1} so subtracting 1 from `anim_cur_value_x` causes...
      *    anim_start_value_x = 0   anim_cur_value_x = 0   to be {x1 = 0 x2 = -1  } which is width 0
      *    anim_start_value_x = 0   anim_cur_value_x = 300 to be {x1 = 0 x2 =  299} which is width 300*/
-    anim_cur_value_x -= 1;
+    anim_cur_value_x = anim_cur_value_x.wrapping_sub(1);
 
     if reversed {
         /*Swap axes*/
@@ -618,9 +634,9 @@ fn draw_indic(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
             let left = if reversed { axis2 } else { axis1 };
             let right = if reversed { axis1 } else { axis2 };
             let zero = if reversed {
-                edge_get(&ia, axis1) - shift + 1
+                edge_get(&ia, axis1).wrapping_sub(shift).wrapping_add(1)
             } else {
-                edge_get(&ia, axis1) + shift
+                edge_get(&ia, axis1).wrapping_add(shift)
             };
 
             if edge_get(&ia, axis2) > zero {
@@ -636,9 +652,9 @@ fn draw_indic(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
             let top = if reversed { axis2 } else { axis1 };
             let bottom = if reversed { axis1 } else { axis2 };
             let zero = if reversed {
-                edge_get(&ia, axis2) + shift
+                edge_get(&ia, axis2).wrapping_add(shift)
             } else {
-                edge_get(&ia, axis2) - shift + 1
+                edge_get(&ia, axis2).wrapping_sub(shift).wrapping_add(1)
             };
 
             if edge_get(&ia, axis1) > zero {
@@ -754,11 +770,11 @@ fn draw_indic(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         let mut indic_draw_area = indic_area;
         if mask_needed {
             if hor {
-                indic_draw_area.x1 = bar_coords.x1 + bg_left;
-                indic_draw_area.x2 = bar_coords.x2 - bg_right;
+                indic_draw_area.x1 = bar_coords.x1.wrapping_add(bg_left);
+                indic_draw_area.x2 = bar_coords.x2.wrapping_sub(bg_right);
             } else {
-                indic_draw_area.y1 = bar_coords.y1 + bg_top;
-                indic_draw_area.y2 = bar_coords.y2 - bg_bottom;
+                indic_draw_area.y1 = bar_coords.y1.wrapping_add(bg_top);
+                indic_draw_area.y2 = bar_coords.y2.wrapping_sub(bg_bottom);
             }
             draw_tmp_dsc.radius = 0;
         }
@@ -839,20 +855,32 @@ fn bar_event(_class: &'static ObjClass, ui: &mut Ui, event: &mut Event<'_>) {
     }
 }
 
-/// `lv_bar_anim` as an exec callback whose identity selects `which`.
-fn anim_exec(which: BarValue) -> AnimExec {
+/// `&bar->cur_value_anim` / `&bar->start_value_anim` as an animation
+/// variable: unique among live bars (slot indices of live objects are unique
+/// and a bar's animations die in `lv_bar_destructor()`), and never equal to
+/// `AnimTarget::Obj(obj)`, so `lv_anim_delete(obj, NULL)` does not match it.
+fn anim_var(obj: Obj, which: BarValue) -> AnimTarget {
+    let which_bit = match which {
+        BarValue::Cur => 0,
+        BarValue::Start => 1,
+    };
+    AnimTarget::Tag(ANIM_VAR_BASE | (obj.0.0.index() << 1) | which_bit)
+}
+
+/// `lv_bar_anim` as an exec callback; the tag (C function identity) selects
+/// `which`, the captured `obj` replaces `((lv_bar_anim_t *)a->var)->bar`.
+fn anim_exec(obj: Obj, which: BarValue) -> AnimExec {
     AnimExec::Custom {
         tag: match which {
             BarValue::Cur => ANIM_TAG_CUR_VALUE,
             BarValue::Start => ANIM_TAG_START_VALUE,
         },
-        f: Rc::new(move |ui, target, value| bar_anim(ui, target, which, value)),
+        f: Rc::new(move |ui, _var, value| bar_anim(ui, obj, which, value)),
     }
 }
 
 /// `lv_bar_anim()`
-fn bar_anim(ui: &mut Ui, var: AnimTarget, which: BarValue, value: i32) {
-    let AnimTarget::Obj(obj) = var else { return };
+fn bar_anim(ui: &mut Ui, obj: Obj, which: BarValue, value: i32) {
     let Some(bar) = state_mut(ui, obj) else { return };
     let bar_anim = bar.anim_mut(which);
     bar_anim.anim_state = value;
@@ -862,10 +890,7 @@ fn bar_anim(ui: &mut Ui, var: AnimTarget, which: BarValue, value: i32) {
 }
 
 /// `lv_bar_anim_completed()`
-fn bar_anim_completed(ui: &mut Ui, a: AnimId, which: BarValue) {
-    let Some(AnimTarget::Obj(obj)) = ui.anim(a).map(|a| a.var) else {
-        return;
-    };
+fn bar_anim_completed(ui: &mut Ui, obj: Obj, which: BarValue) {
     let Some(bar) = state_mut(ui, obj) else { return };
 
     let var = bar.anim_mut(which);
@@ -880,16 +905,16 @@ fn bar_anim_completed(ui: &mut Ui, a: AnimId, which: BarValue) {
 
 /// `lv_bar_set_value_with_anim()`
 fn set_value_with_anim(ui: &mut Ui, obj: Obj, new_value: i32, which: BarValue, en: AnimEnable) {
-    let var = AnimTarget::Obj(obj);
+    let var = anim_var(obj, which);
     if !en {
-        ui.anim_delete(var, Some(&anim_exec(which)));
+        ui.anim_delete(var, None);
         let Some(bar) = state_mut(ui, obj) else { return };
         bar.anim_mut(which).anim_state = BAR_ANIM_STATE_INV;
         *bar.value_mut(which) = new_value;
         ui.obj_invalidate(obj);
 
         /*Stop the previous animation if it exists*/
-        ui.anim_delete(var, Some(&anim_exec(which)));
+        ui.anim_delete(var, None);
         /*Reset animation state*/
         if let Some(bar) = state_mut(ui, obj) {
             init_anim(obj, bar.anim_mut(which));
@@ -910,13 +935,13 @@ fn set_value_with_anim(ui: &mut Ui, obj: Obj, new_value: i32, which: BarValue, e
         }
         *bar.value_mut(which) = new_value;
         /*Stop the previous animation if it exists*/
-        ui.anim_delete(var, Some(&anim_exec(which)));
+        ui.anim_delete(var, None);
 
         let mut a = Anim::new();
         a.set_var(var);
-        a.set_exec_cb(anim_exec(which));
+        a.set_exec_cb(anim_exec(obj, which));
         a.set_values(BAR_ANIM_STATE_START, BAR_ANIM_STATE_END);
-        a.set_completed_cb(Some(Rc::new(move |ui, a| bar_anim_completed(ui, a, which))));
+        a.set_completed_cb(Some(Rc::new(move |ui, _a| bar_anim_completed(ui, obj, which))));
         a.set_duration(ui.obj_get_style_anim_duration(obj, Part::MAIN));
         ui.anim_start(&a);
     }
@@ -995,5 +1020,59 @@ mod tests {
         bar.set_value(&mut ui, 10, true);
         ui.obj_delete(bar.obj());
         assert_eq!(ui.anim_count_running(), 0);
+    }
+
+    /// `lv_screen_load_anim()` runs `lv_anim_delete(scr, NULL)`, which in C
+    /// cannot match `&bar->cur_value_anim`: the value animation of a bar
+    /// screen keeps running and completes.
+    #[test]
+    fn screen_load_keeps_value_animation() {
+        let mut ui = Ui::new(UiConfig::default());
+        ui.display_create(320, 240);
+        let bar = Bar::create(&mut ui, None);
+        ui.obj_set_style_anim_duration(bar.obj(), 500, ferrovgl_core::StyleSelector::DEFAULT);
+        bar.set_value(&mut ui, 80, true);
+        ui.screen_load_anim(bar.obj(), ferrovgl_core::ScreenLoadAnim::None, 0, 0, false);
+        assert_eq!(state(&ui, bar.obj()).unwrap().cur_value_anim.anim_state, 0);
+        for _ in 0..600 {
+            ui.tick_inc(1);
+            ui.timer_handler();
+        }
+        let done = state(&ui, bar.obj()).unwrap();
+        assert_eq!(done.cur_value_anim.anim_state, BAR_ANIM_STATE_INV);
+        assert_eq!(done.cur_value, 80);
+    }
+
+    /// Two bars' animations of the same value are independent variables.
+    #[test]
+    fn value_animations_are_per_bar_and_per_value() {
+        let (mut ui, bar) = setup();
+        let screen = ui.obj_get_parent(bar.obj());
+        let other = Bar::create(&mut ui, screen);
+        for b in [bar, other] {
+            ui.obj_set_style_anim_duration(b.obj(), 100, ferrovgl_core::StyleSelector::DEFAULT);
+            b.set_mode(&mut ui, BarMode::Range);
+            b.set_value(&mut ui, 80, true);
+            b.set_start_value(&mut ui, 20, true);
+        }
+        assert_eq!(ui.anim_count_running(), 4);
+        bar.set_value(&mut ui, 50, false);
+        assert_eq!(ui.anim_count_running(), 3);
+        ui.anim_delete(AnimTarget::Obj(other.obj()), None);
+        assert_eq!(ui.anim_count_running(), 3);
+        ui.obj_delete(other.obj());
+        assert_eq!(ui.anim_count_running(), 1);
+        assert!(state(&ui, bar.obj()).unwrap().start_value_anim.is_animating());
+    }
+
+    /// `LV_CLAMP(min, val, max)` is `LV_MAX(min, LV_MIN(val, max))`.
+    #[test]
+    fn clamp_c_matches_lv_clamp() {
+        assert_eq!(5.clamp_c(0, 10), 5);
+        assert_eq!((-3).clamp_c(0, 10), 0);
+        assert_eq!(42.clamp_c(0, 10), 10);
+        // min > max: LV_CLAMP(10, 5, 0) = LV_MAX(10, LV_MIN(5, 0)) = 10.
+        assert_eq!(5.clamp_c(10, 0), 10);
+        assert_eq!(20.clamp_c(10, 0), 10);
     }
 }

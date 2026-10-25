@@ -613,3 +613,30 @@ fn bar_large_range_start_value_anim_no_overflow() {
     let x1 = g_bar.indic_area(&display.ui).x1;
     assert!(x1 > 200, "{x1}");
 }
+
+/// Not an upstream test: `draw_indic()` computes in wrapping `int32_t`.
+/// `lv_bar_set_range()` clamps `cur_value` but keeps the running animation, so
+/// its `anim_start` maps to `(int32_t)(600 * 268435456 / 1) = INT32_MIN`, and
+/// `anim_cur_value_x -= 1` wraps to `INT32_MAX` instead of panicking.
+#[test]
+fn bar_draw_indic_wraps_like_int32() {
+    let (mut display, _, g_bar) = set_up();
+    display.ui.obj_remove_style_all(g_bar.obj());
+    display.ui.obj_set_size(g_bar.obj(), 600, 20);
+    g_bar.set_mode(&mut display.ui, BarMode::Range);
+    g_bar.set_range(&mut display.ui, 0, 300_000_000);
+    g_bar.set_value(&mut display.ui, 268_435_456, ANIM_OFF);
+    g_bar.set_start_value(&mut display.ui, 1, ANIM_OFF);
+    display.ui.obj_set_style_anim_duration(g_bar.obj(), 1000, MAIN);
+    g_bar.set_value(&mut display.ui, 10, ANIM_ON);
+    g_bar.set_range(&mut display.ui, 0, 1);
+    display.ui.obj_update_layout(g_bar.obj());
+    let coords = display.ui.obj_get_coords(g_bar.obj());
+    assert_eq!((coords.x1, coords.y1), (0, 0));
+
+    display.refresh();
+
+    let indic = g_bar.indic_area(&display.ui);
+    /* start: 600 * (1 - 0) / 1; cur: INT32_MIN - 1 wraps to INT32_MAX */
+    assert_eq!((indic.x1, indic.x2, indic.y1, indic.y2), (600, i32::MAX, 0, 19));
+}
