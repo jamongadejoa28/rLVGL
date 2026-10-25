@@ -68,6 +68,7 @@ const COLOR_FORMAT_PROPRIETARY_START: u8 = 0x30;
 
 /// `lv_draw_sw_unit_t`: the software draw unit (single threaded).
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SwDrawUnit {
     /// `task_act`: the task being rendered.
     pub task_act: Option<DrawTaskRef>,

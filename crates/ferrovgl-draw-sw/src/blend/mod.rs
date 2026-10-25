@@ -61,7 +61,6 @@ pub struct CustomBlendHandler {
 }
 
 /// `lv_draw_sw_blend_dsc_t`
-#[derive(Debug)]
 pub struct BlendDsc<'a> {
     /// `blend_area`: the area to blend, in layer coordinates.
     pub blend_area: Area,
@@ -91,7 +90,6 @@ pub struct BlendDsc<'a> {
 
 /// `lv_draw_sw_blend_fill_dsc_t`: a colour fill into a destination buffer,
 /// with coordinates relative to the destination.
-#[derive(Debug)]
 pub struct BlendFillDsc<'a> {
     /// `dest_buf`
     pub dest_buf: &'a mut [u8],
@@ -114,7 +112,6 @@ pub struct BlendFillDsc<'a> {
 }
 
 /// `lv_draw_sw_blend_image_dsc_t`
-#[derive(Debug)]
 pub struct BlendImageDsc<'a> {
     /// `dest_buf`
     pub dest_buf: &'a mut [u8],
@@ -142,6 +139,71 @@ pub struct BlendImageDsc<'a> {
     pub relative_area: Area,
     /// `src_area`
     pub src_area: Area,
+}
+
+/// `Debug` stand-in for a pixel or mask buffer: its length, not its bytes
+/// (a full layer would print millions of numbers), like `BufStorage`.
+pub(crate) struct ByteLen(pub(crate) usize);
+
+impl core::fmt::Debug for ByteLen {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "<{} bytes>", self.0)
+    }
+}
+
+impl core::fmt::Debug for BlendDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendDsc")
+            .field("blend_area", &self.blend_area)
+            .field("src_buf", &self.src_buf.map(|b| ByteLen(b.len())))
+            .field("src_stride", &self.src_stride)
+            .field("src_color_format", &self.src_color_format)
+            .field("src_area", &self.src_area)
+            .field("opa", &self.opa)
+            .field("color", &self.color)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_res", &self.mask_res)
+            .field("mask_area", &self.mask_area)
+            .field("mask_stride", &self.mask_stride)
+            .field("blend_mode", &self.blend_mode)
+            .finish()
+    }
+}
+
+impl core::fmt::Debug for BlendFillDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendFillDsc")
+            .field("dest_buf", &ByteLen(self.dest_buf.len()))
+            .field("dest_w", &self.dest_w)
+            .field("dest_h", &self.dest_h)
+            .field("dest_stride", &self.dest_stride)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_stride", &self.mask_stride)
+            .field("color", &self.color)
+            .field("opa", &self.opa)
+            .field("relative_area", &self.relative_area)
+            .finish()
+    }
+}
+
+impl core::fmt::Debug for BlendImageDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendImageDsc")
+            .field("dest_buf", &ByteLen(self.dest_buf.len()))
+            .field("dest_w", &self.dest_w)
+            .field("dest_h", &self.dest_h)
+            .field("dest_stride", &self.dest_stride)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_stride", &self.mask_stride)
+            .field("src_buf", &ByteLen(self.src_buf.len()))
+            .field("src_stride", &self.src_stride)
+            .field("src_color_format", &self.src_color_format)
+            .field("opa", &self.opa)
+            .field("blend_mode", &self.blend_mode)
+            .field("relative_area", &self.relative_area)
+            .field("src_area", &self.src_area)
+            .finish()
+    }
 }
 
 /// `lv_draw_sw_blend()`: blend `dsc` into the buffer of `layer`

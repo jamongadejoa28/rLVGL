@@ -89,7 +89,7 @@ impl IndevDriver for Driver {
 }
 
 /// The three input devices of a browser display.
-pub struct Inputs {
+pub(crate) struct Inputs {
     /// Pointer device (mouse, touch, pen).
     pub pointer: IndevId,
     /// Keyboard device.

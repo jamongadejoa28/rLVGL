@@ -168,6 +168,7 @@ impl Default for DrawImageDsc {
 /// out of that other layer for the duration of the callback), build `sup`
 /// from the palette and call the renderer's core callback with it.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct DecodedImage<'a> {
     /// `header`
     pub header: ImageHeader,

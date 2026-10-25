@@ -133,10 +133,19 @@ pub struct WebDisplay {
 
 impl core::fmt::Debug for WebDisplay {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("WebDisplay")
-            .field("running", &self.running.get())
-            .field("pixel_scale", &self.pixel_scale.get())
-            .finish_non_exhaustive()
+        let mut d = f.debug_struct("WebDisplay");
+        d.field("running", &self.running.get())
+            .field("pixel_scale", &self.pixel_scale.get());
+        // `try_borrow`: `Debug` must not panic while a frame holds the state.
+        match self.state.try_borrow() {
+            Ok(state) => d
+                .field("config", &state.config)
+                .field("scene", &state.scene)
+                .field("error", &state.error)
+                .field("backend", &state.backend),
+            Err(_) => d.field("state", &format_args!("<borrowed>")),
+        };
+        d.finish_non_exhaustive()
     }
 }
 

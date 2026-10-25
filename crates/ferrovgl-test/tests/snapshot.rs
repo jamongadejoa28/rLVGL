@@ -100,12 +100,13 @@ fn invalid_shapes_formats_and_buffers_leave_header_unchanged() {
         ui.snapshot_reshape_draw_buf(obj, &mut read_only),
         LvResult::Invalid
     );
-    let mut malformed = DrawBuf {
-        header: ImageHeader::default(),
-        data_size: u32::MAX,
-        storage: BufStorage::Owned(vec![0u64; 1].into_boxed_slice()),
-        data_offset: usize::MAX,
-    };
+    /*`DrawBuf` is `#[non_exhaustive]`: start from a valid buffer and
+     *overwrite every field*/
+    let mut malformed = DrawBuf::create(1, 1, ColorFormat::Argb8888, 0).unwrap();
+    malformed.header = ImageHeader::default();
+    malformed.data_size = u32::MAX;
+    malformed.storage = BufStorage::Owned(vec![0u64; 1].into_boxed_slice());
+    malformed.data_offset = usize::MAX;
     assert_eq!(
         ui.snapshot_reshape_draw_buf(obj, &mut malformed),
         LvResult::Invalid

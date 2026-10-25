@@ -115,6 +115,7 @@ fn prev(txt: &[u8], i: &mut u32) -> u32 {
 /// The file-scope state of `lv_bidi.c`. Every BiDi function is a method so
 /// that `lv_bidi_letter_is_neutral()` sees the custom neutrals.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BidiState {
     /// `custom_neutrals` (`NULL` = `None`: the built-in set is used).
     pub custom_neutrals: Option<&'static str>,

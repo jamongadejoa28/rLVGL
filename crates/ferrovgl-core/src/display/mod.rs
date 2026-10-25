@@ -67,7 +67,7 @@ const ANIM_TAG_OPA_SCALE: u32 = 0x4C56_444F;
 
 /// Handle of a display (`lv_display_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct DisplayId(pub Key);
+pub struct DisplayId(#[doc(hidden)] pub Key);
 
 /// The `LV_USE_THEME_DEFAULT` block of `lv_display_create()`:
 ///

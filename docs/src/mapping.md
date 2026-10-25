@@ -29,8 +29,7 @@ the upstream documentation applies; only ownership is redesigned
   C object argument first: `lv_obj_set_width(obj, 100)` is
   `ui.obj_set_width(obj, 100)`, `lv_obj_add_style(obj, &s, sel)` is
   `ui.obj_add_style(obj, s, sel)`, `lv_timer_create(cb, period, ud)` is
-  `ui.timer_create(cb, period, ud)`. The generated style setters also have
-  short aliases (`ui.set_style_bg_color(obj, c, sel)`).
+  `ui.timer_create(cb, period, ud)`.
 - **Layer 2: widget handles.** Every widget of `ferrovgl_widgets` is a `Copy`
   newtype over `Obj` whose methods take the `Ui` first:
   `lv_label_create(parent)` is `Label::create(&mut ui, parent)` and
@@ -425,7 +424,7 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_event_stop_bubbling()` | `Event::stop_bubbling` | mapped |
 | `lv_event_stop_trickling()` | `Event::stop_trickling` | mapped |
 | `lv_event_stop_processing()` | `Event::stop_processing` | mapped |
-| `lv_event_free_user_data_cb()` | `ferrovgl_core::misc::event::event_free_user_data_cb` | mapped |
+| `lv_event_free_user_data_cb()` | `ferrovgl_core::misc::event::free_user_data_cb` | mapped |
 | `lv_event_register_id()` | `Ui::event_register_id` | mapped |
 | `lv_event_code_get_name()` | `EventCode::name` | mapped |
 | `lv_event_desc_set_external_data()` | `Ui::event_desc_set_external_data` | mapped |
@@ -610,7 +609,7 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_obj_find_by_id()` | `Ui::obj_find_by_id` [obj-id] | mapped (deprecated) |
 | `lv_obj_assign_id()` | `Ui::obj_assign_id` [obj-id] | mapped |
 | `lv_obj_free_id()` | `Ui::obj_free_id` [obj-id] | mapped |
-| `lv_obj_id_compare()` | `ferrovgl_core::core::obj_id::obj_id_compare` [obj-id] | mapped |
+| `lv_obj_id_compare()` | `ferrovgl_core::core::obj_id::compare` [obj-id] | mapped |
 | `lv_obj_stringify_id()` | `Ui::obj_stringify_id` [obj-id] | mapped |
 | `lv_objid_builtin_destroy()` | `Ui::objid_builtin_destroy` [obj-id] | mapped |
 
@@ -815,8 +814,8 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_obj_style_apply_color_filter()` | `Ui::obj_style_apply_color_filter` | mapped |
 | `lv_obj_fade_in()` | `Ui::obj_fade_in` | mapped |
 | `lv_obj_fade_out()` | `Ui::obj_fade_out` | mapped |
-| `lv_obj_style_get_selector_state()` | `StyleSelector::state`, `ferrovgl_core::core::obj_style::obj_style_get_selector_state` | mapped |
-| `lv_obj_style_get_selector_part()` | `StyleSelector::part`, `ferrovgl_core::core::obj_style::obj_style_get_selector_part` | mapped |
+| `lv_obj_style_get_selector_state()` | `StyleSelector::state`, `ferrovgl_core::core::obj_style::get_selector_state` | mapped |
+| `lv_obj_style_get_selector_part()` | `StyleSelector::part`, `ferrovgl_core::core::obj_style::get_selector_part` | mapped |
 | `lv_obj_set_style_pad_all()` | `Ui::obj_set_style_pad_all` | mapped |
 | `lv_obj_set_style_pad_hor()` | `Ui::obj_set_style_pad_hor` | mapped |
 | `lv_obj_set_style_pad_ver()` | `Ui::obj_set_style_pad_ver` | mapped |
@@ -845,276 +844,276 @@ porting functions; `cargo xtask gen-mapping --check` (after
 
 | LVGL C | ferrovgl Rust | status |
 |---|---|---|
-| `lv_obj_get_style_width()` | `Ui::get_style_width`, `Ui::obj_get_style_width` | mapped |
-| `lv_obj_get_style_min_width()` | `Ui::get_style_min_width`, `Ui::obj_get_style_min_width` | mapped |
-| `lv_obj_get_style_max_width()` | `Ui::get_style_max_width`, `Ui::obj_get_style_max_width` | mapped |
-| `lv_obj_get_style_height()` | `Ui::get_style_height`, `Ui::obj_get_style_height` | mapped |
-| `lv_obj_get_style_min_height()` | `Ui::get_style_min_height`, `Ui::obj_get_style_min_height` | mapped |
-| `lv_obj_get_style_max_height()` | `Ui::get_style_max_height`, `Ui::obj_get_style_max_height` | mapped |
-| `lv_obj_get_style_length()` | `Ui::get_style_length`, `Ui::obj_get_style_length` | mapped |
-| `lv_obj_get_style_x()` | `Ui::get_style_x`, `Ui::obj_get_style_x` | mapped |
-| `lv_obj_get_style_y()` | `Ui::get_style_y`, `Ui::obj_get_style_y` | mapped |
-| `lv_obj_get_style_align()` | `Ui::get_style_align`, `Ui::obj_get_style_align` | mapped |
-| `lv_obj_get_style_transform_width()` | `Ui::get_style_transform_width`, `Ui::obj_get_style_transform_width` | mapped |
-| `lv_obj_get_style_transform_height()` | `Ui::get_style_transform_height`, `Ui::obj_get_style_transform_height` | mapped |
-| `lv_obj_get_style_translate_x()` | `Ui::get_style_translate_x`, `Ui::obj_get_style_translate_x` | mapped |
-| `lv_obj_get_style_translate_y()` | `Ui::get_style_translate_y`, `Ui::obj_get_style_translate_y` | mapped |
-| `lv_obj_get_style_translate_radial()` | `Ui::get_style_translate_radial`, `Ui::obj_get_style_translate_radial` | mapped |
-| `lv_obj_get_style_transform_scale_x()` | `Ui::get_style_transform_scale_x`, `Ui::obj_get_style_transform_scale_x` | mapped |
-| `lv_obj_get_style_transform_scale_y()` | `Ui::get_style_transform_scale_y`, `Ui::obj_get_style_transform_scale_y` | mapped |
-| `lv_obj_get_style_transform_rotation()` | `Ui::get_style_transform_rotation`, `Ui::obj_get_style_transform_rotation` | mapped |
-| `lv_obj_get_style_transform_pivot_x()` | `Ui::get_style_transform_pivot_x`, `Ui::obj_get_style_transform_pivot_x` | mapped |
-| `lv_obj_get_style_transform_pivot_y()` | `Ui::get_style_transform_pivot_y`, `Ui::obj_get_style_transform_pivot_y` | mapped |
-| `lv_obj_get_style_transform_skew_x()` | `Ui::get_style_transform_skew_x`, `Ui::obj_get_style_transform_skew_x` | mapped |
-| `lv_obj_get_style_transform_skew_y()` | `Ui::get_style_transform_skew_y`, `Ui::obj_get_style_transform_skew_y` | mapped |
-| `lv_obj_get_style_pad_top()` | `Ui::get_style_pad_top`, `Ui::obj_get_style_pad_top` | mapped |
-| `lv_obj_get_style_pad_bottom()` | `Ui::get_style_pad_bottom`, `Ui::obj_get_style_pad_bottom` | mapped |
-| `lv_obj_get_style_pad_left()` | `Ui::get_style_pad_left`, `Ui::obj_get_style_pad_left` | mapped |
-| `lv_obj_get_style_pad_right()` | `Ui::get_style_pad_right`, `Ui::obj_get_style_pad_right` | mapped |
-| `lv_obj_get_style_pad_row()` | `Ui::get_style_pad_row`, `Ui::obj_get_style_pad_row` | mapped |
-| `lv_obj_get_style_pad_column()` | `Ui::get_style_pad_column`, `Ui::obj_get_style_pad_column` | mapped |
-| `lv_obj_get_style_pad_radial()` | `Ui::get_style_pad_radial`, `Ui::obj_get_style_pad_radial` | mapped |
-| `lv_obj_get_style_margin_top()` | `Ui::get_style_margin_top`, `Ui::obj_get_style_margin_top` | mapped |
-| `lv_obj_get_style_margin_bottom()` | `Ui::get_style_margin_bottom`, `Ui::obj_get_style_margin_bottom` | mapped |
-| `lv_obj_get_style_margin_left()` | `Ui::get_style_margin_left`, `Ui::obj_get_style_margin_left` | mapped |
-| `lv_obj_get_style_margin_right()` | `Ui::get_style_margin_right`, `Ui::obj_get_style_margin_right` | mapped |
-| `lv_obj_get_style_bg_color()` | `Ui::get_style_bg_color`, `Ui::obj_get_style_bg_color` | mapped |
+| `lv_obj_get_style_width()` | `Ui::obj_get_style_width` | mapped |
+| `lv_obj_get_style_min_width()` | `Ui::obj_get_style_min_width` | mapped |
+| `lv_obj_get_style_max_width()` | `Ui::obj_get_style_max_width` | mapped |
+| `lv_obj_get_style_height()` | `Ui::obj_get_style_height` | mapped |
+| `lv_obj_get_style_min_height()` | `Ui::obj_get_style_min_height` | mapped |
+| `lv_obj_get_style_max_height()` | `Ui::obj_get_style_max_height` | mapped |
+| `lv_obj_get_style_length()` | `Ui::obj_get_style_length` | mapped |
+| `lv_obj_get_style_x()` | `Ui::obj_get_style_x` | mapped |
+| `lv_obj_get_style_y()` | `Ui::obj_get_style_y` | mapped |
+| `lv_obj_get_style_align()` | `Ui::obj_get_style_align` | mapped |
+| `lv_obj_get_style_transform_width()` | `Ui::obj_get_style_transform_width` | mapped |
+| `lv_obj_get_style_transform_height()` | `Ui::obj_get_style_transform_height` | mapped |
+| `lv_obj_get_style_translate_x()` | `Ui::obj_get_style_translate_x` | mapped |
+| `lv_obj_get_style_translate_y()` | `Ui::obj_get_style_translate_y` | mapped |
+| `lv_obj_get_style_translate_radial()` | `Ui::obj_get_style_translate_radial` | mapped |
+| `lv_obj_get_style_transform_scale_x()` | `Ui::obj_get_style_transform_scale_x` | mapped |
+| `lv_obj_get_style_transform_scale_y()` | `Ui::obj_get_style_transform_scale_y` | mapped |
+| `lv_obj_get_style_transform_rotation()` | `Ui::obj_get_style_transform_rotation` | mapped |
+| `lv_obj_get_style_transform_pivot_x()` | `Ui::obj_get_style_transform_pivot_x` | mapped |
+| `lv_obj_get_style_transform_pivot_y()` | `Ui::obj_get_style_transform_pivot_y` | mapped |
+| `lv_obj_get_style_transform_skew_x()` | `Ui::obj_get_style_transform_skew_x` | mapped |
+| `lv_obj_get_style_transform_skew_y()` | `Ui::obj_get_style_transform_skew_y` | mapped |
+| `lv_obj_get_style_pad_top()` | `Ui::obj_get_style_pad_top` | mapped |
+| `lv_obj_get_style_pad_bottom()` | `Ui::obj_get_style_pad_bottom` | mapped |
+| `lv_obj_get_style_pad_left()` | `Ui::obj_get_style_pad_left` | mapped |
+| `lv_obj_get_style_pad_right()` | `Ui::obj_get_style_pad_right` | mapped |
+| `lv_obj_get_style_pad_row()` | `Ui::obj_get_style_pad_row` | mapped |
+| `lv_obj_get_style_pad_column()` | `Ui::obj_get_style_pad_column` | mapped |
+| `lv_obj_get_style_pad_radial()` | `Ui::obj_get_style_pad_radial` | mapped |
+| `lv_obj_get_style_margin_top()` | `Ui::obj_get_style_margin_top` | mapped |
+| `lv_obj_get_style_margin_bottom()` | `Ui::obj_get_style_margin_bottom` | mapped |
+| `lv_obj_get_style_margin_left()` | `Ui::obj_get_style_margin_left` | mapped |
+| `lv_obj_get_style_margin_right()` | `Ui::obj_get_style_margin_right` | mapped |
+| `lv_obj_get_style_bg_color()` | `Ui::obj_get_style_bg_color` | mapped |
 | `lv_obj_get_style_bg_color_filtered()` | `Ui::obj_get_style_bg_color_filtered` | mapped |
-| `lv_obj_get_style_bg_opa()` | `Ui::get_style_bg_opa`, `Ui::obj_get_style_bg_opa` | mapped |
-| `lv_obj_get_style_bg_grad_color()` | `Ui::get_style_bg_grad_color`, `Ui::obj_get_style_bg_grad_color` | mapped |
+| `lv_obj_get_style_bg_opa()` | `Ui::obj_get_style_bg_opa` | mapped |
+| `lv_obj_get_style_bg_grad_color()` | `Ui::obj_get_style_bg_grad_color` | mapped |
 | `lv_obj_get_style_bg_grad_color_filtered()` | `Ui::obj_get_style_bg_grad_color_filtered` | mapped |
-| `lv_obj_get_style_bg_grad_dir()` | `Ui::get_style_bg_grad_dir`, `Ui::obj_get_style_bg_grad_dir` | mapped |
-| `lv_obj_get_style_bg_main_stop()` | `Ui::get_style_bg_main_stop`, `Ui::obj_get_style_bg_main_stop` | mapped |
-| `lv_obj_get_style_bg_grad_stop()` | `Ui::get_style_bg_grad_stop`, `Ui::obj_get_style_bg_grad_stop` | mapped |
-| `lv_obj_get_style_bg_main_opa()` | `Ui::get_style_bg_main_opa`, `Ui::obj_get_style_bg_main_opa` | mapped |
-| `lv_obj_get_style_bg_grad_opa()` | `Ui::get_style_bg_grad_opa`, `Ui::obj_get_style_bg_grad_opa` | mapped |
-| `lv_obj_get_style_bg_grad()` | `Ui::get_style_bg_grad`, `Ui::obj_get_style_bg_grad` | mapped |
-| `lv_obj_get_style_bg_image_src()` | `Ui::get_style_bg_image_src`, `Ui::obj_get_style_bg_image_src` | mapped |
-| `lv_obj_get_style_bg_image_opa()` | `Ui::get_style_bg_image_opa`, `Ui::obj_get_style_bg_image_opa` | mapped |
-| `lv_obj_get_style_bg_image_recolor()` | `Ui::get_style_bg_image_recolor`, `Ui::obj_get_style_bg_image_recolor` | mapped |
+| `lv_obj_get_style_bg_grad_dir()` | `Ui::obj_get_style_bg_grad_dir` | mapped |
+| `lv_obj_get_style_bg_main_stop()` | `Ui::obj_get_style_bg_main_stop` | mapped |
+| `lv_obj_get_style_bg_grad_stop()` | `Ui::obj_get_style_bg_grad_stop` | mapped |
+| `lv_obj_get_style_bg_main_opa()` | `Ui::obj_get_style_bg_main_opa` | mapped |
+| `lv_obj_get_style_bg_grad_opa()` | `Ui::obj_get_style_bg_grad_opa` | mapped |
+| `lv_obj_get_style_bg_grad()` | `Ui::obj_get_style_bg_grad` | mapped |
+| `lv_obj_get_style_bg_image_src()` | `Ui::obj_get_style_bg_image_src` | mapped |
+| `lv_obj_get_style_bg_image_opa()` | `Ui::obj_get_style_bg_image_opa` | mapped |
+| `lv_obj_get_style_bg_image_recolor()` | `Ui::obj_get_style_bg_image_recolor` | mapped |
 | `lv_obj_get_style_bg_image_recolor_filtered()` | `Ui::obj_get_style_bg_image_recolor_filtered` | mapped |
-| `lv_obj_get_style_bg_image_recolor_opa()` | `Ui::get_style_bg_image_recolor_opa`, `Ui::obj_get_style_bg_image_recolor_opa` | mapped |
-| `lv_obj_get_style_bg_image_tiled()` | `Ui::get_style_bg_image_tiled`, `Ui::obj_get_style_bg_image_tiled` | mapped |
-| `lv_obj_get_style_border_color()` | `Ui::get_style_border_color`, `Ui::obj_get_style_border_color` | mapped |
+| `lv_obj_get_style_bg_image_recolor_opa()` | `Ui::obj_get_style_bg_image_recolor_opa` | mapped |
+| `lv_obj_get_style_bg_image_tiled()` | `Ui::obj_get_style_bg_image_tiled` | mapped |
+| `lv_obj_get_style_border_color()` | `Ui::obj_get_style_border_color` | mapped |
 | `lv_obj_get_style_border_color_filtered()` | `Ui::obj_get_style_border_color_filtered` | mapped |
-| `lv_obj_get_style_border_opa()` | `Ui::get_style_border_opa`, `Ui::obj_get_style_border_opa` | mapped |
-| `lv_obj_get_style_border_width()` | `Ui::get_style_border_width`, `Ui::obj_get_style_border_width` | mapped |
-| `lv_obj_get_style_border_side()` | `Ui::get_style_border_side`, `Ui::obj_get_style_border_side` | mapped |
-| `lv_obj_get_style_border_post()` | `Ui::get_style_border_post`, `Ui::obj_get_style_border_post` | mapped |
-| `lv_obj_get_style_outline_width()` | `Ui::get_style_outline_width`, `Ui::obj_get_style_outline_width` | mapped |
-| `lv_obj_get_style_outline_color()` | `Ui::get_style_outline_color`, `Ui::obj_get_style_outline_color` | mapped |
+| `lv_obj_get_style_border_opa()` | `Ui::obj_get_style_border_opa` | mapped |
+| `lv_obj_get_style_border_width()` | `Ui::obj_get_style_border_width` | mapped |
+| `lv_obj_get_style_border_side()` | `Ui::obj_get_style_border_side` | mapped |
+| `lv_obj_get_style_border_post()` | `Ui::obj_get_style_border_post` | mapped |
+| `lv_obj_get_style_outline_width()` | `Ui::obj_get_style_outline_width` | mapped |
+| `lv_obj_get_style_outline_color()` | `Ui::obj_get_style_outline_color` | mapped |
 | `lv_obj_get_style_outline_color_filtered()` | `Ui::obj_get_style_outline_color_filtered` | mapped |
-| `lv_obj_get_style_outline_opa()` | `Ui::get_style_outline_opa`, `Ui::obj_get_style_outline_opa` | mapped |
-| `lv_obj_get_style_outline_pad()` | `Ui::get_style_outline_pad`, `Ui::obj_get_style_outline_pad` | mapped |
-| `lv_obj_get_style_shadow_width()` | `Ui::get_style_shadow_width`, `Ui::obj_get_style_shadow_width` | mapped |
-| `lv_obj_get_style_shadow_offset_x()` | `Ui::get_style_shadow_offset_x`, `Ui::obj_get_style_shadow_offset_x` | mapped |
-| `lv_obj_get_style_shadow_offset_y()` | `Ui::get_style_shadow_offset_y`, `Ui::obj_get_style_shadow_offset_y` | mapped |
-| `lv_obj_get_style_shadow_spread()` | `Ui::get_style_shadow_spread`, `Ui::obj_get_style_shadow_spread` | mapped |
-| `lv_obj_get_style_shadow_color()` | `Ui::get_style_shadow_color`, `Ui::obj_get_style_shadow_color` | mapped |
+| `lv_obj_get_style_outline_opa()` | `Ui::obj_get_style_outline_opa` | mapped |
+| `lv_obj_get_style_outline_pad()` | `Ui::obj_get_style_outline_pad` | mapped |
+| `lv_obj_get_style_shadow_width()` | `Ui::obj_get_style_shadow_width` | mapped |
+| `lv_obj_get_style_shadow_offset_x()` | `Ui::obj_get_style_shadow_offset_x` | mapped |
+| `lv_obj_get_style_shadow_offset_y()` | `Ui::obj_get_style_shadow_offset_y` | mapped |
+| `lv_obj_get_style_shadow_spread()` | `Ui::obj_get_style_shadow_spread` | mapped |
+| `lv_obj_get_style_shadow_color()` | `Ui::obj_get_style_shadow_color` | mapped |
 | `lv_obj_get_style_shadow_color_filtered()` | `Ui::obj_get_style_shadow_color_filtered` | mapped |
-| `lv_obj_get_style_shadow_opa()` | `Ui::get_style_shadow_opa`, `Ui::obj_get_style_shadow_opa` | mapped |
-| `lv_obj_get_style_image_opa()` | `Ui::get_style_image_opa`, `Ui::obj_get_style_image_opa` | mapped |
-| `lv_obj_get_style_image_recolor()` | `Ui::get_style_image_recolor`, `Ui::obj_get_style_image_recolor` | mapped |
+| `lv_obj_get_style_shadow_opa()` | `Ui::obj_get_style_shadow_opa` | mapped |
+| `lv_obj_get_style_image_opa()` | `Ui::obj_get_style_image_opa` | mapped |
+| `lv_obj_get_style_image_recolor()` | `Ui::obj_get_style_image_recolor` | mapped |
 | `lv_obj_get_style_image_recolor_filtered()` | `Ui::obj_get_style_image_recolor_filtered` | mapped |
-| `lv_obj_get_style_image_recolor_opa()` | `Ui::get_style_image_recolor_opa`, `Ui::obj_get_style_image_recolor_opa` | mapped |
-| `lv_obj_get_style_image_colorkey()` | `Ui::get_style_image_colorkey`, `Ui::obj_get_style_image_colorkey` | mapped |
-| `lv_obj_get_style_line_width()` | `Ui::get_style_line_width`, `Ui::obj_get_style_line_width` | mapped |
-| `lv_obj_get_style_line_dash_width()` | `Ui::get_style_line_dash_width`, `Ui::obj_get_style_line_dash_width` | mapped |
-| `lv_obj_get_style_line_dash_gap()` | `Ui::get_style_line_dash_gap`, `Ui::obj_get_style_line_dash_gap` | mapped |
-| `lv_obj_get_style_line_rounded()` | `Ui::get_style_line_rounded`, `Ui::obj_get_style_line_rounded` | mapped |
-| `lv_obj_get_style_line_color()` | `Ui::get_style_line_color`, `Ui::obj_get_style_line_color` | mapped |
+| `lv_obj_get_style_image_recolor_opa()` | `Ui::obj_get_style_image_recolor_opa` | mapped |
+| `lv_obj_get_style_image_colorkey()` | `Ui::obj_get_style_image_colorkey` | mapped |
+| `lv_obj_get_style_line_width()` | `Ui::obj_get_style_line_width` | mapped |
+| `lv_obj_get_style_line_dash_width()` | `Ui::obj_get_style_line_dash_width` | mapped |
+| `lv_obj_get_style_line_dash_gap()` | `Ui::obj_get_style_line_dash_gap` | mapped |
+| `lv_obj_get_style_line_rounded()` | `Ui::obj_get_style_line_rounded` | mapped |
+| `lv_obj_get_style_line_color()` | `Ui::obj_get_style_line_color` | mapped |
 | `lv_obj_get_style_line_color_filtered()` | `Ui::obj_get_style_line_color_filtered` | mapped |
-| `lv_obj_get_style_line_opa()` | `Ui::get_style_line_opa`, `Ui::obj_get_style_line_opa` | mapped |
-| `lv_obj_get_style_arc_width()` | `Ui::get_style_arc_width`, `Ui::obj_get_style_arc_width` | mapped |
-| `lv_obj_get_style_arc_rounded()` | `Ui::get_style_arc_rounded`, `Ui::obj_get_style_arc_rounded` | mapped |
-| `lv_obj_get_style_arc_color()` | `Ui::get_style_arc_color`, `Ui::obj_get_style_arc_color` | mapped |
+| `lv_obj_get_style_line_opa()` | `Ui::obj_get_style_line_opa` | mapped |
+| `lv_obj_get_style_arc_width()` | `Ui::obj_get_style_arc_width` | mapped |
+| `lv_obj_get_style_arc_rounded()` | `Ui::obj_get_style_arc_rounded` | mapped |
+| `lv_obj_get_style_arc_color()` | `Ui::obj_get_style_arc_color` | mapped |
 | `lv_obj_get_style_arc_color_filtered()` | `Ui::obj_get_style_arc_color_filtered` | mapped |
-| `lv_obj_get_style_arc_opa()` | `Ui::get_style_arc_opa`, `Ui::obj_get_style_arc_opa` | mapped |
-| `lv_obj_get_style_arc_image_src()` | `Ui::get_style_arc_image_src`, `Ui::obj_get_style_arc_image_src` | mapped |
-| `lv_obj_get_style_text_color()` | `Ui::get_style_text_color`, `Ui::obj_get_style_text_color` | mapped |
+| `lv_obj_get_style_arc_opa()` | `Ui::obj_get_style_arc_opa` | mapped |
+| `lv_obj_get_style_arc_image_src()` | `Ui::obj_get_style_arc_image_src` | mapped |
+| `lv_obj_get_style_text_color()` | `Ui::obj_get_style_text_color` | mapped |
 | `lv_obj_get_style_text_color_filtered()` | `Ui::obj_get_style_text_color_filtered` | mapped |
-| `lv_obj_get_style_text_opa()` | `Ui::get_style_text_opa`, `Ui::obj_get_style_text_opa` | mapped |
-| `lv_obj_get_style_text_font()` | `Ui::get_style_text_font`, `Ui::obj_get_style_text_font` | mapped |
-| `lv_obj_get_style_text_letter_space()` | `Ui::get_style_text_letter_space`, `Ui::obj_get_style_text_letter_space` | mapped |
-| `lv_obj_get_style_text_line_space()` | `Ui::get_style_text_line_space`, `Ui::obj_get_style_text_line_space` | mapped |
-| `lv_obj_get_style_text_decor()` | `Ui::get_style_text_decor`, `Ui::obj_get_style_text_decor` | mapped |
-| `lv_obj_get_style_text_align()` | `Ui::get_style_text_align`, `Ui::obj_get_style_text_align` | mapped |
-| `lv_obj_get_style_text_outline_stroke_color()` | `Ui::get_style_text_outline_stroke_color`, `Ui::obj_get_style_text_outline_stroke_color` | mapped |
+| `lv_obj_get_style_text_opa()` | `Ui::obj_get_style_text_opa` | mapped |
+| `lv_obj_get_style_text_font()` | `Ui::obj_get_style_text_font` | mapped |
+| `lv_obj_get_style_text_letter_space()` | `Ui::obj_get_style_text_letter_space` | mapped |
+| `lv_obj_get_style_text_line_space()` | `Ui::obj_get_style_text_line_space` | mapped |
+| `lv_obj_get_style_text_decor()` | `Ui::obj_get_style_text_decor` | mapped |
+| `lv_obj_get_style_text_align()` | `Ui::obj_get_style_text_align` | mapped |
+| `lv_obj_get_style_text_outline_stroke_color()` | `Ui::obj_get_style_text_outline_stroke_color` | mapped |
 | `lv_obj_get_style_text_outline_stroke_color_filtered()` | `Ui::obj_get_style_text_outline_stroke_color_filtered` | mapped |
-| `lv_obj_get_style_text_outline_stroke_width()` | `Ui::get_style_text_outline_stroke_width`, `Ui::obj_get_style_text_outline_stroke_width` | mapped |
-| `lv_obj_get_style_text_outline_stroke_opa()` | `Ui::get_style_text_outline_stroke_opa`, `Ui::obj_get_style_text_outline_stroke_opa` | mapped |
-| `lv_obj_get_style_text_leading_trim()` | `Ui::get_style_text_leading_trim`, `Ui::obj_get_style_text_leading_trim` | mapped |
-| `lv_obj_get_style_blur_radius()` | `Ui::get_style_blur_radius`, `Ui::obj_get_style_blur_radius` | mapped |
-| `lv_obj_get_style_blur_backdrop()` | `Ui::get_style_blur_backdrop`, `Ui::obj_get_style_blur_backdrop` | mapped |
-| `lv_obj_get_style_blur_quality()` | `Ui::get_style_blur_quality`, `Ui::obj_get_style_blur_quality` | mapped |
-| `lv_obj_get_style_drop_shadow_radius()` | `Ui::get_style_drop_shadow_radius`, `Ui::obj_get_style_drop_shadow_radius` | mapped |
-| `lv_obj_get_style_drop_shadow_offset_x()` | `Ui::get_style_drop_shadow_offset_x`, `Ui::obj_get_style_drop_shadow_offset_x` | mapped |
-| `lv_obj_get_style_drop_shadow_offset_y()` | `Ui::get_style_drop_shadow_offset_y`, `Ui::obj_get_style_drop_shadow_offset_y` | mapped |
-| `lv_obj_get_style_drop_shadow_color()` | `Ui::get_style_drop_shadow_color`, `Ui::obj_get_style_drop_shadow_color` | mapped |
+| `lv_obj_get_style_text_outline_stroke_width()` | `Ui::obj_get_style_text_outline_stroke_width` | mapped |
+| `lv_obj_get_style_text_outline_stroke_opa()` | `Ui::obj_get_style_text_outline_stroke_opa` | mapped |
+| `lv_obj_get_style_text_leading_trim()` | `Ui::obj_get_style_text_leading_trim` | mapped |
+| `lv_obj_get_style_blur_radius()` | `Ui::obj_get_style_blur_radius` | mapped |
+| `lv_obj_get_style_blur_backdrop()` | `Ui::obj_get_style_blur_backdrop` | mapped |
+| `lv_obj_get_style_blur_quality()` | `Ui::obj_get_style_blur_quality` | mapped |
+| `lv_obj_get_style_drop_shadow_radius()` | `Ui::obj_get_style_drop_shadow_radius` | mapped |
+| `lv_obj_get_style_drop_shadow_offset_x()` | `Ui::obj_get_style_drop_shadow_offset_x` | mapped |
+| `lv_obj_get_style_drop_shadow_offset_y()` | `Ui::obj_get_style_drop_shadow_offset_y` | mapped |
+| `lv_obj_get_style_drop_shadow_color()` | `Ui::obj_get_style_drop_shadow_color` | mapped |
 | `lv_obj_get_style_drop_shadow_color_filtered()` | `Ui::obj_get_style_drop_shadow_color_filtered` | mapped |
-| `lv_obj_get_style_drop_shadow_opa()` | `Ui::get_style_drop_shadow_opa`, `Ui::obj_get_style_drop_shadow_opa` | mapped |
-| `lv_obj_get_style_drop_shadow_quality()` | `Ui::get_style_drop_shadow_quality`, `Ui::obj_get_style_drop_shadow_quality` | mapped |
-| `lv_obj_get_style_radius()` | `Ui::get_style_radius`, `Ui::obj_get_style_radius` | mapped |
-| `lv_obj_get_style_radial_offset()` | `Ui::get_style_radial_offset`, `Ui::obj_get_style_radial_offset` | mapped |
-| `lv_obj_get_style_clip_corner()` | `Ui::get_style_clip_corner`, `Ui::obj_get_style_clip_corner` | mapped |
-| `lv_obj_get_style_opa()` | `Ui::get_style_opa`, `Ui::obj_get_style_opa` | mapped |
-| `lv_obj_get_style_opa_layered()` | `Ui::get_style_opa_layered`, `Ui::obj_get_style_opa_layered` | mapped |
-| `lv_obj_get_style_color_filter_dsc()` | `Ui::get_style_color_filter_dsc`, `Ui::obj_get_style_color_filter_dsc` | mapped |
-| `lv_obj_get_style_color_filter_opa()` | `Ui::get_style_color_filter_opa`, `Ui::obj_get_style_color_filter_opa` | mapped |
-| `lv_obj_get_style_recolor()` | `Ui::get_style_recolor`, `Ui::obj_get_style_recolor` | mapped |
-| `lv_obj_get_style_recolor_opa()` | `Ui::get_style_recolor_opa`, `Ui::obj_get_style_recolor_opa` | mapped |
-| `lv_obj_get_style_anim()` | `Ui::get_style_anim`, `Ui::obj_get_style_anim` | mapped |
-| `lv_obj_get_style_anim_duration()` | `Ui::get_style_anim_duration`, `Ui::obj_get_style_anim_duration` | mapped |
-| `lv_obj_get_style_transition()` | `Ui::get_style_transition`, `Ui::obj_get_style_transition` | mapped |
-| `lv_obj_get_style_blend_mode()` | `Ui::get_style_blend_mode`, `Ui::obj_get_style_blend_mode` | mapped |
-| `lv_obj_get_style_layout()` | `Ui::get_style_layout`, `Ui::obj_get_style_layout` | mapped |
-| `lv_obj_get_style_base_dir()` | `Ui::get_style_base_dir`, `Ui::obj_get_style_base_dir` | mapped |
-| `lv_obj_get_style_bitmap_mask_src()` | `Ui::get_style_bitmap_mask_src`, `Ui::obj_get_style_bitmap_mask_src` | mapped |
-| `lv_obj_get_style_rotary_sensitivity()` | `Ui::get_style_rotary_sensitivity`, `Ui::obj_get_style_rotary_sensitivity` | mapped |
-| `lv_obj_get_style_flex_flow()` | `Ui::get_style_flex_flow`, `Ui::obj_get_style_flex_flow` | mapped |
-| `lv_obj_get_style_flex_main_place()` | `Ui::get_style_flex_main_place`, `Ui::obj_get_style_flex_main_place` | mapped |
-| `lv_obj_get_style_flex_cross_place()` | `Ui::get_style_flex_cross_place`, `Ui::obj_get_style_flex_cross_place` | mapped |
-| `lv_obj_get_style_flex_track_place()` | `Ui::get_style_flex_track_place`, `Ui::obj_get_style_flex_track_place` | mapped |
-| `lv_obj_get_style_flex_grow()` | `Ui::get_style_flex_grow`, `Ui::obj_get_style_flex_grow` | mapped |
-| `lv_obj_get_style_grid_column_dsc_array()` | `Ui::get_style_grid_column_dsc_array`, `Ui::obj_get_style_grid_column_dsc_array` | mapped |
-| `lv_obj_get_style_grid_column_align()` | `Ui::get_style_grid_column_align`, `Ui::obj_get_style_grid_column_align` | mapped |
-| `lv_obj_get_style_grid_row_dsc_array()` | `Ui::get_style_grid_row_dsc_array`, `Ui::obj_get_style_grid_row_dsc_array` | mapped |
-| `lv_obj_get_style_grid_row_align()` | `Ui::get_style_grid_row_align`, `Ui::obj_get_style_grid_row_align` | mapped |
-| `lv_obj_get_style_grid_cell_column_pos()` | `Ui::get_style_grid_cell_column_pos`, `Ui::obj_get_style_grid_cell_column_pos` | mapped |
-| `lv_obj_get_style_grid_cell_x_align()` | `Ui::get_style_grid_cell_x_align`, `Ui::obj_get_style_grid_cell_x_align` | mapped |
-| `lv_obj_get_style_grid_cell_column_span()` | `Ui::get_style_grid_cell_column_span`, `Ui::obj_get_style_grid_cell_column_span` | mapped |
-| `lv_obj_get_style_grid_cell_row_pos()` | `Ui::get_style_grid_cell_row_pos`, `Ui::obj_get_style_grid_cell_row_pos` | mapped |
-| `lv_obj_get_style_grid_cell_y_align()` | `Ui::get_style_grid_cell_y_align`, `Ui::obj_get_style_grid_cell_y_align` | mapped |
-| `lv_obj_get_style_grid_cell_row_span()` | `Ui::get_style_grid_cell_row_span`, `Ui::obj_get_style_grid_cell_row_span` | mapped |
-| `lv_obj_set_style_width()` | `Ui::obj_set_style_width`, `Ui::set_style_width` | mapped |
-| `lv_obj_set_style_min_width()` | `Ui::obj_set_style_min_width`, `Ui::set_style_min_width` | mapped |
-| `lv_obj_set_style_max_width()` | `Ui::obj_set_style_max_width`, `Ui::set_style_max_width` | mapped |
-| `lv_obj_set_style_height()` | `Ui::obj_set_style_height`, `Ui::set_style_height` | mapped |
-| `lv_obj_set_style_min_height()` | `Ui::obj_set_style_min_height`, `Ui::set_style_min_height` | mapped |
-| `lv_obj_set_style_max_height()` | `Ui::obj_set_style_max_height`, `Ui::set_style_max_height` | mapped |
-| `lv_obj_set_style_length()` | `Ui::obj_set_style_length`, `Ui::set_style_length` | mapped |
-| `lv_obj_set_style_x()` | `Ui::obj_set_style_x`, `Ui::set_style_x` | mapped |
-| `lv_obj_set_style_y()` | `Ui::obj_set_style_y`, `Ui::set_style_y` | mapped |
-| `lv_obj_set_style_align()` | `Ui::obj_set_style_align`, `Ui::set_style_align` | mapped |
-| `lv_obj_set_style_transform_width()` | `Ui::obj_set_style_transform_width`, `Ui::set_style_transform_width` | mapped |
-| `lv_obj_set_style_transform_height()` | `Ui::obj_set_style_transform_height`, `Ui::set_style_transform_height` | mapped |
-| `lv_obj_set_style_translate_x()` | `Ui::obj_set_style_translate_x`, `Ui::set_style_translate_x` | mapped |
-| `lv_obj_set_style_translate_y()` | `Ui::obj_set_style_translate_y`, `Ui::set_style_translate_y` | mapped |
-| `lv_obj_set_style_translate_radial()` | `Ui::obj_set_style_translate_radial`, `Ui::set_style_translate_radial` | mapped |
-| `lv_obj_set_style_transform_scale_x()` | `Ui::obj_set_style_transform_scale_x`, `Ui::set_style_transform_scale_x` | mapped |
-| `lv_obj_set_style_transform_scale_y()` | `Ui::obj_set_style_transform_scale_y`, `Ui::set_style_transform_scale_y` | mapped |
-| `lv_obj_set_style_transform_rotation()` | `Ui::obj_set_style_transform_rotation`, `Ui::set_style_transform_rotation` | mapped |
-| `lv_obj_set_style_transform_pivot_x()` | `Ui::obj_set_style_transform_pivot_x`, `Ui::set_style_transform_pivot_x` | mapped |
-| `lv_obj_set_style_transform_pivot_y()` | `Ui::obj_set_style_transform_pivot_y`, `Ui::set_style_transform_pivot_y` | mapped |
-| `lv_obj_set_style_transform_skew_x()` | `Ui::obj_set_style_transform_skew_x`, `Ui::set_style_transform_skew_x` | mapped |
-| `lv_obj_set_style_transform_skew_y()` | `Ui::obj_set_style_transform_skew_y`, `Ui::set_style_transform_skew_y` | mapped |
-| `lv_obj_set_style_pad_top()` | `Ui::obj_set_style_pad_top`, `Ui::set_style_pad_top` | mapped |
-| `lv_obj_set_style_pad_bottom()` | `Ui::obj_set_style_pad_bottom`, `Ui::set_style_pad_bottom` | mapped |
-| `lv_obj_set_style_pad_left()` | `Ui::obj_set_style_pad_left`, `Ui::set_style_pad_left` | mapped |
-| `lv_obj_set_style_pad_right()` | `Ui::obj_set_style_pad_right`, `Ui::set_style_pad_right` | mapped |
-| `lv_obj_set_style_pad_row()` | `Ui::obj_set_style_pad_row`, `Ui::set_style_pad_row` | mapped |
-| `lv_obj_set_style_pad_column()` | `Ui::obj_set_style_pad_column`, `Ui::set_style_pad_column` | mapped |
-| `lv_obj_set_style_pad_radial()` | `Ui::obj_set_style_pad_radial`, `Ui::set_style_pad_radial` | mapped |
-| `lv_obj_set_style_margin_top()` | `Ui::obj_set_style_margin_top`, `Ui::set_style_margin_top` | mapped |
-| `lv_obj_set_style_margin_bottom()` | `Ui::obj_set_style_margin_bottom`, `Ui::set_style_margin_bottom` | mapped |
-| `lv_obj_set_style_margin_left()` | `Ui::obj_set_style_margin_left`, `Ui::set_style_margin_left` | mapped |
-| `lv_obj_set_style_margin_right()` | `Ui::obj_set_style_margin_right`, `Ui::set_style_margin_right` | mapped |
-| `lv_obj_set_style_bg_color()` | `Ui::obj_set_style_bg_color`, `Ui::set_style_bg_color` | mapped |
-| `lv_obj_set_style_bg_opa()` | `Ui::obj_set_style_bg_opa`, `Ui::set_style_bg_opa` | mapped |
-| `lv_obj_set_style_bg_grad_color()` | `Ui::obj_set_style_bg_grad_color`, `Ui::set_style_bg_grad_color` | mapped |
-| `lv_obj_set_style_bg_grad_dir()` | `Ui::obj_set_style_bg_grad_dir`, `Ui::set_style_bg_grad_dir` | mapped |
-| `lv_obj_set_style_bg_main_stop()` | `Ui::obj_set_style_bg_main_stop`, `Ui::set_style_bg_main_stop` | mapped |
-| `lv_obj_set_style_bg_grad_stop()` | `Ui::obj_set_style_bg_grad_stop`, `Ui::set_style_bg_grad_stop` | mapped |
-| `lv_obj_set_style_bg_main_opa()` | `Ui::obj_set_style_bg_main_opa`, `Ui::set_style_bg_main_opa` | mapped |
-| `lv_obj_set_style_bg_grad_opa()` | `Ui::obj_set_style_bg_grad_opa`, `Ui::set_style_bg_grad_opa` | mapped |
-| `lv_obj_set_style_bg_grad()` | `Ui::obj_set_style_bg_grad`, `Ui::set_style_bg_grad` | mapped |
-| `lv_obj_set_style_bg_image_src()` | `Ui::obj_set_style_bg_image_src`, `Ui::set_style_bg_image_src` | mapped |
-| `lv_obj_set_style_bg_image_opa()` | `Ui::obj_set_style_bg_image_opa`, `Ui::set_style_bg_image_opa` | mapped |
-| `lv_obj_set_style_bg_image_recolor()` | `Ui::obj_set_style_bg_image_recolor`, `Ui::set_style_bg_image_recolor` | mapped |
-| `lv_obj_set_style_bg_image_recolor_opa()` | `Ui::obj_set_style_bg_image_recolor_opa`, `Ui::set_style_bg_image_recolor_opa` | mapped |
-| `lv_obj_set_style_bg_image_tiled()` | `Ui::obj_set_style_bg_image_tiled`, `Ui::set_style_bg_image_tiled` | mapped |
-| `lv_obj_set_style_border_color()` | `Ui::obj_set_style_border_color`, `Ui::set_style_border_color` | mapped |
-| `lv_obj_set_style_border_opa()` | `Ui::obj_set_style_border_opa`, `Ui::set_style_border_opa` | mapped |
-| `lv_obj_set_style_border_width()` | `Ui::obj_set_style_border_width`, `Ui::set_style_border_width` | mapped |
-| `lv_obj_set_style_border_side()` | `Ui::obj_set_style_border_side`, `Ui::set_style_border_side` | mapped |
-| `lv_obj_set_style_border_post()` | `Ui::obj_set_style_border_post`, `Ui::set_style_border_post` | mapped |
-| `lv_obj_set_style_outline_width()` | `Ui::obj_set_style_outline_width`, `Ui::set_style_outline_width` | mapped |
-| `lv_obj_set_style_outline_color()` | `Ui::obj_set_style_outline_color`, `Ui::set_style_outline_color` | mapped |
-| `lv_obj_set_style_outline_opa()` | `Ui::obj_set_style_outline_opa`, `Ui::set_style_outline_opa` | mapped |
-| `lv_obj_set_style_outline_pad()` | `Ui::obj_set_style_outline_pad`, `Ui::set_style_outline_pad` | mapped |
-| `lv_obj_set_style_shadow_width()` | `Ui::obj_set_style_shadow_width`, `Ui::set_style_shadow_width` | mapped |
-| `lv_obj_set_style_shadow_offset_x()` | `Ui::obj_set_style_shadow_offset_x`, `Ui::set_style_shadow_offset_x` | mapped |
-| `lv_obj_set_style_shadow_offset_y()` | `Ui::obj_set_style_shadow_offset_y`, `Ui::set_style_shadow_offset_y` | mapped |
-| `lv_obj_set_style_shadow_spread()` | `Ui::obj_set_style_shadow_spread`, `Ui::set_style_shadow_spread` | mapped |
-| `lv_obj_set_style_shadow_color()` | `Ui::obj_set_style_shadow_color`, `Ui::set_style_shadow_color` | mapped |
-| `lv_obj_set_style_shadow_opa()` | `Ui::obj_set_style_shadow_opa`, `Ui::set_style_shadow_opa` | mapped |
-| `lv_obj_set_style_image_opa()` | `Ui::obj_set_style_image_opa`, `Ui::set_style_image_opa` | mapped |
-| `lv_obj_set_style_image_recolor()` | `Ui::obj_set_style_image_recolor`, `Ui::set_style_image_recolor` | mapped |
-| `lv_obj_set_style_image_recolor_opa()` | `Ui::obj_set_style_image_recolor_opa`, `Ui::set_style_image_recolor_opa` | mapped |
-| `lv_obj_set_style_image_colorkey()` | `Ui::obj_set_style_image_colorkey`, `Ui::set_style_image_colorkey` | mapped |
-| `lv_obj_set_style_line_width()` | `Ui::obj_set_style_line_width`, `Ui::set_style_line_width` | mapped |
-| `lv_obj_set_style_line_dash_width()` | `Ui::obj_set_style_line_dash_width`, `Ui::set_style_line_dash_width` | mapped |
-| `lv_obj_set_style_line_dash_gap()` | `Ui::obj_set_style_line_dash_gap`, `Ui::set_style_line_dash_gap` | mapped |
-| `lv_obj_set_style_line_rounded()` | `Ui::obj_set_style_line_rounded`, `Ui::set_style_line_rounded` | mapped |
-| `lv_obj_set_style_line_color()` | `Ui::obj_set_style_line_color`, `Ui::set_style_line_color` | mapped |
-| `lv_obj_set_style_line_opa()` | `Ui::obj_set_style_line_opa`, `Ui::set_style_line_opa` | mapped |
-| `lv_obj_set_style_arc_width()` | `Ui::obj_set_style_arc_width`, `Ui::set_style_arc_width` | mapped |
-| `lv_obj_set_style_arc_rounded()` | `Ui::obj_set_style_arc_rounded`, `Ui::set_style_arc_rounded` | mapped |
-| `lv_obj_set_style_arc_color()` | `Ui::obj_set_style_arc_color`, `Ui::set_style_arc_color` | mapped |
-| `lv_obj_set_style_arc_opa()` | `Ui::obj_set_style_arc_opa`, `Ui::set_style_arc_opa` | mapped |
-| `lv_obj_set_style_arc_image_src()` | `Ui::obj_set_style_arc_image_src`, `Ui::set_style_arc_image_src` | mapped |
-| `lv_obj_set_style_text_color()` | `Ui::obj_set_style_text_color`, `Ui::set_style_text_color` | mapped |
-| `lv_obj_set_style_text_opa()` | `Ui::obj_set_style_text_opa`, `Ui::set_style_text_opa` | mapped |
-| `lv_obj_set_style_text_font()` | `Ui::obj_set_style_text_font`, `Ui::set_style_text_font` | mapped |
-| `lv_obj_set_style_text_letter_space()` | `Ui::obj_set_style_text_letter_space`, `Ui::set_style_text_letter_space` | mapped |
-| `lv_obj_set_style_text_line_space()` | `Ui::obj_set_style_text_line_space`, `Ui::set_style_text_line_space` | mapped |
-| `lv_obj_set_style_text_decor()` | `Ui::obj_set_style_text_decor`, `Ui::set_style_text_decor` | mapped |
-| `lv_obj_set_style_text_align()` | `Ui::obj_set_style_text_align`, `Ui::set_style_text_align` | mapped |
-| `lv_obj_set_style_text_outline_stroke_color()` | `Ui::obj_set_style_text_outline_stroke_color`, `Ui::set_style_text_outline_stroke_color` | mapped |
-| `lv_obj_set_style_text_outline_stroke_width()` | `Ui::obj_set_style_text_outline_stroke_width`, `Ui::set_style_text_outline_stroke_width` | mapped |
-| `lv_obj_set_style_text_outline_stroke_opa()` | `Ui::obj_set_style_text_outline_stroke_opa`, `Ui::set_style_text_outline_stroke_opa` | mapped |
-| `lv_obj_set_style_text_leading_trim()` | `Ui::obj_set_style_text_leading_trim`, `Ui::set_style_text_leading_trim` | mapped |
-| `lv_obj_set_style_blur_radius()` | `Ui::obj_set_style_blur_radius`, `Ui::set_style_blur_radius` | mapped |
-| `lv_obj_set_style_blur_backdrop()` | `Ui::obj_set_style_blur_backdrop`, `Ui::set_style_blur_backdrop` | mapped |
-| `lv_obj_set_style_blur_quality()` | `Ui::obj_set_style_blur_quality`, `Ui::set_style_blur_quality` | mapped |
-| `lv_obj_set_style_drop_shadow_radius()` | `Ui::obj_set_style_drop_shadow_radius`, `Ui::set_style_drop_shadow_radius` | mapped |
-| `lv_obj_set_style_drop_shadow_offset_x()` | `Ui::obj_set_style_drop_shadow_offset_x`, `Ui::set_style_drop_shadow_offset_x` | mapped |
-| `lv_obj_set_style_drop_shadow_offset_y()` | `Ui::obj_set_style_drop_shadow_offset_y`, `Ui::set_style_drop_shadow_offset_y` | mapped |
-| `lv_obj_set_style_drop_shadow_color()` | `Ui::obj_set_style_drop_shadow_color`, `Ui::set_style_drop_shadow_color` | mapped |
-| `lv_obj_set_style_drop_shadow_opa()` | `Ui::obj_set_style_drop_shadow_opa`, `Ui::set_style_drop_shadow_opa` | mapped |
-| `lv_obj_set_style_drop_shadow_quality()` | `Ui::obj_set_style_drop_shadow_quality`, `Ui::set_style_drop_shadow_quality` | mapped |
-| `lv_obj_set_style_radius()` | `Ui::obj_set_style_radius`, `Ui::set_style_radius` | mapped |
-| `lv_obj_set_style_radial_offset()` | `Ui::obj_set_style_radial_offset`, `Ui::set_style_radial_offset` | mapped |
-| `lv_obj_set_style_clip_corner()` | `Ui::obj_set_style_clip_corner`, `Ui::set_style_clip_corner` | mapped |
-| `lv_obj_set_style_opa()` | `Ui::obj_set_style_opa`, `Ui::set_style_opa` | mapped |
-| `lv_obj_set_style_opa_layered()` | `Ui::obj_set_style_opa_layered`, `Ui::set_style_opa_layered` | mapped |
-| `lv_obj_set_style_color_filter_dsc()` | `Ui::obj_set_style_color_filter_dsc`, `Ui::set_style_color_filter_dsc` | mapped |
-| `lv_obj_set_style_color_filter_opa()` | `Ui::obj_set_style_color_filter_opa`, `Ui::set_style_color_filter_opa` | mapped |
-| `lv_obj_set_style_recolor()` | `Ui::obj_set_style_recolor`, `Ui::set_style_recolor` | mapped |
-| `lv_obj_set_style_recolor_opa()` | `Ui::obj_set_style_recolor_opa`, `Ui::set_style_recolor_opa` | mapped |
-| `lv_obj_set_style_anim()` | `Ui::obj_set_style_anim`, `Ui::set_style_anim` | mapped |
-| `lv_obj_set_style_anim_duration()` | `Ui::obj_set_style_anim_duration`, `Ui::set_style_anim_duration` | mapped |
-| `lv_obj_set_style_transition()` | `Ui::obj_set_style_transition`, `Ui::set_style_transition` | mapped |
-| `lv_obj_set_style_blend_mode()` | `Ui::obj_set_style_blend_mode`, `Ui::set_style_blend_mode` | mapped |
-| `lv_obj_set_style_layout()` | `Ui::obj_set_style_layout`, `Ui::set_style_layout` | mapped |
-| `lv_obj_set_style_base_dir()` | `Ui::obj_set_style_base_dir`, `Ui::set_style_base_dir` | mapped |
-| `lv_obj_set_style_bitmap_mask_src()` | `Ui::obj_set_style_bitmap_mask_src`, `Ui::set_style_bitmap_mask_src` | mapped |
-| `lv_obj_set_style_rotary_sensitivity()` | `Ui::obj_set_style_rotary_sensitivity`, `Ui::set_style_rotary_sensitivity` | mapped |
-| `lv_obj_set_style_flex_flow()` | `Ui::obj_set_style_flex_flow`, `Ui::set_style_flex_flow` | mapped |
-| `lv_obj_set_style_flex_main_place()` | `Ui::obj_set_style_flex_main_place`, `Ui::set_style_flex_main_place` | mapped |
-| `lv_obj_set_style_flex_cross_place()` | `Ui::obj_set_style_flex_cross_place`, `Ui::set_style_flex_cross_place` | mapped |
-| `lv_obj_set_style_flex_track_place()` | `Ui::obj_set_style_flex_track_place`, `Ui::set_style_flex_track_place` | mapped |
-| `lv_obj_set_style_flex_grow()` | `Ui::obj_set_style_flex_grow`, `Ui::set_style_flex_grow` | mapped |
-| `lv_obj_set_style_grid_column_dsc_array()` | `Ui::obj_set_style_grid_column_dsc_array`, `Ui::set_style_grid_column_dsc_array` | mapped |
-| `lv_obj_set_style_grid_column_align()` | `Ui::obj_set_style_grid_column_align`, `Ui::set_style_grid_column_align` | mapped |
-| `lv_obj_set_style_grid_row_dsc_array()` | `Ui::obj_set_style_grid_row_dsc_array`, `Ui::set_style_grid_row_dsc_array` | mapped |
-| `lv_obj_set_style_grid_row_align()` | `Ui::obj_set_style_grid_row_align`, `Ui::set_style_grid_row_align` | mapped |
-| `lv_obj_set_style_grid_cell_column_pos()` | `Ui::obj_set_style_grid_cell_column_pos`, `Ui::set_style_grid_cell_column_pos` | mapped |
-| `lv_obj_set_style_grid_cell_x_align()` | `Ui::obj_set_style_grid_cell_x_align`, `Ui::set_style_grid_cell_x_align` | mapped |
-| `lv_obj_set_style_grid_cell_column_span()` | `Ui::obj_set_style_grid_cell_column_span`, `Ui::set_style_grid_cell_column_span` | mapped |
-| `lv_obj_set_style_grid_cell_row_pos()` | `Ui::obj_set_style_grid_cell_row_pos`, `Ui::set_style_grid_cell_row_pos` | mapped |
-| `lv_obj_set_style_grid_cell_y_align()` | `Ui::obj_set_style_grid_cell_y_align`, `Ui::set_style_grid_cell_y_align` | mapped |
-| `lv_obj_set_style_grid_cell_row_span()` | `Ui::obj_set_style_grid_cell_row_span`, `Ui::set_style_grid_cell_row_span` | mapped |
+| `lv_obj_get_style_drop_shadow_opa()` | `Ui::obj_get_style_drop_shadow_opa` | mapped |
+| `lv_obj_get_style_drop_shadow_quality()` | `Ui::obj_get_style_drop_shadow_quality` | mapped |
+| `lv_obj_get_style_radius()` | `Ui::obj_get_style_radius` | mapped |
+| `lv_obj_get_style_radial_offset()` | `Ui::obj_get_style_radial_offset` | mapped |
+| `lv_obj_get_style_clip_corner()` | `Ui::obj_get_style_clip_corner` | mapped |
+| `lv_obj_get_style_opa()` | `Ui::obj_get_style_opa` | mapped |
+| `lv_obj_get_style_opa_layered()` | `Ui::obj_get_style_opa_layered` | mapped |
+| `lv_obj_get_style_color_filter_dsc()` | `Ui::obj_get_style_color_filter_dsc` | mapped |
+| `lv_obj_get_style_color_filter_opa()` | `Ui::obj_get_style_color_filter_opa` | mapped |
+| `lv_obj_get_style_recolor()` | `Ui::obj_get_style_recolor` | mapped |
+| `lv_obj_get_style_recolor_opa()` | `Ui::obj_get_style_recolor_opa` | mapped |
+| `lv_obj_get_style_anim()` | `Ui::obj_get_style_anim` | mapped |
+| `lv_obj_get_style_anim_duration()` | `Ui::obj_get_style_anim_duration` | mapped |
+| `lv_obj_get_style_transition()` | `Ui::obj_get_style_transition` | mapped |
+| `lv_obj_get_style_blend_mode()` | `Ui::obj_get_style_blend_mode` | mapped |
+| `lv_obj_get_style_layout()` | `Ui::obj_get_style_layout` | mapped |
+| `lv_obj_get_style_base_dir()` | `Ui::obj_get_style_base_dir` | mapped |
+| `lv_obj_get_style_bitmap_mask_src()` | `Ui::obj_get_style_bitmap_mask_src` | mapped |
+| `lv_obj_get_style_rotary_sensitivity()` | `Ui::obj_get_style_rotary_sensitivity` | mapped |
+| `lv_obj_get_style_flex_flow()` | `Ui::obj_get_style_flex_flow` | mapped |
+| `lv_obj_get_style_flex_main_place()` | `Ui::obj_get_style_flex_main_place` | mapped |
+| `lv_obj_get_style_flex_cross_place()` | `Ui::obj_get_style_flex_cross_place` | mapped |
+| `lv_obj_get_style_flex_track_place()` | `Ui::obj_get_style_flex_track_place` | mapped |
+| `lv_obj_get_style_flex_grow()` | `Ui::obj_get_style_flex_grow` | mapped |
+| `lv_obj_get_style_grid_column_dsc_array()` | `Ui::obj_get_style_grid_column_dsc_array` | mapped |
+| `lv_obj_get_style_grid_column_align()` | `Ui::obj_get_style_grid_column_align` | mapped |
+| `lv_obj_get_style_grid_row_dsc_array()` | `Ui::obj_get_style_grid_row_dsc_array` | mapped |
+| `lv_obj_get_style_grid_row_align()` | `Ui::obj_get_style_grid_row_align` | mapped |
+| `lv_obj_get_style_grid_cell_column_pos()` | `Ui::obj_get_style_grid_cell_column_pos` | mapped |
+| `lv_obj_get_style_grid_cell_x_align()` | `Ui::obj_get_style_grid_cell_x_align` | mapped |
+| `lv_obj_get_style_grid_cell_column_span()` | `Ui::obj_get_style_grid_cell_column_span` | mapped |
+| `lv_obj_get_style_grid_cell_row_pos()` | `Ui::obj_get_style_grid_cell_row_pos` | mapped |
+| `lv_obj_get_style_grid_cell_y_align()` | `Ui::obj_get_style_grid_cell_y_align` | mapped |
+| `lv_obj_get_style_grid_cell_row_span()` | `Ui::obj_get_style_grid_cell_row_span` | mapped |
+| `lv_obj_set_style_width()` | `Ui::obj_set_style_width` | mapped |
+| `lv_obj_set_style_min_width()` | `Ui::obj_set_style_min_width` | mapped |
+| `lv_obj_set_style_max_width()` | `Ui::obj_set_style_max_width` | mapped |
+| `lv_obj_set_style_height()` | `Ui::obj_set_style_height` | mapped |
+| `lv_obj_set_style_min_height()` | `Ui::obj_set_style_min_height` | mapped |
+| `lv_obj_set_style_max_height()` | `Ui::obj_set_style_max_height` | mapped |
+| `lv_obj_set_style_length()` | `Ui::obj_set_style_length` | mapped |
+| `lv_obj_set_style_x()` | `Ui::obj_set_style_x` | mapped |
+| `lv_obj_set_style_y()` | `Ui::obj_set_style_y` | mapped |
+| `lv_obj_set_style_align()` | `Ui::obj_set_style_align` | mapped |
+| `lv_obj_set_style_transform_width()` | `Ui::obj_set_style_transform_width` | mapped |
+| `lv_obj_set_style_transform_height()` | `Ui::obj_set_style_transform_height` | mapped |
+| `lv_obj_set_style_translate_x()` | `Ui::obj_set_style_translate_x` | mapped |
+| `lv_obj_set_style_translate_y()` | `Ui::obj_set_style_translate_y` | mapped |
+| `lv_obj_set_style_translate_radial()` | `Ui::obj_set_style_translate_radial` | mapped |
+| `lv_obj_set_style_transform_scale_x()` | `Ui::obj_set_style_transform_scale_x` | mapped |
+| `lv_obj_set_style_transform_scale_y()` | `Ui::obj_set_style_transform_scale_y` | mapped |
+| `lv_obj_set_style_transform_rotation()` | `Ui::obj_set_style_transform_rotation` | mapped |
+| `lv_obj_set_style_transform_pivot_x()` | `Ui::obj_set_style_transform_pivot_x` | mapped |
+| `lv_obj_set_style_transform_pivot_y()` | `Ui::obj_set_style_transform_pivot_y` | mapped |
+| `lv_obj_set_style_transform_skew_x()` | `Ui::obj_set_style_transform_skew_x` | mapped |
+| `lv_obj_set_style_transform_skew_y()` | `Ui::obj_set_style_transform_skew_y` | mapped |
+| `lv_obj_set_style_pad_top()` | `Ui::obj_set_style_pad_top` | mapped |
+| `lv_obj_set_style_pad_bottom()` | `Ui::obj_set_style_pad_bottom` | mapped |
+| `lv_obj_set_style_pad_left()` | `Ui::obj_set_style_pad_left` | mapped |
+| `lv_obj_set_style_pad_right()` | `Ui::obj_set_style_pad_right` | mapped |
+| `lv_obj_set_style_pad_row()` | `Ui::obj_set_style_pad_row` | mapped |
+| `lv_obj_set_style_pad_column()` | `Ui::obj_set_style_pad_column` | mapped |
+| `lv_obj_set_style_pad_radial()` | `Ui::obj_set_style_pad_radial` | mapped |
+| `lv_obj_set_style_margin_top()` | `Ui::obj_set_style_margin_top` | mapped |
+| `lv_obj_set_style_margin_bottom()` | `Ui::obj_set_style_margin_bottom` | mapped |
+| `lv_obj_set_style_margin_left()` | `Ui::obj_set_style_margin_left` | mapped |
+| `lv_obj_set_style_margin_right()` | `Ui::obj_set_style_margin_right` | mapped |
+| `lv_obj_set_style_bg_color()` | `Ui::obj_set_style_bg_color` | mapped |
+| `lv_obj_set_style_bg_opa()` | `Ui::obj_set_style_bg_opa` | mapped |
+| `lv_obj_set_style_bg_grad_color()` | `Ui::obj_set_style_bg_grad_color` | mapped |
+| `lv_obj_set_style_bg_grad_dir()` | `Ui::obj_set_style_bg_grad_dir` | mapped |
+| `lv_obj_set_style_bg_main_stop()` | `Ui::obj_set_style_bg_main_stop` | mapped |
+| `lv_obj_set_style_bg_grad_stop()` | `Ui::obj_set_style_bg_grad_stop` | mapped |
+| `lv_obj_set_style_bg_main_opa()` | `Ui::obj_set_style_bg_main_opa` | mapped |
+| `lv_obj_set_style_bg_grad_opa()` | `Ui::obj_set_style_bg_grad_opa` | mapped |
+| `lv_obj_set_style_bg_grad()` | `Ui::obj_set_style_bg_grad` | mapped |
+| `lv_obj_set_style_bg_image_src()` | `Ui::obj_set_style_bg_image_src` | mapped |
+| `lv_obj_set_style_bg_image_opa()` | `Ui::obj_set_style_bg_image_opa` | mapped |
+| `lv_obj_set_style_bg_image_recolor()` | `Ui::obj_set_style_bg_image_recolor` | mapped |
+| `lv_obj_set_style_bg_image_recolor_opa()` | `Ui::obj_set_style_bg_image_recolor_opa` | mapped |
+| `lv_obj_set_style_bg_image_tiled()` | `Ui::obj_set_style_bg_image_tiled` | mapped |
+| `lv_obj_set_style_border_color()` | `Ui::obj_set_style_border_color` | mapped |
+| `lv_obj_set_style_border_opa()` | `Ui::obj_set_style_border_opa` | mapped |
+| `lv_obj_set_style_border_width()` | `Ui::obj_set_style_border_width` | mapped |
+| `lv_obj_set_style_border_side()` | `Ui::obj_set_style_border_side` | mapped |
+| `lv_obj_set_style_border_post()` | `Ui::obj_set_style_border_post` | mapped |
+| `lv_obj_set_style_outline_width()` | `Ui::obj_set_style_outline_width` | mapped |
+| `lv_obj_set_style_outline_color()` | `Ui::obj_set_style_outline_color` | mapped |
+| `lv_obj_set_style_outline_opa()` | `Ui::obj_set_style_outline_opa` | mapped |
+| `lv_obj_set_style_outline_pad()` | `Ui::obj_set_style_outline_pad` | mapped |
+| `lv_obj_set_style_shadow_width()` | `Ui::obj_set_style_shadow_width` | mapped |
+| `lv_obj_set_style_shadow_offset_x()` | `Ui::obj_set_style_shadow_offset_x` | mapped |
+| `lv_obj_set_style_shadow_offset_y()` | `Ui::obj_set_style_shadow_offset_y` | mapped |
+| `lv_obj_set_style_shadow_spread()` | `Ui::obj_set_style_shadow_spread` | mapped |
+| `lv_obj_set_style_shadow_color()` | `Ui::obj_set_style_shadow_color` | mapped |
+| `lv_obj_set_style_shadow_opa()` | `Ui::obj_set_style_shadow_opa` | mapped |
+| `lv_obj_set_style_image_opa()` | `Ui::obj_set_style_image_opa` | mapped |
+| `lv_obj_set_style_image_recolor()` | `Ui::obj_set_style_image_recolor` | mapped |
+| `lv_obj_set_style_image_recolor_opa()` | `Ui::obj_set_style_image_recolor_opa` | mapped |
+| `lv_obj_set_style_image_colorkey()` | `Ui::obj_set_style_image_colorkey` | mapped |
+| `lv_obj_set_style_line_width()` | `Ui::obj_set_style_line_width` | mapped |
+| `lv_obj_set_style_line_dash_width()` | `Ui::obj_set_style_line_dash_width` | mapped |
+| `lv_obj_set_style_line_dash_gap()` | `Ui::obj_set_style_line_dash_gap` | mapped |
+| `lv_obj_set_style_line_rounded()` | `Ui::obj_set_style_line_rounded` | mapped |
+| `lv_obj_set_style_line_color()` | `Ui::obj_set_style_line_color` | mapped |
+| `lv_obj_set_style_line_opa()` | `Ui::obj_set_style_line_opa` | mapped |
+| `lv_obj_set_style_arc_width()` | `Ui::obj_set_style_arc_width` | mapped |
+| `lv_obj_set_style_arc_rounded()` | `Ui::obj_set_style_arc_rounded` | mapped |
+| `lv_obj_set_style_arc_color()` | `Ui::obj_set_style_arc_color` | mapped |
+| `lv_obj_set_style_arc_opa()` | `Ui::obj_set_style_arc_opa` | mapped |
+| `lv_obj_set_style_arc_image_src()` | `Ui::obj_set_style_arc_image_src` | mapped |
+| `lv_obj_set_style_text_color()` | `Ui::obj_set_style_text_color` | mapped |
+| `lv_obj_set_style_text_opa()` | `Ui::obj_set_style_text_opa` | mapped |
+| `lv_obj_set_style_text_font()` | `Ui::obj_set_style_text_font` | mapped |
+| `lv_obj_set_style_text_letter_space()` | `Ui::obj_set_style_text_letter_space` | mapped |
+| `lv_obj_set_style_text_line_space()` | `Ui::obj_set_style_text_line_space` | mapped |
+| `lv_obj_set_style_text_decor()` | `Ui::obj_set_style_text_decor` | mapped |
+| `lv_obj_set_style_text_align()` | `Ui::obj_set_style_text_align` | mapped |
+| `lv_obj_set_style_text_outline_stroke_color()` | `Ui::obj_set_style_text_outline_stroke_color` | mapped |
+| `lv_obj_set_style_text_outline_stroke_width()` | `Ui::obj_set_style_text_outline_stroke_width` | mapped |
+| `lv_obj_set_style_text_outline_stroke_opa()` | `Ui::obj_set_style_text_outline_stroke_opa` | mapped |
+| `lv_obj_set_style_text_leading_trim()` | `Ui::obj_set_style_text_leading_trim` | mapped |
+| `lv_obj_set_style_blur_radius()` | `Ui::obj_set_style_blur_radius` | mapped |
+| `lv_obj_set_style_blur_backdrop()` | `Ui::obj_set_style_blur_backdrop` | mapped |
+| `lv_obj_set_style_blur_quality()` | `Ui::obj_set_style_blur_quality` | mapped |
+| `lv_obj_set_style_drop_shadow_radius()` | `Ui::obj_set_style_drop_shadow_radius` | mapped |
+| `lv_obj_set_style_drop_shadow_offset_x()` | `Ui::obj_set_style_drop_shadow_offset_x` | mapped |
+| `lv_obj_set_style_drop_shadow_offset_y()` | `Ui::obj_set_style_drop_shadow_offset_y` | mapped |
+| `lv_obj_set_style_drop_shadow_color()` | `Ui::obj_set_style_drop_shadow_color` | mapped |
+| `lv_obj_set_style_drop_shadow_opa()` | `Ui::obj_set_style_drop_shadow_opa` | mapped |
+| `lv_obj_set_style_drop_shadow_quality()` | `Ui::obj_set_style_drop_shadow_quality` | mapped |
+| `lv_obj_set_style_radius()` | `Ui::obj_set_style_radius` | mapped |
+| `lv_obj_set_style_radial_offset()` | `Ui::obj_set_style_radial_offset` | mapped |
+| `lv_obj_set_style_clip_corner()` | `Ui::obj_set_style_clip_corner` | mapped |
+| `lv_obj_set_style_opa()` | `Ui::obj_set_style_opa` | mapped |
+| `lv_obj_set_style_opa_layered()` | `Ui::obj_set_style_opa_layered` | mapped |
+| `lv_obj_set_style_color_filter_dsc()` | `Ui::obj_set_style_color_filter_dsc` | mapped |
+| `lv_obj_set_style_color_filter_opa()` | `Ui::obj_set_style_color_filter_opa` | mapped |
+| `lv_obj_set_style_recolor()` | `Ui::obj_set_style_recolor` | mapped |
+| `lv_obj_set_style_recolor_opa()` | `Ui::obj_set_style_recolor_opa` | mapped |
+| `lv_obj_set_style_anim()` | `Ui::obj_set_style_anim` | mapped |
+| `lv_obj_set_style_anim_duration()` | `Ui::obj_set_style_anim_duration` | mapped |
+| `lv_obj_set_style_transition()` | `Ui::obj_set_style_transition` | mapped |
+| `lv_obj_set_style_blend_mode()` | `Ui::obj_set_style_blend_mode` | mapped |
+| `lv_obj_set_style_layout()` | `Ui::obj_set_style_layout` | mapped |
+| `lv_obj_set_style_base_dir()` | `Ui::obj_set_style_base_dir` | mapped |
+| `lv_obj_set_style_bitmap_mask_src()` | `Ui::obj_set_style_bitmap_mask_src` | mapped |
+| `lv_obj_set_style_rotary_sensitivity()` | `Ui::obj_set_style_rotary_sensitivity` | mapped |
+| `lv_obj_set_style_flex_flow()` | `Ui::obj_set_style_flex_flow` | mapped |
+| `lv_obj_set_style_flex_main_place()` | `Ui::obj_set_style_flex_main_place` | mapped |
+| `lv_obj_set_style_flex_cross_place()` | `Ui::obj_set_style_flex_cross_place` | mapped |
+| `lv_obj_set_style_flex_track_place()` | `Ui::obj_set_style_flex_track_place` | mapped |
+| `lv_obj_set_style_flex_grow()` | `Ui::obj_set_style_flex_grow` | mapped |
+| `lv_obj_set_style_grid_column_dsc_array()` | `Ui::obj_set_style_grid_column_dsc_array` | mapped |
+| `lv_obj_set_style_grid_column_align()` | `Ui::obj_set_style_grid_column_align` | mapped |
+| `lv_obj_set_style_grid_row_dsc_array()` | `Ui::obj_set_style_grid_row_dsc_array` | mapped |
+| `lv_obj_set_style_grid_row_align()` | `Ui::obj_set_style_grid_row_align` | mapped |
+| `lv_obj_set_style_grid_cell_column_pos()` | `Ui::obj_set_style_grid_cell_column_pos` | mapped |
+| `lv_obj_set_style_grid_cell_x_align()` | `Ui::obj_set_style_grid_cell_x_align` | mapped |
+| `lv_obj_set_style_grid_cell_column_span()` | `Ui::obj_set_style_grid_cell_column_span` | mapped |
+| `lv_obj_set_style_grid_cell_row_pos()` | `Ui::obj_set_style_grid_cell_row_pos` | mapped |
+| `lv_obj_set_style_grid_cell_y_align()` | `Ui::obj_set_style_grid_cell_y_align` | mapped |
+| `lv_obj_set_style_grid_cell_row_span()` | `Ui::obj_set_style_grid_cell_row_span` | mapped |
 
 ### core/lv_obj_tree.h
 
@@ -1771,7 +1770,7 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_draw_arc_dsc_init()` | `ArcDsc::new` | mapped |
 | `lv_draw_task_get_arc_dsc()` | `DrawCtx::task_get_arc_dsc` | mapped |
 | `lv_draw_arc()` | `DrawCtx::draw_arc`, `Ui::draw_arc` | mapped |
-| `lv_draw_arc_get_area()` | `ferrovgl_core::draw::arc::arc_get_area` | mapped |
+| `lv_draw_arc_get_area()` | `ferrovgl_core::draw::arc::get_area` | mapped |
 
 ### draw/lv_draw_blur.h
 
@@ -4364,28 +4363,28 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_obj_get_child_cnt()` | `Ui::obj_get_child_count` | excluded: deprecated alias of `lv_obj_get_child_count()` |
 | `lv_obj_get_disp()` | `Ui::obj_get_display` | excluded: deprecated alias of `lv_obj_get_display()` |
 | `lv_obj_delete_anim_ready_cb()` | `Ui::obj_delete_anim_completed_cb` | excluded: deprecated alias of `lv_obj_delete_anim_completed_cb()` |
-| `lv_obj_get_style_anim_time()` | `Ui::get_style_anim_duration`, `Ui::obj_get_style_anim_duration` | excluded: deprecated alias of `lv_obj_get_style_anim_duration()` |
-| `lv_obj_get_style_img_opa()` | `Ui::get_style_image_opa`, `Ui::obj_get_style_image_opa` | excluded: deprecated alias of `lv_obj_get_style_image_opa()` |
-| `lv_obj_get_style_img_recolor()` | `Ui::get_style_image_recolor`, `Ui::obj_get_style_image_recolor` | excluded: deprecated alias of `lv_obj_get_style_image_recolor()` |
+| `lv_obj_get_style_anim_time()` | `Ui::obj_get_style_anim_duration` | excluded: deprecated alias of `lv_obj_get_style_anim_duration()` |
+| `lv_obj_get_style_img_opa()` | `Ui::obj_get_style_image_opa` | excluded: deprecated alias of `lv_obj_get_style_image_opa()` |
+| `lv_obj_get_style_img_recolor()` | `Ui::obj_get_style_image_recolor` | excluded: deprecated alias of `lv_obj_get_style_image_recolor()` |
 | `lv_obj_get_style_img_recolor_filtered()` | `Ui::obj_get_style_image_recolor_filtered` | excluded: deprecated alias of `lv_obj_get_style_image_recolor_filtered()` |
-| `lv_obj_get_style_img_recolor_opa()` | `Ui::get_style_image_recolor_opa`, `Ui::obj_get_style_image_recolor_opa` | excluded: deprecated alias of `lv_obj_get_style_image_recolor_opa()` |
-| `lv_obj_get_style_shadow_ofs_x()` | `Ui::get_style_shadow_offset_x`, `Ui::obj_get_style_shadow_offset_x` | excluded: deprecated alias of `lv_obj_get_style_shadow_offset_x()` |
-| `lv_obj_get_style_shadow_ofs_y()` | `Ui::get_style_shadow_offset_y`, `Ui::obj_get_style_shadow_offset_y` | excluded: deprecated alias of `lv_obj_get_style_shadow_offset_y()` |
-| `lv_obj_get_style_transform_angle()` | `Ui::get_style_transform_rotation`, `Ui::obj_get_style_transform_rotation` | excluded: deprecated alias of `lv_obj_get_style_transform_rotation()` |
-| `lv_obj_get_style_bg_img_src()` | `Ui::get_style_bg_image_src`, `Ui::obj_get_style_bg_image_src` | excluded: deprecated alias of `lv_obj_get_style_bg_image_src()` |
-| `lv_obj_get_style_bg_img_recolor()` | `Ui::get_style_bg_image_recolor`, `Ui::obj_get_style_bg_image_recolor` | excluded: deprecated alias of `lv_obj_get_style_bg_image_recolor()` |
-| `lv_obj_get_style_bg_img_recolor_opa()` | `Ui::get_style_bg_image_recolor_opa`, `Ui::obj_get_style_bg_image_recolor_opa` | excluded: deprecated alias of `lv_obj_get_style_bg_image_recolor_opa()` |
-| `lv_obj_set_style_anim_time()` | `Ui::obj_set_style_anim_duration`, `Ui::set_style_anim_duration` | excluded: deprecated alias of `lv_obj_set_style_anim_duration()` |
-| `lv_obj_set_style_img_opa()` | `Ui::obj_set_style_image_opa`, `Ui::set_style_image_opa` | excluded: deprecated alias of `lv_obj_set_style_image_opa()` |
-| `lv_obj_set_style_img_recolor()` | `Ui::obj_set_style_image_recolor`, `Ui::set_style_image_recolor` | excluded: deprecated alias of `lv_obj_set_style_image_recolor()` |
-| `lv_obj_set_style_img_recolor_opa()` | `Ui::obj_set_style_image_recolor_opa`, `Ui::set_style_image_recolor_opa` | excluded: deprecated alias of `lv_obj_set_style_image_recolor_opa()` |
-| `lv_obj_set_style_shadow_ofs_x()` | `Ui::obj_set_style_shadow_offset_x`, `Ui::set_style_shadow_offset_x` | excluded: deprecated alias of `lv_obj_set_style_shadow_offset_x()` |
-| `lv_obj_set_style_shadow_ofs_y()` | `Ui::obj_set_style_shadow_offset_y`, `Ui::set_style_shadow_offset_y` | excluded: deprecated alias of `lv_obj_set_style_shadow_offset_y()` |
+| `lv_obj_get_style_img_recolor_opa()` | `Ui::obj_get_style_image_recolor_opa` | excluded: deprecated alias of `lv_obj_get_style_image_recolor_opa()` |
+| `lv_obj_get_style_shadow_ofs_x()` | `Ui::obj_get_style_shadow_offset_x` | excluded: deprecated alias of `lv_obj_get_style_shadow_offset_x()` |
+| `lv_obj_get_style_shadow_ofs_y()` | `Ui::obj_get_style_shadow_offset_y` | excluded: deprecated alias of `lv_obj_get_style_shadow_offset_y()` |
+| `lv_obj_get_style_transform_angle()` | `Ui::obj_get_style_transform_rotation` | excluded: deprecated alias of `lv_obj_get_style_transform_rotation()` |
+| `lv_obj_get_style_bg_img_src()` | `Ui::obj_get_style_bg_image_src` | excluded: deprecated alias of `lv_obj_get_style_bg_image_src()` |
+| `lv_obj_get_style_bg_img_recolor()` | `Ui::obj_get_style_bg_image_recolor` | excluded: deprecated alias of `lv_obj_get_style_bg_image_recolor()` |
+| `lv_obj_get_style_bg_img_recolor_opa()` | `Ui::obj_get_style_bg_image_recolor_opa` | excluded: deprecated alias of `lv_obj_get_style_bg_image_recolor_opa()` |
+| `lv_obj_set_style_anim_time()` | `Ui::obj_set_style_anim_duration` | excluded: deprecated alias of `lv_obj_set_style_anim_duration()` |
+| `lv_obj_set_style_img_opa()` | `Ui::obj_set_style_image_opa` | excluded: deprecated alias of `lv_obj_set_style_image_opa()` |
+| `lv_obj_set_style_img_recolor()` | `Ui::obj_set_style_image_recolor` | excluded: deprecated alias of `lv_obj_set_style_image_recolor()` |
+| `lv_obj_set_style_img_recolor_opa()` | `Ui::obj_set_style_image_recolor_opa` | excluded: deprecated alias of `lv_obj_set_style_image_recolor_opa()` |
+| `lv_obj_set_style_shadow_ofs_x()` | `Ui::obj_set_style_shadow_offset_x` | excluded: deprecated alias of `lv_obj_set_style_shadow_offset_x()` |
+| `lv_obj_set_style_shadow_ofs_y()` | `Ui::obj_set_style_shadow_offset_y` | excluded: deprecated alias of `lv_obj_set_style_shadow_offset_y()` |
 | `lv_obj_set_style_transform_zoom()` | `Ui::obj_set_style_transform_scale` | excluded: deprecated alias of `lv_obj_set_style_transform_scale()` |
-| `lv_obj_set_style_transform_angle()` | `Ui::obj_set_style_transform_rotation`, `Ui::set_style_transform_rotation` | excluded: deprecated alias of `lv_obj_set_style_transform_rotation()` |
-| `lv_obj_set_style_bg_img_src()` | `Ui::obj_set_style_bg_image_src`, `Ui::set_style_bg_image_src` | excluded: deprecated alias of `lv_obj_set_style_bg_image_src()` |
-| `lv_obj_set_style_bg_img_recolor()` | `Ui::obj_set_style_bg_image_recolor`, `Ui::set_style_bg_image_recolor` | excluded: deprecated alias of `lv_obj_set_style_bg_image_recolor()` |
-| `lv_obj_set_style_bg_img_recolor_opa()` | `Ui::obj_set_style_bg_image_recolor_opa`, `Ui::set_style_bg_image_recolor_opa` | excluded: deprecated alias of `lv_obj_set_style_bg_image_recolor_opa()` |
+| `lv_obj_set_style_transform_angle()` | `Ui::obj_set_style_transform_rotation` | excluded: deprecated alias of `lv_obj_set_style_transform_rotation()` |
+| `lv_obj_set_style_bg_img_src()` | `Ui::obj_set_style_bg_image_src` | excluded: deprecated alias of `lv_obj_set_style_bg_image_src()` |
+| `lv_obj_set_style_bg_img_recolor()` | `Ui::obj_set_style_bg_image_recolor` | excluded: deprecated alias of `lv_obj_set_style_bg_image_recolor()` |
+| `lv_obj_set_style_bg_img_recolor_opa()` | `Ui::obj_set_style_bg_image_recolor_opa` | excluded: deprecated alias of `lv_obj_set_style_bg_image_recolor_opa()` |
 | `lv_style_set_anim_time()` | `Style::set_anim_duration` | excluded: deprecated alias of `lv_style_set_anim_duration()` |
 | `lv_style_set_img_opa()` | `Style::set_image_opa` | excluded: deprecated alias of `lv_style_set_image_opa()` |
 | `lv_style_set_img_recolor()` | `Style::set_image_recolor` | excluded: deprecated alias of `lv_style_set_image_recolor()` |

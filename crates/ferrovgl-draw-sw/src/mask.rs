@@ -126,6 +126,7 @@ pub struct MaskAngleParam {
 /// Upstream's `buf` (the single allocation backing the three arrays) is
 /// omitted: each array owns its `Vec`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct RadiusCircleDsc {
     /// `cir_opa`: opacity of the anti-aliased pixels.
     pub cir_opa: Vec<Opa>,
@@ -143,6 +144,7 @@ pub struct RadiusCircleDsc {
 
 /// `lv_draw_sw_mask_radius_circle_dsc_arr_t`: the circle cache.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct CircleCache {
     /// The entries.
     pub entries: [RadiusCircleDsc; CIRCLE_CACHE_SIZE],
@@ -190,12 +192,21 @@ pub struct MaskFadeParam {
 }
 
 /// `lv_draw_sw_mask_map_param_t`
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MaskMapParam<'a> {
     /// `cfg.coords`
     pub coords: Area,
     /// `cfg.map`: one opacity byte per pixel of `coords`.
     pub map: &'a [Opa],
+}
+
+impl core::fmt::Debug for MaskMapParam<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MaskMapParam")
+            .field("coords", &self.coords)
+            .field("map", &crate::blend::ByteLen(self.map.len()))
+            .finish()
+    }
 }
 
 /// Any mask parameter (`void * p` with its `lv_draw_sw_mask_common_dsc_t`).

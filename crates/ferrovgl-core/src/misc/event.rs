@@ -413,7 +413,7 @@ pub type EventCallback = Rc<dyn for<'p> Fn(&mut Ui, &mut Event<'p>)>;
 
 /// Handle of an event descriptor (`lv_event_dsc_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct EventDscId(pub Key);
+pub struct EventDscId(#[doc(hidden)] pub Key);
 
 /// The `LV_USE_EXT_DATA` release hook. A removed descriptor passes its
 /// external data here before marking itself for deferred deletion.
@@ -655,7 +655,7 @@ impl core::fmt::Debug for EventParam<'_> {
 /// `lv_event_mark_deleted()` walks the stack. `current_target` must be kept
 /// in step with [`Event::current_target`] while bubbling / trickling.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct EventFrame {
+pub(crate) struct EventFrame {
     /// `original_target`
     pub original_target: EventTarget,
     /// `current_target`
@@ -689,14 +689,25 @@ pub struct Event<'p> {
     /// `stop_trickling`
     pub stop_trickling: bool,
     /// `deleted`: the target was deleted during dispatch. `event_send`
-    /// copies it back from the [`EventFrame`] after every callback.
-    pub deleted: bool,
+    /// copies it back from the `EventFrame` after every callback.
+    /// Dispatch bookkeeping, so not public: a handler writing it would
+    /// break deletion detection.
+    pub(crate) deleted: bool,
     /// `prev`: index of this event's frame in `Ui::event_stack` while it
     /// is pushed (`None` before `event_push` / after `event_pop`).
-    pub frame: Option<usize>,
+    /// Dispatch bookkeeping, so not public.
+    pub(crate) frame: Option<usize>,
 }
 
 impl<'p> Event<'p> {
+    /// A zeroed `lv_event_t` with `code`, `original_target` (also the
+    /// current target) and `param` set, ready for [`Ui::event_send`]
+    /// (C builds it on the stack with `lv_memzero` and field writes).
+    #[must_use]
+    pub fn new(code: EventCode, original_target: EventTarget, param: EventParam<'p>) -> Self {
+        event_new(code, original_target, param)
+    }
+
     /// `lv_event_get_target()`
     #[inline]
     #[must_use]
@@ -995,7 +1006,7 @@ fn event_code_in_array(code: EventCode, arr: &[EventCode]) -> bool {
 /// shared with the descriptor, so this drops the event's reference; the
 /// data itself is released when the last reference (usually the
 /// descriptor's) goes away.
-pub fn event_free_user_data_cb(_ui: &mut Ui, e: &mut Event<'_>) {
+pub fn free_user_data_cb(_ui: &mut Ui, e: &mut Event<'_>) {
     let p = e.user_data.take();
     drop(p);
 }
@@ -2169,7 +2180,7 @@ mod tests {
         let data: Rc<dyn Any> = Rc::new(1u8);
         ui.event_add(
             &mut list,
-            Rc::new(event_free_user_data_cb),
+            Rc::new(free_user_data_cb),
             EventCode::DELETE.into(),
             Some(data.clone()),
         );

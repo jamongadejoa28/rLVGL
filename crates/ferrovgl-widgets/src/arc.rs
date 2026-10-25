@@ -21,7 +21,6 @@ use alloc::boxed::Box;
 
 use ferrovgl_core::core::obj::{OBJ_CLASS, ObjClassEditable, ObjClassGroupDef};
 use ferrovgl_core::core::ui::DPI_DEF;
-use ferrovgl_core::draw::arc::arc_get_area;
 use ferrovgl_core::draw::rect::RADIUS_CIRCLE;
 use ferrovgl_core::draw::{ArcDsc, RectDsc};
 use ferrovgl_core::group::{KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
@@ -1130,7 +1129,7 @@ fn inv_arc_area(
 
     let mut inv_area = Area::default();
     /*`int32_t` radius to the `uint16_t` parameter*/
-    arc_get_area(
+    ferrovgl_core::draw::arc::get_area(
         c.x,
         c.y,
         r as u16,
@@ -1437,7 +1436,7 @@ pub(crate) fn arc_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Optio
     if !ui.obj_is_valid(obj) {
         return None; /*LV_CHECK_OBJ*/
     }
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         ferrovgl_core::misc::check_arg_failed("lv_arc_bind_value: subject != NULL");
         return None;
     };
@@ -1466,7 +1465,7 @@ fn arc_value_changed_event_cb(ui: &mut Ui, e: &mut Event<'_>) {
     let Some(subject) = e.user_data().and_then(SubjectId::from_user_data) else {
         return; /*LV_ASSERT(subject != NULL)*/
     };
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         return;
     };
 
@@ -1485,7 +1484,7 @@ fn arc_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) 
     let Some(target) = ui.observer_get_target_obj(observer) else {
         return; /*LV_ASSERT(observer->target != NULL)*/
     };
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return; /*LV_ASSERT(subject != NULL)*/
     };
     let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());

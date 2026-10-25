@@ -348,6 +348,10 @@ impl Bar {
 
     /// `lv_bar_t::indic_area`: the indicator area computed by the last
     /// `draw_indic()` of `lv_bar.c` (upstream tests read the field directly).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn indic_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |bar| bar.indic_area)
@@ -979,7 +983,7 @@ pub(crate) fn bar_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Optio
     if !ui.obj_is_valid(obj) {
         return None; /*LV_CHECK_OBJ*/
     }
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         ferrovgl_core::misc::check_arg_failed("lv_bar_bind_value: subject != NULL");
         return None;
     };
@@ -997,7 +1001,7 @@ fn bar_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) 
     let Some(obj) = ui.observer_get_target_obj(observer) else {
         return;
     };
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return;
     };
     let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());

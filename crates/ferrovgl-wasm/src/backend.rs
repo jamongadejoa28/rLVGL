@@ -29,6 +29,7 @@ pub trait Surface {
 /// How flushed buffers are laid out, sampled from the display before each
 /// refresh so changes made by the application are followed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct FlushConfig {
     /// `lv_display_get_render_mode()`
     pub render_mode: RenderMode,

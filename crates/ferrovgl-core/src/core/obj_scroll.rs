@@ -15,7 +15,7 @@
 //!   C static callbacks (`lv_obj_scroll_by_raw(obj, v + scroll_x, 0)`).
 //! - `LV_EVENT_SCROLL_BEGIN` of an animated scroll passes the not yet started
 //!   `lv_anim_t` template (a stack variable in C) so handlers can modify it.
-//!   Here the template is staged in [`crate::misc::anim::AnimState::anims`]
+//!   Here the template is staged in `AnimState::anims`
 //!   without being linked into the animation list for the duration of the
 //!   event ([`EventParam::Anim`]); afterwards the (possibly modified)
 //!   template is taken back and started, like C starts `&a`.

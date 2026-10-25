@@ -2242,8 +2242,7 @@ the upstream documentation applies; only ownership is redesigned
   C object argument first: `lv_obj_set_width(obj, 100)` is
   `ui.obj_set_width(obj, 100)`, `lv_obj_add_style(obj, &s, sel)` is
   `ui.obj_add_style(obj, s, sel)`, `lv_timer_create(cb, period, ud)` is
-  `ui.timer_create(cb, period, ud)`. The generated style setters also have
-  short aliases (`ui.set_style_bg_color(obj, c, sel)`).
+  `ui.timer_create(cb, period, ud)`.
 - **Layer 2: widget handles.** Every widget of `ferrovgl_widgets` is a `Copy`
   newtype over `Obj` whose methods take the `Ui` first:
   `lv_label_create(parent)` is `Label::create(&mut ui, parent)` and

@@ -286,10 +286,8 @@ mod tests {
             diff_act: 70_000,
             btn_id: 2,
         }));
-        let prefilled = IndevReadData {
-            key: 9,
-            ..IndevReadData::default()
-        };
+        let mut prefilled = IndevReadData::default();
+        prefilled.key = 9;
 
         let mut data = prefilled.clone();
         read(&state, IndevType::Pointer, &mut data);

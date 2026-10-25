@@ -14,8 +14,7 @@ pub type DelayCallback = fn(u32);
 
 /// `lv_tick_state_t`
 #[derive(Clone, Debug, Default)]
-#[non_exhaustive]
-pub struct TickState {
+pub(crate) struct TickState {
     /// `sys_time`
     pub sys_time: u32,
     /// `sys_irq_flag`: cleared by `lv_tick_inc()`, set by every

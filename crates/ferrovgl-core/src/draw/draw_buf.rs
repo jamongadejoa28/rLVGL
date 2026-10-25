@@ -301,7 +301,11 @@ fn convert_premultiply(header: &ImageHeader, data: &mut [u8]) -> LvResult {
 }
 
 /// `lv_draw_buf_t`
+///
+/// Built with [`DrawBuf::create`], [`DrawBuf::init`] or the other
+/// constructors; the fields mirror the C struct and may grow.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct DrawBuf {
     /// `header`
     pub header: ImageHeader,

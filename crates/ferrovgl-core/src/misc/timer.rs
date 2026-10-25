@@ -23,7 +23,7 @@ const DEF_PERIOD: u32 = 500;
 
 /// Handle of a timer (`lv_timer_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TimerId(pub Key);
+pub struct TimerId(#[doc(hidden)] pub Key);
 
 /// `lv_timer_cb_t`
 pub type TimerCallback = Rc<dyn Fn(&mut Ui, TimerId)>;
@@ -82,8 +82,7 @@ impl core::fmt::Debug for TimerData {
 }
 
 /// `lv_timer_state_t`
-#[non_exhaustive]
-pub struct TimerState {
+pub(crate) struct TimerState {
     /// `timer_ll`
     pub timers: Arena<TimerData>,
     /// Order of `timer_ll` (head first): `lv_timer_create_basic` is

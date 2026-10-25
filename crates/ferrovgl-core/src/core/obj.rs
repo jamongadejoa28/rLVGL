@@ -27,18 +27,18 @@ use crate::misc::check_arg_failed;
 use crate::misc::color::{OPA_MAX, OPA_MIN, OPA_TRANSP, opa_mix2};
 use crate::misc::event::{
     CoverRes, Event, EventCallback, EventCode, EventList, EventParam, EventTarget, LvResult,
-    event_free_user_data_cb,
+    free_user_data_cb,
 };
 use crate::misc::style::{Part, State, StyleProp, StyleValue};
 
 /// Handle of an object slot in [`Ui::objs`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ObjId(pub Key);
+pub struct ObjId(#[doc(hidden)] pub Key);
 
 /// `lv_obj_t *`: a `Copy` handle to an object. Widget handles are newtypes
 /// over `Obj`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Obj(pub ObjId);
+pub struct Obj(#[doc(hidden)] pub ObjId);
 
 impl From<ObjId> for Obj {
     fn from(id: ObjId) -> Self {
@@ -167,6 +167,7 @@ pub enum ScrollSnap {
 /// `lv_layer_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum LayerType {
     /// `LV_LAYER_TYPE_NONE`
     #[default]
@@ -240,12 +241,14 @@ impl core::fmt::Debug for dyn WidgetState {
 impl dyn WidgetState {
     /// Downcast to `T`, walking the embedded base states.
     #[inline]
+    #[must_use]
     pub fn get<T: Any>(&self) -> Option<&T> {
         self.query(TypeId::of::<T>())?.downcast_ref::<T>()
     }
 
     /// Mutable version of `get`.
     #[inline]
+    #[must_use]
     pub fn get_mut<T: Any>(&mut self) -> Option<&mut T> {
         self.query_mut(TypeId::of::<T>())?.downcast_mut::<T>()
     }
@@ -1159,12 +1162,14 @@ fn call_delete_cb(ui: &mut Ui, e: &mut Event<'_>) {
 
 /// `lv_obj_add_child()`: append `child` to `parent->spec_attr->children`.
 ///
-/// Defined in `lv_obj.c` upstream; the `Ui::obj_add_child` declaration of
-/// `obj_tree.rs` delegates here. Like upstream the caller allocates the
+/// The literal `lv_obj.c` body, compiled for its unit tests only: the
+/// public operation is `Ui::obj_add_child` (`obj_tree.rs`), which also
+/// allocates a missing `spec_attr`. Like upstream the caller allocates the
 /// parent's `spec_attr` first (`lv_obj_class_create_obj()`,
 /// `lv_obj_set_parent()`); C dereferences it unchecked, here a missing
 /// `spec_attr` returns [`LvResult::Invalid`] (the realloc-failure result).
-pub fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
+#[cfg(test)]
+pub(crate) fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
     if !ui.check_obj(parent) {
         return LvResult::Invalid;
     }
@@ -1181,11 +1186,13 @@ pub fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
 /// `lv_obj_remove_child()`: remove `child` from
 /// `parent->spec_attr->children`, shifting the following children down.
 ///
-/// Defined in `lv_obj.c` upstream; the `Ui::obj_remove_child` declaration
-/// of `obj_tree.rs` delegates here. Like upstream the start index is
+/// The literal `lv_obj.c` body, compiled for its unit tests only: the
+/// public operation is `Ui::obj_remove_child` (`obj_tree.rs`). Like
+/// upstream the start index is
 /// `lv_obj_get_index(child)` (looked up in the child's own parent), the
 /// array is freed when it held one child and shrunk by one otherwise.
-pub fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
+#[cfg(test)]
+pub(crate) fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
     if !ui.check_obj(parent) || !ui.check_obj(child) {
         return;
     }
@@ -1218,6 +1225,7 @@ pub fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
 
 /// `lv_obj_get_index()` read straight from `spec_attr` (`-1` without a
 /// parent or when the parent doesn't list `obj`).
+#[cfg(test)]
 fn obj_get_index_raw(ui: &Ui, obj: Obj) -> i32 {
     let Some(parent) = ui.obj(obj).and_then(|d| d.parent) else {
         return -1;
@@ -1845,7 +1853,7 @@ impl Ui {
 
         let cb: EventCallback = Rc::new(screen_load_on_trigger_event_cb);
         self.obj_add_event_cb(obj, cb, trigger, Some(dsc.clone()));
-        let free_cb: EventCallback = Rc::new(event_free_user_data_cb);
+        let free_cb: EventCallback = Rc::new(free_user_data_cb);
         self.obj_add_event_cb(obj, free_cb, EventCode::DELETE, Some(dsc));
     }
 
@@ -1872,7 +1880,7 @@ impl Ui {
 
         let cb: EventCallback = Rc::new(screen_create_on_trigger_event_cb);
         self.obj_add_event_cb(obj, cb, trigger, Some(dsc.clone()));
-        let free_cb: EventCallback = Rc::new(event_free_user_data_cb);
+        let free_cb: EventCallback = Rc::new(free_user_data_cb);
         self.obj_add_event_cb(obj, free_cb, EventCode::DELETE, Some(dsc));
     }
 
@@ -2031,7 +2039,7 @@ impl Ui {
         let child_cnt = self.obj_get_child_count(obj);
         for i in 0..child_cnt {
             let child = self.obj_get_child(obj, i as i32)?;
-            if crate::core::obj_id::obj_id_compare(self.obj(child)?.id, id) == 0 {
+            if crate::core::obj_id::compare(self.obj(child)?.id, id) == 0 {
                 return Some(child);
             }
             let found = self.obj_find_by_id_core(child, id);

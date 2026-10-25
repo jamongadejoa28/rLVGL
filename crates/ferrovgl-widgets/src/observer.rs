@@ -89,7 +89,7 @@ impl crate::label::Label {
         if !ui.obj_is_valid(self.obj()) {
             return None; /*LV_CHECK_OBJ*/
         }
-        let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
             ferrovgl_core::misc::check_arg_failed("lv_label_bind_text: subject != NULL");
             return None;
         };
@@ -146,7 +146,7 @@ fn label_text_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId)
     let fmt: Option<&'static str> = ui
         .observer_get_user_data(observer)
         .and_then(|d| (*d).downcast_ref::<&'static str>().copied());
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return; /*LV_ASSERT(subject != NULL)*/
     };
     let type_ = s.type_;
@@ -186,7 +186,7 @@ impl crate::image::Image {
         if !ui.obj_is_valid(self.obj()) {
             return None; /*LV_CHECK_OBJ*/
         }
-        let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
             ferrovgl_core::misc::check_arg_failed("lv_image_bind_src: subject != NULL");
             return None;
         };
@@ -205,7 +205,7 @@ fn image_src_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) 
     let Some(target) = ui.observer_get_target_obj(observer) else {
         return; /*LV_ASSERT(observer->target != NULL)*/
     };
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return; /*LV_ASSERT(subject != NULL)*/
     };
     if s.type_ == SubjectType::Pointer {

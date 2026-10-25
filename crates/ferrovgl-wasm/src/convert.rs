@@ -53,6 +53,8 @@ impl fmt::Display for ConvertError {
     }
 }
 
+impl core::error::Error for ConvertError {}
+
 /// Parses a color format name as used by the JavaScript API
 /// (`"xrgb8888"`, `"argb8888"`, `"rgb888"`, `"rgb565"`; case-insensitive).
 #[must_use]

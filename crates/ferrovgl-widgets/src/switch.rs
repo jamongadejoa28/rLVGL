@@ -116,6 +116,10 @@ impl Switch {
     /// `((lv_switch_t *)obj)->anim_state`: the knob animation's progress in
     /// `0..=256`, or `-1` (`LV_SWITCH_ANIM_STATE_INV`) when no animation runs.
     /// Upstream `test_switch.c` reads this private `lv_switch_t` field directly.
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn anim_state(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(SWITCH_ANIM_STATE_INV, |sw| sw.anim_state)

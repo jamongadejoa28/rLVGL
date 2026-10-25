@@ -9,7 +9,10 @@ const ELASTIC_SLOWNESS_FACTOR: i32 = 4;
 impl Ui {
     /// `lv_indev_find_scroll_obj()`: find the deepest ancestor that can scroll
     /// in this direction, falling back to the last elastic candidate.
-    #[must_use]
+    ///
+    /// Not `#[must_use]`: like upstream it also accumulates
+    /// `pointer.scroll_sum` and, on a hit, stores `scroll_dir` /
+    /// `scroll_obj` and resets the sum.
     pub fn indev_find_scroll_obj(&mut self, indev: IndevId) -> Option<Obj> {
         let d = self.indev_mut(indev)?;
         d.pointer.scroll_sum.x += d.pointer.vect.x;

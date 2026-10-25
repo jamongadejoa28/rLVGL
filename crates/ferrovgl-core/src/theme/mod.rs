@@ -16,7 +16,7 @@ use crate::misc::palette::{self, Palette};
 
 /// Handle of a theme (`lv_theme_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ThemeId(pub Key);
+pub struct ThemeId(#[doc(hidden)] pub Key);
 
 /// `lv_theme_apply_cb_t`
 pub type ThemeApplyCallback = fn(&mut Ui, ThemeId, Obj);

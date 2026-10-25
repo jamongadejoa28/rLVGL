@@ -13,7 +13,7 @@
 //! are ported.
 //!
 //! Buffer ownership: upstream points `disp->layer_head->draw_buf` at
-//! `disp->buf_act`. Here a [`DrawBuf`] has one owner, so [`Ui::refr_area`]
+//! `disp->buf_act`. Here a [`DrawBuf`] has one owner, so `Ui::refr_area`
 //! moves the active display buffer (`buf_1` / `buf_2` / `buf_3` selected
 //! by `buf_act`) into the display layer's `draw_buf` and `draw_buf_flush()`
 //! moves it back into its slot *before* calling the driver (which gets
@@ -1207,7 +1207,7 @@ impl Ui {
 
     /// `refr_area()`: render `area` into the display buffer (`y_offset` is
     /// the row offset of this chunk in partial mode).
-    pub fn refr_area(&mut self, disp: DisplayId, area: &Area, y_offset: i32) {
+    pub(crate) fn refr_area(&mut self, disp: DisplayId, area: &Area, y_offset: i32) {
         let hor_res = self.display_get_horizontal_resolution(Some(disp));
         let ver_res = self.display_get_vertical_resolution(Some(disp));
 

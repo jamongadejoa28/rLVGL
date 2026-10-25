@@ -901,13 +901,17 @@ impl StyleEntry {
 /// `lv_style_t`: a collection of properties and values.
 ///
 /// `has_group` has bit `lv_style_get_prop_group(prop)` set for every stored
-/// property so that lookups can skip the style early.
+/// property so that lookups can skip the style early. Both fields are
+/// private because that invariant must hold: change a style with
+/// [`Style::set_prop`], [`Style::remove_prop`], [`Style::reset`] and
+/// [`Style::copy_from`], read it with [`Style::props`] and
+/// [`Style::get_prop`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Style {
     /// `values_and_props`
-    pub props: Vec<StyleEntry>,
+    pub(crate) props: Vec<StyleEntry>,
     /// `has_group`
-    pub has_group: u32,
+    pub(crate) has_group: u32,
 }
 
 /// Image source usable in a `static` constant style.
@@ -1459,6 +1463,21 @@ impl Style {
     #[must_use]
     pub fn len(&self) -> usize {
         self.props.len()
+    }
+
+    /// `values_and_props`: the stored properties in their list order.
+    #[inline]
+    #[must_use]
+    pub fn props(&self) -> &[StyleEntry] {
+        &self.props
+    }
+
+    /// `has_group`: bit `lv_style_get_prop_group(prop)` is set for every
+    /// property that was ever set (removal leaves it set, like upstream).
+    #[inline]
+    #[must_use]
+    pub const fn has_group(&self) -> u32 {
+        self.has_group
     }
 
     /// `lv_style_prop_get_default()`. `default_font` stands in for

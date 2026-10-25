@@ -135,6 +135,7 @@ pub enum Kerning {
 
 /// `lv_font_glyph_dsc_t`: metrics of one glyph.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct GlyphDsc {
     /// Glyph index inside the font (`gid.index`).
     pub gid: u32,

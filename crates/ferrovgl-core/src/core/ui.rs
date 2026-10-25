@@ -515,6 +515,7 @@ impl Ui {
     /// created with `T::default()` (C's zero-initialized static) on first
     /// use. Like a C `static`, it lives as long as this `Ui` and is not reset
     /// by [`Ui::deinit`].
+    #[must_use]
     pub fn widget_static_mut<T: Any + Default>(&mut self) -> &mut T {
         let id = core::any::TypeId::of::<T>();
         let index = match self.widget_statics.iter().position(|(t, _)| *t == id) {

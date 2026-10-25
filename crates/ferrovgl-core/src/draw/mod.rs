@@ -153,14 +153,27 @@ pub enum DrawTaskState {
 
 /// Handle of a layer (`lv_layer_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LayerId(pub Key);
+pub struct LayerId(#[doc(hidden)] pub Key);
 
 /// Reference to a task inside a layer's queue (`lv_draw_task_t *`).
+///
+/// Unlike the other handles it is a position in [`Layer::tasks`], not a
+/// generational key: it names its task only until that queue changes (a
+/// finished task is removed and the later ones move up). Use it within the
+/// event or dispatch that handed it out (`LV_EVENT_DRAW_TASK_ADDED`, a draw
+/// unit's `dispatch`), as C code uses the `lv_draw_task_t *`. Its `Ord` is
+/// layer key, then queue position.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DrawTaskRef {
     /// The layer owning the task.
+    ///
+    /// Hidden: the representation may change in any release.
+    #[doc(hidden)]
     pub layer: LayerId,
     /// Index into [`Layer::tasks`].
+    ///
+    /// Hidden: the representation may change in any release.
+    #[doc(hidden)]
     pub index: usize,
 }
 
@@ -479,16 +492,38 @@ fn reborrow<'a>(units: &'a mut Option<&mut DrawUnits>) -> Option<&'a mut DrawUni
 #[derive(Debug)]
 pub struct DrawCtx {
     /// All live layers.
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use
+    /// [`DrawCtx::layer`] / [`DrawCtx::layer_mut`].
+    #[doc(hidden)]
     pub layers: Arena<Layer>,
     /// `used_memory_for_layers`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release.
+    #[doc(hidden)]
     pub used_memory_for_layers: u32,
     /// `dispatch_req`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release.
+    #[doc(hidden)]
     pub dispatch_req: bool,
     /// `task_running`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release.
+    #[doc(hidden)]
     pub task_running: bool,
     /// `unit_cnt`: number of registered draw units. `Ui::draw_create_unit`
     /// keeps it equal to `Ui::draw_units.len()`; [`DrawCtx::get_available_task`]
     /// uses it to pick the single-unit fast path.
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use
+    /// `Ui::draw_get_unit_count`.
+    #[doc(hidden)]
     pub unit_cnt: u32,
     /// Heads of the per-display `next` chains (`disp->layer_head`), keyed by
     /// the layers' [`Layer::display`] (`None` for layers created without a

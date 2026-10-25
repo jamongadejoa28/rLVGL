@@ -48,12 +48,12 @@ use crate::core::ui::Ui;
 use crate::misc::arena::{Arena, Key};
 use crate::misc::check_arg_failed;
 use crate::misc::color::Color;
-use crate::misc::event::{Event, EventCallback, EventCode, event_free_user_data_cb};
+use crate::misc::event::{Event, EventCallback, EventCode, free_user_data_cb};
 use crate::misc::style::{State, StyleProp, StyleSelector, StyleValue};
 
 /// Handle of a subject (`lv_subject_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SubjectId(pub Key);
+pub struct SubjectId(#[doc(hidden)] pub Key);
 
 impl SubjectId {
     /// The subject whose `lv_subject_t *` is `data` (the reverse of
@@ -68,7 +68,7 @@ impl SubjectId {
 
 /// Handle of an observer (`lv_observer_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ObserverId(pub Key);
+pub struct ObserverId(#[doc(hidden)] pub Key);
 
 /// The payload of a subject's canonical pointer `Rc`.
 struct SubjectPtr(SubjectId);
@@ -326,6 +326,7 @@ impl core::fmt::Debug for ObserverUserCb {
 /// `void * target` of an observer; `for_obj` is the [`ObserverTarget::Obj`]
 /// variant.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub enum ObserverTarget {
     /// `NULL`
     #[default]
@@ -379,6 +380,7 @@ impl core::fmt::Debug for Observer {
 /// `lv_subject_increment_dsc_t`: created by
 /// `lv_obj_add_subject_increment_event()`, shared with its event callback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SubjectIncrementDsc {
     /// `subject`: the subject to adjust.
     pub subject: SubjectId,
@@ -554,6 +556,10 @@ fn opt_ptr_eq(a: Option<&Rc<dyn Any>>, b: Option<&Rc<dyn Any>>) -> bool {
 pub const USE_FLOAT: bool = cfg!(feature = "float");
 
 /// `LV_LOG_WARN`, shared with the widget bindings.
+///
+/// Hidden: an implementation detail that `ferrovgl-widgets` reaches into;
+/// it may change in any release.
+#[doc(hidden)]
 #[inline]
 pub fn log_warn(msg: &str) {
     #[cfg(feature = "log")]
@@ -1335,6 +1341,21 @@ impl Ui {
         self.obj_remove_event_cb_with_user_data_opt(obj, None, subject_ptr.as_ref());
     }
 
+    /// The subject behind `subject`, or `None` for a deleted or never
+    /// created handle. A Rust-only accessor (C dereferences the
+    /// `lv_subject_t *`): widget bindings read `type_` and `value` through it.
+    #[must_use]
+    pub fn subject(&self, subject: SubjectId) -> Option<&Subject> {
+        self.observer.subjects.get(subject.0)
+    }
+
+    /// The observer behind `observer`, or `None` for a removed handle
+    /// (C dereferences the `lv_observer_t *`).
+    #[must_use]
+    pub fn observer(&self, observer: ObserverId) -> Option<&Observer> {
+        self.observer.observers.get(observer.0)
+    }
+
     /// `lv_observer_get_target()`
     #[must_use]
     pub fn observer_get_target(&self, observer: ObserverId) -> ObserverTarget {
@@ -1477,7 +1498,7 @@ impl Ui {
         }));
         let ud: Rc<dyn Any> = user_data.clone();
         self.obj_add_event_cb(obj, Rc::new(subject_increment_cb), trigger, Some(ud.clone()));
-        self.obj_add_event_cb(obj, Rc::new(event_free_user_data_cb), EventCode::DELETE, Some(ud));
+        self.obj_add_event_cb(obj, Rc::new(free_user_data_cb), EventCode::DELETE, Some(ud));
 
         Some(user_data)
     }
@@ -1603,7 +1624,7 @@ impl Ui {
         self.obj_add_event_cb(obj, Rc::new(subject_set_int_cb), trigger, Some(user_data.clone()));
         self.obj_add_event_cb(
             obj,
-            Rc::new(event_free_user_data_cb),
+            Rc::new(free_user_data_cb),
             EventCode::DELETE,
             Some(user_data),
         );
@@ -1638,7 +1659,7 @@ impl Ui {
         );
         self.obj_add_event_cb(
             obj,
-            Rc::new(event_free_user_data_cb),
+            Rc::new(free_user_data_cb),
             EventCode::DELETE,
             Some(user_data),
         );

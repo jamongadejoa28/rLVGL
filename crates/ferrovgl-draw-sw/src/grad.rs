@@ -21,6 +21,7 @@ use ferrovgl_core::misc::types::coord::pct_to_px;
 
 /// `lv_draw_sw_grad_calc_t` (`lv_grad_t`): a computed gradient colour map.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradCalc {
     /// `color_map`
     pub color_map: Vec<Color>,
@@ -32,6 +33,7 @@ pub struct GradCalc {
 
 /// `lv_grad_linear_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradLinearState {
     /// `a` of `w = a * xp + b * yp + c`
     pub a: i32,
@@ -45,6 +47,7 @@ pub struct GradLinearState {
 
 /// `lv_grad_radial_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradRadialState {
     /// `x0`: center of the start circle.
     pub x0: i32,
@@ -74,6 +77,7 @@ pub struct GradRadialState {
 
 /// `lv_grad_conical_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradConicalState {
     /// `x0`
     pub x0: i32,

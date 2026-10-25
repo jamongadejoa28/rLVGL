@@ -26,8 +26,9 @@ pub mod styles;
 mod util;
 pub mod widgets;
 
-/// One runnable example.
+/// One runnable example (built by the crate, read by the demos).
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Example {
     /// Upstream function name, e.g. `lv_example_get_started_button`.
     pub name: &'static str,

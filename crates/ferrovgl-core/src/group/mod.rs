@@ -14,7 +14,7 @@ use crate::misc::style::State;
 
 /// Handle of a group (`lv_group_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct GroupId(pub ArenaKey);
+pub struct GroupId(#[doc(hidden)] pub ArenaKey);
 
 /// `lv_key_t`: key codes understood by widgets. Any other `u32` is a
 /// character.

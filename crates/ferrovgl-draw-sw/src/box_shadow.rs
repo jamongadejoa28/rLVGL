@@ -39,6 +39,7 @@ const SHADOW_CACHE_BYTES: u32 = SHADOW_CACHE_SIZE * SHADOW_CACHE_SIZE;
 
 /// `lv_draw_sw_shadow_cache_t`
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct ShadowCache {
     /// `cache`: the cached corner (`cache_size * cache_size` bytes).
     pub cache: Vec<u8>,

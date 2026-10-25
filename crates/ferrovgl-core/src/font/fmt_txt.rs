@@ -115,6 +115,18 @@ pub enum FontError {
     Truncated,
 }
 
+impl core::fmt::Display for FontError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            FontError::BadMagic => f.write_str("not a .lvfnt font blob"),
+            FontError::BadVersion(v) => write!(f, "unsupported .lvfnt version {v}"),
+            FontError::Truncated => f.write_str("truncated .lvfnt font blob"),
+        }
+    }
+}
+
+impl core::error::Error for FontError {}
+
 impl<'a> FmtTxtFont<'a> {
     /// Parse a `.lvfnt` blob in a `const` context. Panics on an invalid blob,
     /// which turns into a compile error when used to initialise a `static`.

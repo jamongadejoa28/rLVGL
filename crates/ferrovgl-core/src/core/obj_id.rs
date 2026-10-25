@@ -26,7 +26,7 @@ use crate::misc::check_arg_failed;
 
 /// `class_info_t`: the number of objects created so far of one class.
 #[derive(Clone, Copy, Debug)]
-pub struct ClassInfo {
+pub(crate) struct ClassInfo {
     /// `class_p`
     pub class_p: &'static ObjClass,
     /// `obj_count`
@@ -146,7 +146,7 @@ impl Ui {
 
 /// `lv_obj_id_compare()`: 0 if the two ids are equal, 1 otherwise.
 #[must_use]
-pub fn obj_id_compare(id1: usize, id2: usize) -> i32 {
+pub fn compare(id1: usize, id2: usize) -> i32 {
     if id1 == id2 { 0 } else { 1 }
 }
 
@@ -252,8 +252,8 @@ mod tests {
 
         ui.obj_set_id(a, 0);
         assert_eq!(ui.obj_get_id(a), 0);
-        assert_eq!(obj_id_compare(5, 5), 0);
-        assert_eq!(obj_id_compare(5, 6), 1);
+        assert_eq!(compare(5, 5), 0);
+        assert_eq!(compare(5, 6), 1);
 
         ui.objid_builtin_destroy();
         assert!(ui.objid_array.is_empty());

@@ -413,6 +413,10 @@ impl Buttonmatrix {
 
     /// `lv_buttonmatrix_t::btn_cnt`: the number of buttons (upstream tests
     /// read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn btn_cnt(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |btnm| btnm.btn_cnt)
@@ -420,13 +424,22 @@ impl Buttonmatrix {
 
     /// `lv_buttonmatrix_t::button_areas`: the button areas relative to the
     /// object (upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn button_areas(self, ui: &Ui) -> &[Area] {
         state(ui, self.0).map_or(&[][..], |btnm| btnm.button_areas.as_slice())
     }
 
     /// Assign `lv_buttonmatrix_t::btn_id_sel` without invalidating anything
-    /// (upstream tests write the field).
+    /// (upstream tests write the field). Not
+    /// [`Buttonmatrix::set_selected_button`], the public API.
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which write this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     pub fn set_btn_id_sel(self, ui: &mut Ui, btn_id: u32) {
         if let Some(btnm) = state_mut(ui, self.0) {
             btnm.btn_id_sel = btn_id;

@@ -90,6 +90,10 @@ impl SliderOrientation {
 }
 
 /// The bar value that `lv_slider_t::value_to_set` points to.
+///
+/// Hidden: the return type of the [`Slider::value_to_set`] test hook; it
+/// may change in any release.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SliderValueTarget {
     /// `&slider->bar.cur_value`
@@ -278,6 +282,10 @@ impl Slider {
 
     /// `lv_slider_t::left_knob_area`: the left knob's area computed by the
     /// last `draw_knob()` of `lv_slider.c` (upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn left_knob_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |slider| slider.left_knob_area)
@@ -285,6 +293,10 @@ impl Slider {
 
     /// `lv_slider_t::right_knob_area`: the main knob's area computed by the
     /// last `draw_knob()` of `lv_slider.c` (upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn right_knob_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |slider| slider.right_knob_area)
@@ -292,6 +304,10 @@ impl Slider {
 
     /// `lv_slider_t::value_to_set`: the value a drag adjusts (`NULL` = `None`;
     /// upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn value_to_set(self, ui: &Ui) -> Option<SliderValueTarget> {
         state(ui, self.0).and_then(|slider| slider.value_to_set)
@@ -299,12 +315,20 @@ impl Slider {
 
     /// `lv_slider_t::left_knob_focus`: whether an encoder or keypad adjusts
     /// the left knob (upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     #[must_use]
     pub fn left_knob_focus(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|slider| slider.left_knob_focus)
     }
 
     /// Assign `lv_slider_t::left_knob_focus` (upstream tests write the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which write this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     pub fn set_left_knob_focus(self, ui: &mut Ui, focus: bool) {
         if let Some(slider) = state_mut(ui, self.0) {
             slider.left_knob_focus = focus;
@@ -875,7 +899,7 @@ pub(crate) fn slider_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Op
     if !ui.obj_is_valid(obj) {
         return None; /*LV_CHECK_OBJ*/
     }
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         ferrovgl_core::misc::check_arg_failed("lv_slider_bind_value: subject != NULL");
         return None;
     };
@@ -903,7 +927,7 @@ fn slider_value_changed_event_cb(ui: &mut Ui, e: &mut Event<'_>) {
     let Some(subject) = e.user_data().and_then(SubjectId::from_user_data) else {
         return;
     };
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         return;
     };
 
@@ -922,7 +946,7 @@ fn slider_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectI
     let Some(obj) = ui.observer_get_target_obj(observer) else {
         return;
     };
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return;
     };
     let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());

@@ -6,8 +6,8 @@
 //! `lv_anim_delete(var, exec_cb)` keeps working. `custom_exec_cb` stays a
 //! separate field like upstream (both are called by `anim_timer`).
 //!
-//! `anim_ll` is the arena [`AnimState::anims`] plus the head-first
-//! [`AnimState::order`] list. An animation that is unlinked from the list
+//! `anim_ll` is the arena `AnimState::anims` plus the head-first
+//! `AnimState::order` list. An animation that is unlinked from the list
 //! (`lv_ll_remove`) stays in the arena until its `completed_cb` /
 //! `deleted_cb` returned, so the callbacks can still read it through
 //! [`Ui::anim`] exactly like the C callbacks read the not yet freed node.
@@ -65,7 +65,7 @@ pub type AnimEnable = bool;
 
 /// Handle of a running animation (`lv_anim_t *` inside the animation list).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct AnimId(pub Key);
+pub struct AnimId(#[doc(hidden)] pub Key);
 
 /// The animated variable (`void * var`).
 ///
@@ -811,7 +811,7 @@ impl Default for Anim {
 }
 
 /// `lv_anim_state_t`
-pub struct AnimState {
+pub(crate) struct AnimState {
     /// `anim_ll`
     pub anims: Arena<Anim>,
     /// Order of `anim_ll` (head first): `lv_anim_start` is `lv_ll_ins_head`

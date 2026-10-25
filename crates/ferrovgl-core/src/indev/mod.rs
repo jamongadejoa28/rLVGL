@@ -33,7 +33,7 @@ pub const INDEV_VECT_HIST_SIZE: usize = 8;
 
 /// Handle of an input device (`lv_indev_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct IndevId(pub Key);
+pub struct IndevId(#[doc(hidden)] pub Key);
 
 /// `lv_indev_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -121,6 +121,7 @@ pub type IndevGestureDir = Dir;
 
 /// `lv_indev_data_t`: what the driver reports in `read_cb`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct IndevReadData {
     /// `state`
     pub state: IndevState,
@@ -165,6 +166,7 @@ pub type IndevKeyRemapCallback = Rc<dyn Fn(&mut Ui, IndevId, u32) -> u32>;
 
 /// `pointer` sub-struct of `lv_indev_t`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct IndevPointer {
     /// `act_point`
     pub act_point: Point,
@@ -222,6 +224,7 @@ pub struct IndevPointer {
 
 /// `keypad` sub-struct of `lv_indev_t`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct IndevKeypad {
     /// `last_state`
     pub last_state: IndevState,

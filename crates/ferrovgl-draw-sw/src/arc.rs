@@ -21,7 +21,6 @@ use crate::mask::{self, CircleCache, MaskAngleParam, MaskParam, MaskRadiusParam,
 #[cfg(feature = "complex")]
 use alloc::{vec, vec::Vec};
 #[cfg(feature = "complex")]
-use ferrovgl_core::draw::arc::arc_get_area;
 #[cfg(feature = "complex")]
 use ferrovgl_core::draw::image::{DecodedImage, with_decoded_image};
 #[cfg(feature = "complex")]
@@ -62,7 +61,7 @@ fn draw_arc(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, task: &DrawTask, dsc: &Arc
     let mut inner = *coords;
     inner.increase(-dsc.width, -dsc.width);
     let mut bounds = Area::default();
-    arc_get_area(
+    ferrovgl_core::draw::arc::get_area(
         dsc.center.x,
         dsc.center.y,
         dsc.radius,
