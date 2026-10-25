@@ -23,7 +23,6 @@ edition = "2024"
 rust-version = "1.97"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jamongadejoa28/rLVGL"
-homepage = "https://github.com/jamongadejoa28/rLVGL"
 authors = ["ferrovgl contributors"]
 keywords = ["gui", "embedded", "no-std", "graphics", "lvgl"]
 categories = ["gui", "embedded", "no-std", "graphics", "rendering"]
@@ -34,7 +33,6 @@ ferrovgl-draw-sw = { path = "crates/ferrovgl-draw-sw", version = "0.1.0", defaul
 ferrovgl-fonts = { path = "crates/ferrovgl-fonts", version = "0.1.0", default-features = false }
 ferrovgl-widgets = { path = "crates/ferrovgl-widgets", version = "0.1.0", default-features = false }
 ferrovgl-sdl = { path = "crates/ferrovgl-sdl", version = "0.1.0" }
-ferrovgl-wasm = { path = "crates/ferrovgl-wasm", version = "0.1.0" }
 ferrovgl-embedded = { path = "crates/ferrovgl-embedded", version = "0.1.0", default-features = false }
 ferrovgl-test = { path = "crates/ferrovgl-test", version = "0.1.0" }
 ferrovgl-examples = { path = "crates/ferrovgl-examples", version = "0.1.0", default-features = false }

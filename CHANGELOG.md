@@ -67,11 +67,17 @@ against upstream's reference images.
 
 ### Verified
 
-- **140 upstream reference images match byte-exactly** (RGB tolerance 0,
-  800x480 XRGB8888, upstream `tests/ref_imgs`) across label, button, image,
-  bar, slider, switch, checkbox, arc, line, LED, spinner, button matrix, text
-  area, flex, grid, scroll, style, snapshot, blur, line/arc/triangle/shadow
-  drawing and RTL scenes. Reference images are never edited or regenerated.
+- **Every in-scope upstream reference image matches byte-exactly: 472/472**
+  (RGB tolerance 0, upstream `tests/ref_imgs`; 474 of LVGL v9.6.0's 976
+  reference images are compared). This covers label, button, image, bar,
+  slider, switch, checkbox, arc, line, LED, spinner, button matrix, text area,
+  object position/flags, flex, grid, scroll, style, snapshot, layers, blur,
+  canvas-style buffers, line/arc/triangle/shadow/label drawing, RTL scenes, and
+  the `lv_demo_render` scenes rendered into XRGB8888, ARGB8888, premultiplied
+  ARGB8888, RGB888, RGB565, swapped RGB565, L8, AL88 and I1 targets. The
+  out-of-scope images and the reason for each are listed in
+  `crates/ferrovgl-test/parity_scope.toml`. Reference images are never edited
+  or regenerated.
 - The core, renderer, fonts and widgets build for `thumbv7em-none-eabihf` and
   `thumbv6m-none-eabi` (`no_std`); a label + button binary is about 200 KB of
   `.text`. `unsafe` code is confined to two modules and checked with Miri.

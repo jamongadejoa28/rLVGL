@@ -129,6 +129,17 @@ jobs:
       # rust-toolchain.toml pins stable; docsrs needs nightly for doc_cfg.
       - run: cargo +nightly doc --workspace --no-deps --all-features
 
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      # Packages every publishable crate and builds each from its .crate alone; nothing is uploaded.
+      - run: cargo package --workspace --locked --list > /dev/null
+      - run: cargo publish --workspace --dry-run --locked
+
   deny:
     runs-on: ubuntu-latest
     steps:
