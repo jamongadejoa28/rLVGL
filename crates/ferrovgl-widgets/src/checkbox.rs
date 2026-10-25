@@ -300,6 +300,9 @@ fn checkbox_draw(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         None => Rc::from(""),
     };
 
+    // `obj->coords` is read again here: a draw task handler may have moved the
+    // object during `lv_draw_rect()`.
+    let coords = ui.obj_get_coords(obj);
     let y_ofs = (marker_area.height() - font_h) / 2;
     let mut txt_area = Area::default();
     if is_rtl {

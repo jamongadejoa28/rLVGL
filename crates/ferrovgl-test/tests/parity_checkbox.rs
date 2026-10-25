@@ -5,13 +5,19 @@
 //! `test_checkbox_rtl` (`widgets/checkbox_rtl_1.png`) is not ported as a
 //! runnable test: it needs `lv_font_dejavu_16_persian_hebrew` and the BiDi
 //! paragraph algorithm (`LV_USE_BIDI`), neither of which exists in the core
-//! yet. The scene is kept below as documentation for when they land.
+//! yet. The scene is kept below as documentation for when they land; until
+//! then [`checkbox_rtl_geometry`] covers the RTL marker/text placement of
+//! `lv_checkbox_draw()` without pixels.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
-use ferrovgl_core::misc::color::OPA_0;
-use ferrovgl_core::{EventCode, Part, State, StyleSelector};
+use ferrovgl_core::draw::DrawDsc;
+use ferrovgl_core::font;
+use ferrovgl_core::misc::color::{ColorFormat, OPA_0};
+use ferrovgl_core::misc::event::EventCallback;
+use ferrovgl_core::misc::text::BaseDir;
+use ferrovgl_core::{Area, EventCode, Obj, Part, State, StyleSelector, Ui};
 use ferrovgl_test::TestDisplay;
 use ferrovgl_widgets::Checkbox;
 
@@ -131,6 +137,115 @@ fn checkbox_properties() {
     obj.set_text(&mut display.ui, "Test Checkbox");
     assert_eq!(obj.text(&display.ui), "Test Checkbox");
     display.ui.obj_delete(obj.obj());
+}
+
+/// Areas of the indicator border task (drawn on the full marker area, unlike
+/// the fill, which `lv_draw_rect()` may shrink by 1 px) and the text task of one
+/// `lv_checkbox_draw()`, recorded from `LV_EVENT_DRAW_TASK_ADDED`. When
+/// `move_by` is non-zero, the handler of the indicator border task scrolls the
+/// parent by that many pixels (`lv_obj_scroll_by(parent, 0, dy, LV_ANIM_OFF)`).
+fn checkbox_draw_areas(ui: &mut Ui, cb: Obj, move_by: i32) -> (Area, Area) {
+    let marker = Rc::new(Cell::new(None));
+    let label = Rc::new(Cell::new(None));
+    let move_by = Rc::new(Cell::new(move_by));
+    let (m, l, dy) = (marker.clone(), label.clone(), move_by.clone());
+    let parent = ui.obj_get_parent(cb).unwrap();
+    ui.obj_set_send_draw_task_events(cb, true);
+    let handler: EventCallback = Rc::new(move |ui, event| {
+        let Some(task) = event.draw_task().and_then(|t| ui.draw.task(t)) else {
+            return;
+        };
+        let area = task.area;
+        match &task.dsc {
+            DrawDsc::Border(d) if d.base.part == Part::INDICATOR => {
+                m.set(Some(area));
+                let dy = dy.replace(0);
+                if dy != 0 {
+                    ui.obj_scroll_by(parent, 0, dy, false);
+                }
+            }
+            DrawDsc::Label(d) if d.base.part == Part::MAIN => l.set(Some(area)),
+            _ => {}
+        }
+    });
+    ui.obj_add_event_cb(cb, handler.clone(), EventCode::DRAW_TASK_ADDED, None);
+    assert!(ui.snapshot_take(cb, ColorFormat::Argb8888).is_some());
+    assert_eq!(ui.obj_remove_event_cb(cb, &handler), 1);
+    ui.obj_set_send_draw_task_events(cb, false);
+    (marker.get().unwrap(), label.get().unwrap())
+}
+
+/// `lv_checkbox_draw()` reads `obj->coords` for the marker before
+/// `lv_draw_rect()` and again for `txt_area.y1` after it, so a draw task
+/// handler that moves the checkbox shifts only the text.
+#[test]
+fn checkbox_text_y_uses_coords_after_marker_draw() {
+    let mut display = scene();
+    let screen = display.screen().unwrap();
+    let ui = &mut display.ui;
+    let cb = Checkbox::create(ui, screen).obj();
+    ui.obj_center(cb);
+    ui.obj_update_layout(cb);
+    let y1 = ui.obj_get_coords(cb).y1;
+
+    let (marker, label) = checkbox_draw_areas(ui, cb, 0);
+    assert_eq!(ui.obj_get_coords(cb).y1, y1);
+    let (moved_marker, moved_label) = checkbox_draw_areas(ui, cb, 10);
+    assert_eq!(ui.obj_get_coords(cb).y1, y1 + 10);
+    assert_eq!(moved_marker, marker);
+    assert_eq!(moved_label.y1, label.y1 + 10);
+    assert_eq!(moved_label.y2, label.y2 + 10);
+    assert_eq!((moved_label.x1, moved_label.x2), (label.x1, label.x2));
+}
+
+/// Geometry of `lv_checkbox_draw()` in both base directions, including the
+/// upstream quirk that the main border width is added to the left padding
+/// only (LTR), not to the right padding (RTL).
+#[test]
+fn checkbox_rtl_geometry() {
+    let mut display = scene();
+    let screen = display.screen().unwrap();
+    let ui = &mut display.ui;
+    let cb = Checkbox::create(ui, screen).obj();
+    let main = StyleSelector::from(Part::MAIN);
+    ui.obj_set_style_border_width(cb, 3, main);
+    ui.obj_set_style_pad_left(cb, 5, main);
+    ui.obj_set_style_pad_right(cb, 7, main);
+    ui.obj_set_style_pad_top(cb, 4, main);
+    ui.obj_center(cb);
+    ui.obj_update_layout(cb);
+
+    let font = ui.obj_get_style_text_font(cb, Part::MAIN).unwrap();
+    let font_h = font::get_line_height(font.as_font());
+    let colp = ui.obj_get_style_pad_column(cb, Part::MAIN);
+    let ind = Part::INDICATOR;
+    let marker_w = font_h + ui.obj_get_style_pad_left(cb, ind) + ui.obj_get_style_pad_right(cb, ind);
+    let marker_h = font_h + ui.obj_get_style_pad_top(cb, ind) + ui.obj_get_style_pad_bottom(cb, ind);
+    let transf_w = ui.obj_get_style_transform_width(cb, ind);
+    let transf_h = ui.obj_get_style_transform_height(cb, ind);
+    let coords = ui.obj_get_coords(cb);
+    let marker_y1 = coords.y1 + 4 + 3;
+    let text_y1 = marker_y1 + (marker_h - font_h) / 2;
+
+    let (ltr_marker, ltr_label) = checkbox_draw_areas(ui, cb, 0);
+    let x1 = coords.x1 + 5 + 3;
+    let mut expected = Area::new(x1, marker_y1, x1 + marker_w - 1, marker_y1 + marker_h - 1);
+    expected.increase(transf_w, transf_h);
+    assert_eq!(ltr_marker, expected);
+    assert_eq!(ltr_label.x1, x1 + marker_w - 1 + colp);
+    assert_eq!(ltr_label.y1, text_y1);
+
+    ui.obj_set_style_base_dir(cb, BaseDir::Rtl, main);
+    ui.obj_update_layout(cb);
+    assert_eq!(ui.obj_get_coords(cb), coords);
+    let (rtl_marker, rtl_label) = checkbox_draw_areas(ui, cb, 0);
+    let x2 = coords.x2 - 7;
+    let mut expected = Area::new(x2 - marker_w + 1, marker_y1, x2, marker_y1 + marker_h - 1);
+    expected.increase(transf_w, transf_h);
+    assert_eq!(rtl_marker, expected);
+    assert_eq!(rtl_label.x2, x2 - marker_w + 1 - colp);
+    assert_eq!(rtl_label.width(), ltr_label.width());
+    assert_eq!((rtl_label.y1, rtl_label.y2), (ltr_label.y1, ltr_label.y2));
 }
 
 // `test_checkbox_rtl` (not runnable yet, see the module documentation):
