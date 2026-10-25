@@ -996,7 +996,7 @@ impl DrawCtx {
             .get(layer.0)?
             .draw_buf
             .as_ref()
-            .map(|buf| buf.goto_xy(x as u32, y as u32))
+            .and_then(|buf| buf.goto_xy_checked(x as u32, y as u32))
     }
 
     /// `lv_draw_layer_create_drop_shadow()`
