@@ -8,10 +8,13 @@
 //! `lv_slider_t::value_to_set` is a pointer into the bar state upstream; the
 //! port stores which value it points to ([`SliderValueTarget`]).
 //!
-//! Not ported: observer binding (`lv_slider_bind_value()`,
+//! The observer binding (`lv_slider_bind_value()`,
 //! `slider_value_changed_event_cb()`, `slider_value_observer_cb()`;
-//! `LV_USE_OBSERVER=y` in the parity config) is declared in this crate's
-//! `observer.rs` and waits for the core observer port. The `LV_USE_OBJ_PROPERTY` table (`lv_slider_properties[]`) is
+//! `LV_USE_OBSERVER=y` in the parity config) is ported here as
+//! `slider_bind_value()`; its public entry point `Slider::bind_value()` is
+//! declared in this crate's `observer.rs`.
+//!
+//! Not ported: the `LV_USE_OBJ_PROPERTY` table (`lv_slider_properties[]`) is
 //! compiled out by the parity config.
 
 use alloc::boxed::Box;
@@ -27,6 +30,11 @@ use ferrovgl_core::{
 };
 
 use crate::bar::{BAR_CLASS, Bar, BarMode, BarOrientation, BarState};
+
+#[cfg(feature = "observer")]
+use alloc::rc::Rc;
+#[cfg(feature = "observer")]
+use ferrovgl_core::core::observer::{ObserverId, SubjectId, SubjectType};
 
 /// `LV_ANIM_ON`
 const ANIM_ON: AnimEnable = true;
@@ -842,6 +850,75 @@ fn update_knob_pos(ui: &mut Ui, obj: Obj, check_drag: bool) {
         ui.obj_invalidate(obj);
         /*The result only decides an early return at the end of the function*/
         let _ = ui.obj_send_event(obj, EventCode::VALUE_CHANGED, EventParam::None);
+    }
+}
+
+/// `lv_slider_bind_value()`: bind an integer or float subject to the
+/// slider's value (both directions). Called by `Slider::bind_value()`.
+#[cfg(feature = "observer")]
+pub(crate) fn slider_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Option<ObserverId> {
+    if !ui.obj_is_valid(obj) {
+        return None; /*LV_CHECK_OBJ*/
+    }
+    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        ferrovgl_core::misc::check_arg_failed("lv_slider_bind_value: subject != NULL");
+        return None;
+    };
+    if !(type_ == SubjectType::Int || type_ == SubjectType::Float) {
+        ferrovgl_core::misc::check_arg_failed("Incompatible subject type");
+        return None;
+    }
+
+    let subject_ptr = ui.subject_as_user_data(subject);
+    ui.obj_add_event_cb(
+        obj,
+        Rc::new(slider_value_changed_event_cb),
+        EventCode::VALUE_CHANGED,
+        subject_ptr,
+    );
+    ui.subject_add_observer_obj(subject, Rc::new(slider_value_observer_cb), Some(obj), None)
+}
+
+/// `slider_value_changed_event_cb()`
+#[cfg(feature = "observer")]
+fn slider_value_changed_event_cb(ui: &mut Ui, e: &mut Event<'_>) {
+    let Some(slider) = e.current_target_obj() else {
+        return;
+    };
+    let Some(subject) = e.user_data().and_then(SubjectId::from_user_data) else {
+        return;
+    };
+    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        return;
+    };
+
+    let value = Slider(slider).value(ui);
+    if type_ == SubjectType::Int {
+        ui.subject_set_int(subject, value);
+    } else {
+        /*LV_USE_FLOAT*/
+        ui.subject_set_float_from_i32(subject, value);
+    }
+}
+
+/// `slider_value_observer_cb()`
+#[cfg(feature = "observer")]
+fn slider_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) {
+    let Some(obj) = ui.observer_get_target_obj(observer) else {
+        return;
+    };
+    let Some(s) = ui.observer.subjects.get(subject.0) else {
+        return;
+    };
+    let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());
+
+    /*If the slider is not rendered yet show the new state immediately*/
+    let anim_on: AnimEnable = ui.obj(obj).is_some_and(|o| o.rendered);
+    if type_ == SubjectType::Int {
+        Slider(obj).set_value(ui, num, anim_on);
+    } else {
+        /*LV_USE_FLOAT*/
+        Slider(obj).set_value(ui, float_v, anim_on);
     }
 }
 

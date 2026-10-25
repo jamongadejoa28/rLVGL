@@ -34,7 +34,7 @@ impl crate::bar::Bar {
     /// `lv_bar_bind_value()`: bind an integer or float subject to the bar's
     /// value.
     pub fn bind_value(self, ui: &mut Ui, subject: SubjectId) -> Option<ObserverId> {
-        todo!()
+        crate::bar::bar_bind_value(ui, self.obj(), subject)
     }
 }
 
@@ -43,7 +43,7 @@ impl crate::slider::Slider {
     /// `lv_slider_bind_value()`: bind an integer or float subject to the
     /// slider's value.
     pub fn bind_value(self, ui: &mut Ui, subject: SubjectId) -> Option<ObserverId> {
-        todo!()
+        crate::slider::slider_bind_value(ui, self.obj(), subject)
     }
 }
 

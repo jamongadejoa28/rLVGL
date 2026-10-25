@@ -11,9 +11,12 @@
 //! completed callbacks capture the bar handle instead of decoding `a->var`.
 //! `lv_bar_destructor()` deletes both animations explicitly, as upstream.
 //!
-//! Not ported: observer binding (`lv_bar_bind_value()`,
-//! `bar_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) is
-//! declared in this crate's `observer.rs` and waits for the core observer port. The `LV_USE_OBJ_PROPERTY` table
+//! The observer binding (`lv_bar_bind_value()`, `bar_value_observer_cb()`;
+//! `LV_USE_OBSERVER=y` in the parity config) is ported here as
+//! `bar_bind_value()`; its public entry point `Bar::bind_value()` is declared
+//! in this crate's `observer.rs`.
+//!
+//! Not ported: the `LV_USE_OBJ_PROPERTY` table
 //! (`lv_bar_properties[]`, `lv_bar_set_value_helper()`,
 //! `lv_bar_set_start_value_helper()`) is compiled out by the parity config.
 
@@ -28,6 +31,9 @@ use ferrovgl_core::misc::anim::{Anim, AnimEnable, AnimExec, AnimTarget};
 use ferrovgl_core::misc::style::ImageSrc;
 use ferrovgl_core::misc::text::BaseDir;
 use ferrovgl_core::{Area, ColorFormat, Event, EventCode, EventParam, LvResult, Obj, ObjClass, Part, Ui};
+
+#[cfg(feature = "observer")]
+use ferrovgl_core::core::observer::{ObserverId, SubjectId, SubjectType};
 
 /// `LV_BAR_SIZE_MIN`: hor. pad and ver. pad cannot make the indicator smaller than this [px].
 const BAR_SIZE_MIN: i32 = 4;
@@ -953,6 +959,46 @@ fn init_anim(obj: Obj, bar_anim: &mut BarAnim) {
     bar_anim.anim_start = 0;
     bar_anim.anim_end = 0;
     bar_anim.anim_state = BAR_ANIM_STATE_INV;
+}
+
+/// `lv_bar_bind_value()`: bind an integer or float subject to the bar's
+/// value. Called by `Bar::bind_value()`.
+#[cfg(feature = "observer")]
+pub(crate) fn bar_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Option<ObserverId> {
+    if !ui.obj_is_valid(obj) {
+        return None; /*LV_CHECK_OBJ*/
+    }
+    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        ferrovgl_core::misc::check_arg_failed("lv_bar_bind_value: subject != NULL");
+        return None;
+    };
+    if !(type_ == SubjectType::Int || type_ == SubjectType::Float) {
+        ferrovgl_core::misc::check_arg_failed("Incompatible subject type");
+        return None;
+    }
+
+    ui.subject_add_observer_obj(subject, Rc::new(bar_value_observer_cb), Some(obj), None)
+}
+
+/// `bar_value_observer_cb()`
+#[cfg(feature = "observer")]
+fn bar_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) {
+    let Some(obj) = ui.observer_get_target_obj(observer) else {
+        return;
+    };
+    let Some(s) = ui.observer.subjects.get(subject.0) else {
+        return;
+    };
+    let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());
+
+    /*If the bar is not rendered yet show the new state immediately*/
+    let anim_on: AnimEnable = ui.obj(obj).is_some_and(|o| o.rendered);
+    if type_ == SubjectType::Int {
+        bar_set_value(ui, obj, num, anim_on);
+    } else {
+        /*LV_USE_FLOAT*/
+        bar_set_value(ui, obj, float_v, anim_on);
+    }
 }
 
 #[cfg(test)]
