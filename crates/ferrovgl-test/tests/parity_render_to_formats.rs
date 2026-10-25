@@ -6,9 +6,14 @@
 //! Every test file sets the display colour format and renders each scene of
 //! `lv_demo_render.c` at `opa_values = {0xff, 0x80}`, comparing
 //! `draw/render/<format>/demo_render_<scene>_opa_<opa>.png`. The parity
-//! configuration has `LV_BIN_DECODER_RAM_LOAD == 0`, so upstream skips
-//! `LV_DEMO_RENDER_SCENE_IMAGE_NORMAL_3` / `IMAGE_RECOLOR_3`, and
+//! configuration has `LV_BIN_DECODER_RAM_LOAD == 0`, so upstream does not
+//! compare `LV_DEMO_RENDER_SCENE_IMAGE_NORMAL_3` / `IMAGE_RECOLOR_3`, and
 //! `LV_USE_DRAW_SW_COMPLEX_GRADIENTS == 1`, so the three gradient scenes exist.
+//! Seven files skip those two scenes before calling `lv_demo_render()`;
+//! `test_render_to_l8.c` calls `lv_demo_render()` first and skips only the
+//! screenshot. No frame is rendered between that build and the next scene's
+//! `lv_obj_clean()`, so no compared image depends on it and the `_3` scenes
+//! are not built here for any format.
 //!
 //! Each `#[test]` here is one (format, scene) pair rendered at both opacities
 //! on a fresh default-theme display. Upstream renders all scenes of a format on
@@ -406,8 +411,11 @@ fn image_core_cb(c: &mut Ctx<'_>, parent: Obj, recolor: bool, start_at: usize) {
         add_to_cell(c.ui, label.obj(), 0, row * 2);
 
         let src = &srcs[i];
+        /* Column 1 only sets the source and keeps the default pivot. */
+        let image = image_obj_create(c, parent, 1, row * 2, recolor);
+        image.set_src(c.ui, src.clone());
+
         for (col, rotation, scale, scale_x, scale_y) in [
-            (1, None, None, None, None),
             (2, Some(300), None, None, None),
             (3, None, Some(400), None, None),
             (4, None, None, Some(400), None),

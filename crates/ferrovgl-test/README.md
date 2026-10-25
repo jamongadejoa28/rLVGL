@@ -139,9 +139,13 @@ Arc source-image bytes come from the pinned C asset, with provenance and hash
 in the test; expected PNGs are never used to generate actual frames.
 
 `parity_render_to_formats` ports the eight `draw/test_render_to_<format>.c`
-files: every `demos/render/lv_demo_render.c` scene (the `_3` image scenes are
-skipped as upstream does with `LV_BIN_DECODER_RAM_LOAD == 0`) at opacity 255
-and 128, rendered after `lv_display_set_color_format(<format>)`. The logo
+files: every `demos/render/lv_demo_render.c` scene at opacity 255 and 128,
+rendered after `lv_display_set_color_format(<format>)`. With
+`LV_BIN_DECODER_RAM_LOAD == 0` upstream does not compare the `_3` image
+scenes: seven files skip them before building, while `test_render_to_l8.c`
+builds them and skips only the screenshot. Nothing is rendered before the next
+scene's `lv_obj_clean()`, so no compared image depends on that build and the
+`_3` scenes are not built here. The logo
 images are byte-exact extractions of the C arrays in `demos/render/assets/`.
 The `blend_mode` scene's canvas is reproduced with a `DrawBuf`, a draw layer
 on it and an Image widget, because the canvas widget is not ported.
