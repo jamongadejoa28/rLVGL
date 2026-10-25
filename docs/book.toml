@@ -5,4 +5,4 @@ language = "en"
 src = "src"
 
 [output.html]
-git-repository-url = "https://github.com/jamongadejoa28/ferrovgl"
+git-repository-url = "https://github.com/jamongadejoa28/rLVGL"
