@@ -5,6 +5,36 @@
 컴파일되지 않았지만, 아래 재개 작업으로 **M1 첫 픽셀 종료 조건을
 충족했다.** 과거 감사 수치와 최신 구현/검증 상태를 구분해서 읽어야 한다.
 
+## 11차 재개: GitHub 공개, 원격 CI, 공개 API 감사
+
+- `main`을 github.com/jamongadejoa28/rLVGL 에 푸시했다. 첫 push에서 자동 실행된
+  release-plz 워크플로는 태그/릴리스 생성 전에 취소했고, crates.io 배포는
+  되돌릴 수 없으므로 `release.yml`을 `workflow_dispatch` 전용으로 바꿨다.
+- 첫 원격 CI의 실패 4건을 수정했다: complex-gradient fill을 upstream처럼
+  `LV_DRAW_SW_COMPLEX` 분기 안으로 한정(`cargo hack --each-feature`), docs를
+  `cargo +nightly doc`으로, macOS/Windows에서 SDL을 링크하는 umbrella 제외,
+  cargo-deny `allow-wildcard-paths`(path 전용 dev-dependency). CI에 package
+  dry-run 작업을 추가했다.
+- 공개 API 감사(`docs/src/api-guidelines.md`): 공개 함수 약 1,260개에
+  `#[must_use]`, 확장 가능한 enum과 내부 상태 구조체에 `#[non_exhaustive]`
+  (리터럴로 만드는 `UiConfig`/`*Dsc`에는 붙이지 않음), 모든 공개 타입에 `Debug`,
+  구현 세부 `pub(crate)`/`#[doc(hidden)]`, C 이름과 맞추는 이름 변경 6개, 중복
+  `set_style_*`/`get_style_*` 별칭 258개 제거. 독립 리뷰 4명의 40건 중 33건 반영.
+- 로컬 `cargo publish --dry-run`은 이전 실행이 남긴 `ferrovgl-* 0.1.0`
+  레지스트리 사본을 재사용해 실패할 수 있다. 정리 방법을 CONTRIBUTING에 적었다.
+
+### 11차 검증 결과
+
+| 검사 | 결과 |
+|---|---|
+| 원격 CI (`573b542`) | **15/15 작업 통과** (Linux/macOS/Windows 테스트, parity, package, msrv 1.97, deny, wasm, size, docs, features) |
+| workspace all-features 테스트 | 1504 통과, 0 실패 |
+| 패리티 | 범위 내 **472/472**, 비교 474장 byte-exact |
+| `cargo publish --workspace --dry-run` | 9개 크레이트 검증 통과 |
+
+남은 결정: crates.io 0.1.0 배포(`CARGO_REGISTRY_TOKEN` 등록 후 수동 Release
+워크플로 실행). 이후 v0.2 범위(나머지 위젯, 이미지 디코더, embedded 백엔드).
+
 ## 10차 재개: 참조 이미지 범위 분류, 패리티 테스트 26개 파일, 0.1.0 릴리스 준비
 
 범위 분류기가 upstream `tests/ref_imgs` 976장을 v0.1 범위(472장)와
