@@ -304,9 +304,29 @@ pub type AnimCallback = Rc<dyn Fn(&mut Ui, AnimId)>;
 /// `lv_anim_get_value_cb_t`
 pub type AnimGetValueCallback = Rc<dyn Fn(&mut Ui, AnimId) -> i32>;
 
+/// `void (* free_cb)(void * data)` of `lv_ext_data_t` (`LV_USE_EXT_DATA`),
+/// see [`Anim::set_external_data`] (`lv_anim_set_external_data`).
+pub type AnimExtDataFreeCb = fn(Option<Rc<dyn Any>>);
+
+/// `lv_ext_data_t` of `lv_anim_t` (`LV_USE_EXT_DATA`).
+///
+/// `data` is shared (`Rc`) because `lv_anim_start()` copies the template
+/// with `lv_memcpy`, so the template and the running animation point to the
+/// same data, like the C `void *`.
+#[derive(Clone, Default)]
+pub struct AnimExtData {
+    /// `data`
+    pub data: Option<Rc<dyn Any>>,
+    /// `free_cb`: called with `data` after `deleted_cb` when the animation is
+    /// freed (`anim_completed_handler`, `remove_concurrent_anims`, `remove_anim`).
+    pub free_cb: Option<AnimExtDataFreeCb>,
+}
+
 /// `lv_anim_t`
 #[derive(Clone)]
 pub struct Anim {
+    /// `ext_data` (`LV_USE_EXT_DATA`)
+    pub ext_data: AnimExtData,
     /// `var`
     pub var: AnimTarget,
     /// `exec_cb`
@@ -368,6 +388,10 @@ impl Anim {
     /// repeat, linear path, `early_apply` on.
     pub fn new() -> Self {
         Self {
+            ext_data: AnimExtData {
+                free_cb: None,
+                data: None,
+            },
             var: AnimTarget::None,
             exec: AnimExec::None,
             custom_exec_cb: None,
@@ -598,6 +622,18 @@ impl Anim {
     /// `lv_anim_set_deleted_cb()`
     pub fn set_deleted_cb(&mut self, cb: Option<AnimCallback>) -> &mut Self {
         self.deleted_cb = cb;
+        self
+    }
+
+    /// `lv_anim_set_external_data()` (`LV_USE_EXT_DATA`): `free_cb` is
+    /// called with `data` when the animation is freed, after `deleted_cb`.
+    pub fn set_external_data(
+        &mut self,
+        data: Option<Rc<dyn Any>>,
+        free_cb: Option<AnimExtDataFreeCb>,
+    ) -> &mut Self {
+        self.ext_data.data = data;
+        self.ext_data.free_cb = free_cb;
         self
     }
 
@@ -906,13 +942,16 @@ impl Ui {
         // lv_ll_clear_custom(anim_ll_p, remove_anim)
         let mut cur = self.anims.order.first().copied();
         while let Some(id) = cur {
+            // `i_next = lv_ll_get_next(ll_p, i)` before the cleanup; the loop
+            // ends when it was `NULL`, even if `deleted_cb` started new anims.
             let next = self.anims.next_of(id);
             self.anim_remove(id);
             // C would read a freed node if `deleted_cb` removed `next`;
             // restart from the head instead.
             cur = match next {
                 Some(n) if self.anims.order.contains(&n) => Some(n),
-                _ => self.anims.order.first().copied(),
+                Some(_) => self.anims.order.first().copied(),
+                None => None,
             };
         }
         self.anim_mark_list_change();
@@ -1029,8 +1068,12 @@ impl Ui {
         let max_time = (speed_or_time >> 20) & 0x3FF;
         let min_time = (speed_or_time >> 10) & 0x3FF;
 
-        // LV_CLAMP(min, val, max) = LV_MIN(LV_MAX(val, min), max)
-        time.max(min_time * 10).min(max_time * 10)
+        // LV_CLAMP(min, val, max) = LV_MAX(min, LV_MIN(val, max)): `min` wins
+        // when `min > max`.
+        let min_time_ms = min_time * 10;
+        let max_time_ms = max_time * 10;
+        let v = if time < max_time_ms { time } else { max_time_ms };
+        if min_time_ms > v { min_time_ms } else { v }
     }
 
     /// `lv_anim_is_paused()`
@@ -1245,6 +1288,7 @@ impl Ui {
             if let Some(cb) = self.anim(id).and_then(|a| a.deleted_cb.clone()) {
                 cb(self, id);
             }
+            self.anim_free_ext_data(id);
             // lv_free(a)
             self.anims.anims.remove(id.0);
         }
@@ -1390,6 +1434,7 @@ impl Ui {
                 if let Some(cb) = self.anim(id).and_then(|a| a.deleted_cb.clone()) {
                     cb(self, id);
                 }
+                self.anim_free_ext_data(id);
                 self.anims.anims.remove(id.0);
                 // Read by `anim_timer`. It need to know if a delete occurred in the linked list
                 self.anim_mark_list_change();
@@ -1410,13 +1455,26 @@ impl Ui {
         del_any
     }
 
-    /// `remove_anim()` (static in `lv_anim.c`): unlink, call `deleted_cb`, free.
+    /// `remove_anim()` (static in `lv_anim.c`): unlink, call `deleted_cb`,
+    /// release `ext_data`, free.
     fn anim_remove(&mut self, id: AnimId) {
         self.anims.unlink(id);
         if let Some(cb) = self.anim(id).and_then(|a| a.deleted_cb.clone()) {
             cb(self, id);
         }
+        self.anim_free_ext_data(id);
         self.anims.anims.remove(id.0);
+    }
+
+    /// The `#if LV_USE_EXT_DATA` block before `lv_free(a)` in
+    /// `anim_completed_handler()`, `remove_concurrent_anims()` and
+    /// `remove_anim()`: `if(free_cb) { free_cb(data); data = NULL; }`.
+    fn anim_free_ext_data(&mut self, id: AnimId) {
+        let Some(a) = self.anim_mut(id) else { return };
+        if let Some(free_cb) = a.ext_data.free_cb {
+            let data = a.ext_data.data.take();
+            free_cb(data);
+        }
     }
 
     /// `a->exec_cb(a->var, v)`: resolve an [`AnimExec`] to the Ui method it
@@ -2100,5 +2158,104 @@ mod tests {
         assert_eq!(abs_diff_i32(0, 5), 5);
         assert_eq!(abs_diff_i32(5, 0), 5);
         assert_eq!(abs_diff_i32(i32::MIN, 0), 0x8000_0000);
+    }
+
+    #[test]
+    fn resolve_speed_min_wins_over_max_like_lv_clamp() {
+        // LV_CLAMP(min, val, max) = LV_MAX(min, LV_MIN(val, max))
+        let d = Ui::anim_speed_clamped(100, 2000, 500);
+        assert_eq!(Ui::anim_resolve_speed(d, 0, 10), 2000);
+        assert_eq!(Ui::anim_resolve_speed(d, 0, 100_000), 2000);
+    }
+
+    #[test]
+    fn delete_all_stops_at_the_end_of_the_list() {
+        // lv_ll_clear_custom: i_next is read before the cleanup, so an anim
+        // started by the last node's deleted_cb (inserted at the head) survives.
+        let mut ui = ui();
+        let deleted = Rc::new(Cell::new(0));
+        let d = deleted.clone();
+        let mut a = base_anim(AnimTarget::Tag(1), exec_into(&Rc::new(Cell::new(0))));
+        a.set_deleted_cb(Some(Rc::new(move |ui: &mut Ui, _id: AnimId| {
+            d.set(d.get() + 1);
+            let mut b = base_anim(AnimTarget::Tag(2), exec_into(&Rc::new(Cell::new(0))));
+            let d2 = d.clone();
+            b.set_deleted_cb(Some(Rc::new(move |_ui: &mut Ui, _id: AnimId| {
+                d2.set(d2.get() + 1)
+            })));
+            ui.anim_start(&b);
+        })));
+        ui.anim_start(&a);
+        assert_eq!(ui.anim_count_running(), 1);
+        ui.anim_delete_all();
+        assert_eq!(deleted.get(), 1);
+        assert_eq!(ui.anim_count_running(), 1);
+        assert!(ui.anim_get(AnimTarget::Tag(2), None).is_some());
+    }
+
+    type Log = core::cell::RefCell<Vec<&'static str>>;
+
+    fn log_free(data: Option<Rc<dyn Any>>) {
+        let data = data.expect("ext_data.data is passed to free_cb");
+        data.downcast_ref::<Log>().unwrap().borrow_mut().push("free");
+    }
+
+    /// An anim whose completed/deleted/free callbacks append to `log`.
+    fn logged_anim(var: AnimTarget, log: &Rc<Log>) -> Anim {
+        let mut a = base_anim(var, exec_into(&Rc::new(Cell::new(0))));
+        let (l1, l2) = (log.clone(), log.clone());
+        a.set_completed_cb(Some(Rc::new(move |_ui: &mut Ui, _id: AnimId| {
+            l1.borrow_mut().push("completed")
+        })))
+        .set_deleted_cb(Some(Rc::new(move |_ui: &mut Ui, _id: AnimId| {
+            l2.borrow_mut().push("deleted")
+        })))
+        .set_external_data(Some(log.clone() as Rc<dyn Any>), Some(log_free));
+        a
+    }
+
+    #[test]
+    fn external_data_is_freed_after_deleted_cb_on_every_free_path() {
+        let a = Anim::new();
+        assert!(a.ext_data.data.is_none() && a.ext_data.free_cb.is_none());
+
+        // anim_completed_handler
+        let mut ui = ui();
+        let log = Rc::new(Log::default());
+        ui.anim_start(&logged_anim(AnimTarget::Tag(1), &log));
+        wait(&mut ui, 150);
+        assert_eq!(ui.anim_count_running(), 0);
+        assert_eq!(*log.borrow(), ["completed", "deleted", "free"]);
+
+        // remove_concurrent_anims
+        let log = Rc::new(Log::default());
+        let a = logged_anim(AnimTarget::Tag(1), &log);
+        ui.anim_start(&a);
+        let mut b = a.clone();
+        b.set_external_data(None, None).set_deleted_cb(None);
+        ui.anim_start(&b);
+        assert_eq!(ui.anim_count_running(), 1);
+        assert_eq!(*log.borrow(), ["deleted", "free"]);
+        ui.anim_delete_all();
+
+        // lv_anim_delete -> remove_anim
+        let log = Rc::new(Log::default());
+        ui.anim_start(&logged_anim(AnimTarget::Tag(1), &log));
+        assert!(ui.anim_delete(AnimTarget::Tag(1), None));
+        assert_eq!(*log.borrow(), ["deleted", "free"]);
+
+        // lv_anim_delete_all -> remove_anim
+        let log = Rc::new(Log::default());
+        ui.anim_start(&logged_anim(AnimTarget::Tag(1), &log));
+        ui.anim_delete_all();
+        assert_eq!(*log.borrow(), ["deleted", "free"]);
+
+        // no free_cb: nothing is called
+        let log = Rc::new(Log::default());
+        let mut a = logged_anim(AnimTarget::Tag(1), &log);
+        a.ext_data.free_cb = None;
+        ui.anim_start(&a);
+        ui.anim_delete_all();
+        assert_eq!(*log.borrow(), ["deleted"]);
     }
 }
