@@ -1,15 +1,20 @@
 //! `test_draw_blur.c`: identical offscreen draw commands and screen flex layout.
-//! Canvas widgets are represented by 140x100 image-drawing objects; this tests
-//! the rasterizer and compositing, not the unported canvas widget API.
+//! Canvas widgets are represented by 140x100 image-drawing objects whose
+//! buffers are filled like `lv_canvas_fill_bg()` and drawn into like
+//! `lv_canvas_init_layer()` / `lv_canvas_finish_layer()`; this tests the
+//! rasterizer and compositing, not the unported canvas widget API.
+
+mod common;
 
 use std::rc::Rc;
 
+use common::{canvas_buf, canvas_fill_bg, canvas_finish_layer, canvas_init_layer};
 use ferrovgl_core::draw::blur::BlurDsc;
 use ferrovgl_core::draw::draw_buf::DrawBuf;
 use ferrovgl_core::draw::image::DrawImageDsc;
 use ferrovgl_core::draw::{FillDsc, LabelDsc};
 use ferrovgl_core::layouts::flex::{FlexAlign, FlexFlow};
-use ferrovgl_core::misc::color::OPA_30;
+use ferrovgl_core::misc::color::{OPA_30, OPA_COVER};
 use ferrovgl_core::misc::palette::{self, Palette};
 use ferrovgl_core::misc::style::ImageSrc;
 use ferrovgl_core::misc::text::{TextAlign, TextDecor};
@@ -17,11 +22,10 @@ use ferrovgl_core::{Area, Color, ColorFormat, EventCode, FontRef, ObjFlags, Ui};
 use ferrovgl_test::TestDisplay;
 
 fn render_canvas(ui: &mut Ui, name: &str, cf: ColorFormat, radius: i32, corner: i32) -> DrawBuf {
-    let area = Area::new(0, 0, 139, 99);
-    let layer = ui.draw_layer_create(None, cf, &area);
-    let mut fill = FillDsc::new();
-    fill.color = Color::make(204, 204, 204);
-    ui.draw_fill(layer, &fill, &area);
+    /*lv_canvas_set_buffer(canvas, canvas_buf, CANVAS_WIDTH, CANVAS_HEIGHT, cf)*/
+    let mut buf = canvas_buf(140, 100, cf);
+    canvas_fill_bg(&mut buf, Color::hex3(0xccc), OPA_COVER);
+    let layer = canvas_init_layer(ui, buf);
 
     let mut label = LabelDsc::new();
     label.color = palette::main(Palette::Red);
@@ -39,6 +43,7 @@ fn render_canvas(ui: &mut Ui, name: &str, cf: ColorFormat, radius: i32, corner: 
     blur.corner_radius = corner;
     let middle = Area::new(25, 20, 115, 80);
     ui.draw_blur(layer, &blur, &middle);
+    let mut fill = FillDsc::new();
     fill.color = palette::lighten(Palette::Blue, 1);
     fill.radius = corner;
     fill.opa = OPA_30;
@@ -50,24 +55,7 @@ fn render_canvas(ui: &mut Ui, name: &str, cf: ColorFormat, radius: i32, corner: 
     label.align = TextAlign::Center;
     label.text = Rc::from(format!("{name}\nblur:{radius}"));
     ui.draw_label(layer, &label, &Area::new(30, 35, 110, 65));
-    for _ in 0..16 {
-        if ui.draw.layer(layer).unwrap().tasks.is_empty() {
-            break;
-        }
-        ui.draw_dispatch();
-    }
-    assert!(ui.draw.layer(layer).unwrap().tasks.is_empty());
-    let pixels = ui
-        .draw
-        .layer(layer)
-        .unwrap()
-        .draw_buf
-        .as_ref()
-        .unwrap()
-        .dup()
-        .unwrap();
-    ui.draw_layer_delete(layer);
-    pixels
+    canvas_finish_layer(ui, layer)
 }
 
 fn scene(corner: i32) {
