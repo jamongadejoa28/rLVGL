@@ -296,6 +296,26 @@ fn style_value_eq(a: &StyleValue, b: &StyleValue) -> bool {
     }
 }
 
+/// `.num` of the C `lv_style_value_t` union: a colour reads as its packed
+/// bytes (`b | g << 8 | r << 16`), an unset value (`.ptr = NULL`) as 0.
+fn union_num(v: &StyleValue) -> i32 {
+    match v {
+        StyleValue::Num(n) => *n,
+        StyleValue::Color(c) => c.to_int() as i32,
+        _ => 0,
+    }
+}
+
+/// `.color` of a union whose `.num` was written: the low three bytes in
+/// `lv_color_t` memory order (blue, green, red).
+fn union_color(n: i32) -> Color {
+    Color {
+        blue: (n & 0xFF) as u8,
+        green: ((n >> 8) & 0xFF) as u8,
+        red: ((n >> 16) & 0xFF) as u8,
+    }
+}
+
 /// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 0`)
 #[cfg(not(feature = "bidi"))]
 fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
@@ -308,6 +328,10 @@ fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str
 /// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 1`). The BiDi
 /// algorithm is not ported yet: `lv_bidi_detect_base_dir()` is stubbed to
 /// `LV_BIDI_BASE_DIR_DEF` (LTR), like `draw/label.rs`.
+///
+/// Known parity gap: `full.defconfig` sets `LV_USE_BIDI=y` but the crate's
+/// default features leave `bidi` off, and `AUTO` base direction never
+/// detects RTL text until `misc/bidi.rs` (`lv_bidi.c`) exists.
 #[cfg(feature = "bidi")]
 fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
     let _ = txt;
@@ -538,7 +562,13 @@ macro_rules! gen_obj_style_accessors {
 
                 #[doc = concat!("`lv_", stringify!($oget), "()`: the resolved `LV_STYLE_", stringify!($c), "` value.")]
                 pub fn $oget(&self, obj: Obj, part: Part) -> obj_style_ret!($kind, $t) {
-                    let v = self.obj_get_style_prop(obj, part, StyleProp::$c);
+                    /*LV_CHECK_OBJ: `return 0` / `lv_color_black()` / `NULL` / `false`*/
+                    let v = if self.obj_is_valid(obj) {
+                        self.obj_get_style_prop(obj, part, StyleProp::$c)
+                    } else {
+                        check_arg_failed("obj != NULL");
+                        StyleValue::Null
+                    };
                     obj_style_unpack!($kind, $t, v)
                 }
             )*
@@ -570,7 +600,13 @@ macro_rules! gen_obj_style_aliases {
                 #[doc = concat!("`lv_obj_", stringify!($oget), "()` (alias of `obj_", stringify!($oget), "`).")]
                 #[inline]
                 pub fn $oget(&self, obj: Obj, part: Part) -> obj_style_ret!($kind, $t) {
-                    let v = self.obj_get_style_prop(obj, part, StyleProp::$c);
+                    /*LV_CHECK_OBJ: `return 0` / `lv_color_black()` / `NULL` / `false`*/
+                    let v = if self.obj_is_valid(obj) {
+                        self.obj_get_style_prop(obj, part, StyleProp::$c)
+                    } else {
+                        check_arg_failed("obj != NULL");
+                        StyleValue::Null
+                    };
                     obj_style_unpack!($kind, $t, v)
                 }
             )*
@@ -586,6 +622,10 @@ macro_rules! gen_obj_style_filtered_getters {
             $(
                 #[doc = concat!("`lv_", stringify!($name), "()`")]
                 pub fn $name(&self, obj: Obj, part: Part) -> Color {
+                    if !self.obj_is_valid(obj) {
+                        check_arg_failed("obj != NULL");
+                        return Color::BLACK; /*LV_CHECK_OBJ*/
+                    }
                     let v = self.obj_style_apply_color_filter(obj, part, self.obj_get_style_prop(obj, part, StyleProp::$c));
                     v.color()
                 }
@@ -2140,7 +2180,10 @@ impl Ui {
     /// `v` (0..=255) into the object's transition style.
     ///
     /// Public (hidden) only so it is not dead code until `misc/anim.rs`
-    /// switches its `AnimExec::StyleTrans` dispatch to it.
+    /// switches its `AnimExec::StyleTrans` dispatch to it and drops its own
+    /// copy (`anim_exec_style_trans`, which compares with derived equality
+    /// instead of the union-bitwise [`style_value_eq`] and lacks the
+    /// packed-colour `default:` interpolation).
     #[doc(hidden)]
     pub fn obj_style_trans_anim_cb(&mut self, tr: StyleTransId, v: i32) {
         let Some(t) = self.style_trans.get(tr.0) else {
@@ -2211,9 +2254,17 @@ impl Ui {
                 } else if v == 255 {
                     end_value.clone()
                 } else {
-                    let s = start_value.num();
-                    let e = end_value.num();
-                    StyleValue::Num(s.wrapping_add(e.wrapping_sub(s).wrapping_mul(v) >> 8))
+                    let s = union_num(start_value);
+                    let e = union_num(end_value);
+                    let n = s.wrapping_add(e.wrapping_sub(s).wrapping_mul(v) >> 8);
+                    if matches!(start_value, StyleValue::Color(_))
+                        || matches!(end_value, StyleValue::Color(_))
+                    {
+                        /*Read back through `.color` (ARC_COLOR, LINE_COLOR, ...)*/
+                        StyleValue::Color(union_color(n))
+                    } else {
+                        StyleValue::Num(n)
+                    }
                 }
             }
         };
@@ -3056,6 +3107,56 @@ mod tests {
         // The emptied transition style is removed.
         assert!(ui.obj(obj).unwrap().styles.iter().all(|os| !os.is_trans()));
         assert_eq!(ui.obj_get_style_bg_color(obj, Part::MAIN), Color::hex(0xff0000));
+    }
+
+    /// Colour properties outside the `lv_color_mix` case list (ARC_COLOR,
+    /// LINE_COLOR, ...) take the `default:` arm, which interpolates the
+    /// union's `.num` (packed `b | g << 8 | r << 16`) and reads it back
+    /// through `.color`.
+    #[test]
+    fn default_arm_interpolates_packed_colour() {
+        let mut ui = ui();
+        let obj = new_obj(&mut ui, None);
+        ui.obj_set_style_arc_color(obj, Color::hex(0xFF0000), StyleSelector::DEFAULT);
+        ui.obj_set_style_arc_color(obj, Color::hex(0x0000FF), sel(Part::MAIN, State::PRESSED));
+        ui.obj_mut(obj).unwrap().state = State::PRESSED;
+        let dsc = ObjStyleTransitionDsc {
+            path: AnimPath::Linear,
+            user_data: None,
+            selector: StyleSelector::DEFAULT,
+            time: 100,
+            delay: 0,
+            prop: StyleProp::ARC_COLOR,
+        };
+        ui.obj_style_create_transition(obj, Part::MAIN, State::DEFAULT, State::PRESSED, &dsc);
+        let tr = ui.style_trans_order[0];
+        ui.obj_style_trans_anim_cb(tr, 128);
+        // 0xFF0000 + (((0x0000FF - 0xFF0000) * 128) >> 8) = 0x7F807F
+        assert_eq!(ui.obj_get_style_arc_color(obj, Part::MAIN), Color::hex(0x7F807F));
+        ui.obj_style_trans_anim_cb(tr, 255);
+        assert_eq!(ui.obj_get_style_arc_color(obj, Part::MAIN), Color::hex(0x0000FF));
+
+        assert_eq!(union_num(&StyleValue::Color(Color::hex(0x123456))), 0x123456);
+        assert_eq!(union_num(&StyleValue::Null), 0);
+        assert_eq!(union_color(0x7F807F), Color::hex(0x7F807F));
+    }
+
+    /// `LV_CHECK_OBJ(obj, &lv_obj_class, return 0)` of the generated getters:
+    /// an invalid object yields the zero value, not the property default.
+    #[test]
+    #[cfg(not(feature = "check-arg-panic"))]
+    fn getters_of_invalid_obj_return_zero() {
+        let mut ui = ui();
+        let obj = new_obj(&mut ui, None);
+        ui.objs.remove(obj.0.0);
+        assert!(!ui.obj_is_valid(obj));
+        assert_eq!(ui.obj_get_style_opa(obj, Part::MAIN), 0);
+        assert_eq!(ui.obj_get_style_max_width(obj, Part::MAIN), 0);
+        assert_eq!(ui.obj_get_style_transform_scale_x(obj, Part::MAIN), 0);
+        assert_eq!(ui.obj_get_style_bg_color(obj, Part::MAIN), Color::BLACK);
+        assert_eq!(ui.obj_get_style_bg_color_filtered(obj, Part::MAIN), Color::BLACK);
+        assert!(ui.obj_get_style_text_font(obj, Part::MAIN).is_none());
+        assert!(!ui.obj_get_style_border_post(obj, Part::MAIN));
     }
 
     #[test]
