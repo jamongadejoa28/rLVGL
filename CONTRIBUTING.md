@@ -109,19 +109,35 @@ uv run --locked cargo publish --workspace --dry-run --locked
 `ferrovgl-core`, `ferrovgl-draw-sw`, `ferrovgl-embedded`, `ferrovgl-fonts`,
 `ferrovgl-widgets`, `ferrovgl-examples`, `ferrovgl-sdl`, `ferrovgl-wasm`,
 `ferrovgl`. Every package carries `LICENSE-APACHE`, `LICENSE-MIT`, `NOTICE`
-(the LVGL MIT notice) and `TRADEMARK.md` as symlinks to the repository root;
-`ferrovgl-fonts` also carries `OFL.txt` and `data/SOURCE.md`. A dev-dependency
-on `ferrovgl-test` must be path-only (no `version`) so that `cargo publish`
-strips it.
+(the LVGL MIT notice, the MIT notices of the third-party code LVGL ported and
+a summary of the font licences) and `TRADEMARK.md` as symlinks to the
+repository root. `ferrovgl-fonts` also carries `OFL.txt`, `LICENSE-DejaVu.txt`
+and `data/SOURCE.md`, and declares
+`(MIT OR Apache-2.0) AND OFL-1.1 AND Bitstream-Vera` because of its font data.
+A dev-dependency on `ferrovgl-test` must be path-only (no `version`) so that
+`cargo publish` strips it. A package does not ship test targets that need
+`ferrovgl-test` (`ferrovgl-examples` leaves out `tests/`).
 
 ### 0.1.0
 
-The 0.1.0 entry of `CHANGELOG.md` is written by hand. Publish 0.1.0 with
-`release-plz release` (the release workflow), which publishes every crate whose
-version is not on crates.io yet and creates the `ferrovgl-v0.1.0` GitHub
-release from that changelog section. Do not run `release-plz release-pr`
-before 0.1.0 is on crates.io: without a registry baseline it would turn the
-whole history into changelog entries.
+The 0.1.0 entry of `CHANGELOG.md` is written by hand and stays dated
+"Unreleased" until the publish; set the release date in the commit that
+publishes. Publish 0.1.0 with `release-plz release`, which publishes every
+crate whose version is not on crates.io yet and creates the
+`ferrovgl-v0.1.0` GitHub release from that changelog section. Do not run
+`release-plz release-pr` before 0.1.0 is on crates.io: without a registry
+baseline it would turn the whole history into changelog entries.
+
+The release workflow (`.github/workflows/release.yml`) runs
+`release-plz/action` without a `command`, so one dispatch runs
+`release-plz release` and then `release-plz release-pr` straight away, while
+the crates.io index may still be catching up on the crates just published.
+Until the workflow sets `command: release` (with `release-pr` as a separate
+job once 0.1.0 is the baseline), run `release-plz release` for 0.1.0 locally
+with a crates.io token instead of dispatching the workflow, and dispatch the
+workflow only after the 0.1.0 crates are visible on crates.io. Close a release
+PR that `release-pr` opens against an incomplete baseline instead of merging
+it.
 
 ### Semver checks after 0.1.0
 

@@ -1,6 +1,6 @@
 [package]
 name = "ferrovgl-embedded"
-description = "embedded-graphics and embedded-hal adapters for ferrovgl (no_std)"
+description = "Placeholder for the planned embedded-graphics / embedded-hal adapters of ferrovgl (no API in 0.1)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 documentation = "https://docs.rs/ferrovgl-embedded"
 readme = "README.md"
-keywords = ["embedded-graphics", "embedded-hal", "embedded", "gui", "lvgl"]
+keywords = ["embedded-graphics", "embedded", "gui", "placeholder", "lvgl"]
 categories = ["embedded", "no-std", "gui"]
 include = [
     "/Cargo.toml",

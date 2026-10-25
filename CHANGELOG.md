@@ -17,7 +17,7 @@ trademark of LVGL LLC.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-25
+## [0.1.0] - Unreleased
 
 First public release: a pure-Rust, `#![no_std]` + `alloc` reimplementation of
 LVGL v9.6.0 (commit `80ca777`), ported 1:1 from the C sources and verified

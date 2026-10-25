@@ -30,8 +30,87 @@ LVGL is distributed under the MIT licence:
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
-Bundled font data (crates/ferrovgl-fonts/data) is converted from the glyph
-tables shipped with LVGL. Montserrat is licensed under the SIL Open Font
-License 1.1 (see crates/ferrovgl-fonts/OFL.txt).
+Third-party code
+----------------
+
+Some ported LVGL files are themselves derived from third-party code that LVGL
+ships under its own MIT notice (upstream COPYRIGHTS.md). The ports carry the
+same notices:
+
+* ferrovgl-widgets, src/observer.rs (`mod sprintf`): a port of LVGL's
+  src/stdlib/builtin/lv_sprintf_builtin.c, which is based on mpaland/printf
+  (https://github.com/mpaland/printf; upstream LICENSE_SPRINTF.txt).
+
+      The MIT License (MIT)
+
+      Copyright (c) 2014 Marco Paland
+
+      Permission is hereby granted, free of charge, to any person obtaining a
+      copy of this software and associated documentation files (the
+      "Software"), to deal in the Software without restriction, including
+      without limitation the rights to use, copy, modify, merge, publish,
+      distribute, sublicense, and/or sell copies of the Software, and to
+      permit persons to whom the Software is furnished to do so, subject to
+      the following conditions:
+
+      The above copyright notice and this permission notice shall be included
+      in all copies or substantial portions of the Software.
+
+      THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+      OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+      IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+      CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+      TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+      SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+* ferrovgl-core, src/misc/math.rs (`cubic_bezier`): a port of
+  lv_cubic_bezier() in LVGL's src/misc/lv_math.c, which is based on
+  bezier-easing (https://github.com/gre/bezier-easing) and WebKit's
+  UnitBezier.h.
+
+      Copyright (c) 2014 Gaëtan Renaudeau
+
+      Permission is hereby granted, free of charge, to any person obtaining a
+      copy of this software and associated documentation files (the
+      "Software"), to deal in the Software without restriction, including
+      without limitation the rights to use, copy, modify, merge, publish,
+      distribute, sublicense, and/or sell copies of the Software, and to
+      permit persons to whom the Software is furnished to do so, subject to
+      the following conditions:
+
+      The above copyright notice and this permission notice shall be included
+      in all copies or substantial portions of the Software.
+
+      THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+      OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+      IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+      CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+      TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+      SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Fonts
+-----
+
+The bundled font data (crates/ferrovgl-fonts/data/*.lvfnt) is converted from
+the glyph tables shipped with LVGL and is not covered by the ferrovgl code
+licence alone; the ferrovgl-fonts package declares
+"(MIT OR Apache-2.0) AND OFL-1.1 AND Bitstream-Vera":
+
+* Montserrat and Font Awesome 5 Free (the LVGL symbol glyphs): SIL Open Font
+  License 1.1, with both copyright notices, in crates/ferrovgl-fonts/OFL.txt.
+* DejaVu Sans: Bitstream Vera Fonts licence and Arev Fonts licence (DejaVu
+  changes in the public domain), in crates/ferrovgl-fonts/LICENSE-DejaVu.txt.
+* UNSCII: public domain.
+
+Provenance is recorded in crates/ferrovgl-fonts/data/SOURCE.md.
+
+The 48x48 LVGL logo bitmap in ferrovgl-examples
+(src/assets/img_example_lvgl_logo.rs) is reproduced unmodified from LVGL's
+MIT-licensed examples/assets/img_example_lvgl_logo.c; see TRADEMARK.md.
+
+Trademarks
+----------
 
 LVGL is a trademark of LVGL LLC. See TRADEMARK.md.

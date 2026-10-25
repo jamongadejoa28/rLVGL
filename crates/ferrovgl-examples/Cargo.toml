@@ -19,7 +19,6 @@ include = [
     "/NOTICE",
     "/TRADEMARK.md",
     "/src/**",
-    "/tests/**",
 ]
 
 [features]
@@ -41,6 +40,8 @@ ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "default-monts
 ferrovgl-test = { path = "../ferrovgl-test" }
 
 # The table covers the reference configuration (complex gradients on).
+# `tests/` is left out of the package (it needs the unpublished ferrovgl-test),
+# so `cargo package` notes that it ignores this target.
 [[test]]
 name = "snapshots"
 required-features = ["complex-gradients"]

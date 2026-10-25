@@ -23,8 +23,9 @@ together with the same feature of `ferrovgl-draw-sw`. Examples that need
 chart, keyboard, table, `lv_anim_timeline` or large image assets are not
 ported yet.
 
-The tests in `tests/` need the unpublished `ferrovgl-test` harness and run
-from the repository workspace only.
+The tests in the repository's `tests/` need the unpublished `ferrovgl-test`
+harness, so they are not part of the published package and run from the
+repository workspace only.
 
 ## About ferrovgl
 

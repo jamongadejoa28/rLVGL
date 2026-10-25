@@ -31,13 +31,15 @@ let config = UiConfig {
 
 ## Font licences
 
-The font data is not covered by the ferrovgl code licence alone:
+The font data is not covered by the ferrovgl code licence alone, so this
+package's licence is `(MIT OR Apache-2.0) AND OFL-1.1 AND Bitstream-Vera`.
+Both licence texts ship in this package:
 
-- Montserrat: SIL Open Font License 1.1, [`OFL.txt`](OFL.txt) (shipped in
-  this package).
-- Font Awesome 5 Free (the LVGL symbol glyphs): SIL Open Font License 1.1.
-- DejaVu Sans: Bitstream Vera Fonts licence, DejaVu changes in the public
-  domain (<https://dejavu-fonts.github.io/License.html>).
+- Montserrat: SIL Open Font License 1.1, [`OFL.txt`](OFL.txt).
+- Font Awesome 5 Free (the LVGL symbol glyphs): SIL Open Font License 1.1;
+  its copyright notice is in [`OFL.txt`](OFL.txt) too.
+- DejaVu Sans: Bitstream Vera Fonts licence and Arev Fonts licence, DejaVu
+  changes in the public domain, [`LICENSE-DejaVu.txt`](LICENSE-DejaVu.txt).
 - UNSCII: public domain.
 
 Provenance and the exact conversion options are recorded in
@@ -57,7 +59,8 @@ of LVGL LLC, used here only to describe compatibility and provenance (see
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-APACHE)
-or [MIT license](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-MIT) at your option. ferrovgl is derived from
+The code is licensed under either of [Apache License, Version 2.0](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-APACHE)
+or [MIT license](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-MIT) at your option; the font data is
+under the font licences listed in [Font licences](#font-licences). ferrovgl is derived from
 LVGL (MIT, Copyright LVGL Kft); the upstream notice is reproduced in
 [NOTICE](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/NOTICE), which ships in this package.

@@ -4,7 +4,10 @@ description = "Built-in bitmap fonts (Montserrat, UNSCII, ...) for ferrovgl, con
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+# The code is MIT OR Apache-2.0; the font data in data/*.lvfnt is derived
+# from Montserrat and Font Awesome 5 Free (OFL-1.1, which must stay the
+# licence of derivative fonts) and DejaVu Sans (Bitstream Vera + Arev).
+license = "(MIT OR Apache-2.0) AND OFL-1.1 AND Bitstream-Vera"
 repository.workspace = true
 authors.workspace = true
 documentation = "https://docs.rs/ferrovgl-fonts"
@@ -20,6 +23,7 @@ include = [
     "/TRADEMARK.md",
     "/src/**",
     "/OFL.txt",
+    "/LICENSE-DejaVu.txt",
     "/data/*.lvfnt",
     "/data/SOURCE.md",
     "/tests/**",
