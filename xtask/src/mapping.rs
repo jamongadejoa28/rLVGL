@@ -81,10 +81,13 @@ struct CFunc {
     /// The `#if` conditions around the prototype (include guards and
     /// `__cplusplus` blocks removed), outermost first.
     guard: Vec<String>,
-    /// `@deprecated` in its doc comment or an `LV_DEPRECATED()` attribute.
+    /// `@deprecated` or a doc line starting with `DEPRECATED` in its doc
+    /// comment, an `LV_DEPRECATED()` attribute, or an `api_map` alias.
     deprecated: bool,
     /// Takes a `va_list`.
     va_list: bool,
+    /// The function a `#define lv_old lv_new` alias names.
+    alias_of: Option<String>,
 }
 
 /// One upstream header and its functions in declaration order.
@@ -166,6 +169,10 @@ fn parse_c_header(text: &str) -> Vec<CFunc> {
             doc_idx += directive.matches(DOC_MARK).count();
             if squash(&directive).starts_with("#define") {
                 pending_doc = None; // a doc comment of a macro
+                push(
+                    eval_c_alias(&directive.replace(DOC_MARK, " "), &guards),
+                    &mut funcs,
+                );
             }
             apply_directive(&directive.replace(DOC_MARK, " "), &mut guards);
             continue;
@@ -340,6 +347,78 @@ fn apply_directive(directive: &str, guards: &mut Vec<Guard>) {
     }
 }
 
+fn visible_guards(guards: &[Guard]) -> Vec<String> {
+    guards
+        .iter()
+        .filter(|g| !g.hidden)
+        .map(|g| g.cond.clone())
+        .collect()
+}
+
+/// `#define lv_old lv_new` or `#define lv_old(a, b) lv_new(b)`: a function
+/// alias (the `api_map/` headers). Type aliases (`_t`) are not functions.
+fn eval_c_alias(directive: &str, guards: &[Guard]) -> Option<CFunc> {
+    let toks = c_tokens(directive);
+    let rest = match toks.as_slice() {
+        [hash, define, rest @ ..] if hash == "#" && define == "define" => rest,
+        _ => return None,
+    };
+    let (name, mut body) = match rest {
+        [name, rest @ ..] if is_lv_fn_name(name) && !name.ends_with("_t") => (name, rest),
+        _ => return None,
+    };
+    // Parameters: `(` directly after the name.
+    let params_follow = directive
+        .split_once(name.as_str())
+        .is_some_and(|(_, after)| after.starts_with('('));
+    if params_follow {
+        let close = body.iter().position(|t| t == ")")?;
+        body = &body[close + 1..];
+    }
+    let target = match body {
+        [target] => target,
+        [target, open, .., close] if open == "(" && close == ")" => target,
+        _ => return None,
+    };
+    if !is_lv_fn_name(target) || target.ends_with("_t") || target == name {
+        return None;
+    }
+    if body.len() > 1 {
+        // The call must span the whole body: `lv_a(x) + lv_b(y)` is not an alias.
+        let mut depth = 0i32;
+        for (k, t) in body[1..].iter().enumerate() {
+            match t.as_str() {
+                "(" => depth += 1,
+                ")" => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 && k + 2 != body.len() {
+                return None;
+            }
+        }
+    }
+    Some(CFunc {
+        name: name.clone(),
+        guard: visible_guards(guards),
+        deprecated: true,
+        va_list: false,
+        alias_of: Some(target.clone()),
+    })
+}
+
+/// `@deprecated`, or a doc line that starts with the word `DEPRECATED`
+/// (`DEPRECATED, use lv_scale_set_section_range instead.`).
+fn doc_deprecated(doc: &str) -> bool {
+    doc.contains("@deprecated")
+        || doc.lines().any(|l| {
+            l.trim_start()
+                .trim_start_matches('*')
+                .trim_start()
+                .strip_prefix("DEPRECATED")
+                .is_some_and(|r| !r.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_'))
+        })
+}
+
 /// A top-level declaration (text up to `;` or `{`) as a function, if it is one.
 fn eval_c_statement(stmt: &str, guards: &[Guard], doc: Option<&str>) -> Option<CFunc> {
     let toks = c_tokens(stmt);
@@ -375,17 +454,13 @@ fn eval_c_statement(stmt: &str, guards: &[Guard], doc: Option<&str>) -> Option<C
                 _ => {}
             }
         }
-        let deprecated =
-            doc.is_some_and(|d| d.contains("@deprecated")) || toks[..k].iter().any(|t| t == "LV_DEPRECATED");
+        let deprecated = doc.is_some_and(doc_deprecated) || toks[..k].iter().any(|t| t == "LV_DEPRECATED");
         return Some(CFunc {
             name: t.clone(),
-            guard: guards
-                .iter()
-                .filter(|g| !g.hidden)
-                .map(|g| g.cond.clone())
-                .collect(),
+            guard: visible_guards(guards),
             deprecated,
             va_list,
+            alias_of: None,
         });
     }
     None
@@ -1255,7 +1330,11 @@ fn record(
         .skip_while(|l| l.is_empty())
         .take_while(|l| !l.is_empty())
         .collect();
-    let cites = lead_citations(&first.join(" "));
+    let first = first.join(" ");
+    let mut cites = lead_citations(&first);
+    if cites.is_empty() {
+        cites.extend(trailing_citation(&first, name));
+    }
     if cites.is_empty() {
         return;
     }
@@ -1544,11 +1623,50 @@ fn lead_citations(line: &str) -> Vec<String> {
     out
 }
 
-/// `lv_name()`, `lv_name(args)` and `lv_name_fmt/vfmt()` inside one backtick span.
+/// `(`lv_name`)` or `(`lv_name()`)` at the end of the first sentence, when
+/// the C name ends with the Rust item name (`deinit` documented "Release an
+/// unused default theme (`lv_theme_default_deinit`)."). A trailing span that
+/// names another function only says which C call the item uses, as in
+/// "A zeroed descriptor (`lv_memzero`)." on `GradDsc::new`.
+fn trailing_citation(line: &str, item: &str) -> Option<String> {
+    let line = line.trim();
+    let sentence = line.split_once(". ").map_or(line, |(first, _)| first);
+    let inner = sentence
+        .strip_suffix('.')
+        .unwrap_or(sentence)
+        .strip_suffix("`)")?
+        .rsplit_once("(`")?
+        .1;
+    if inner.contains('`') {
+        return None;
+    }
+    let name = inner.strip_suffix("()").unwrap_or(inner);
+    let named_after = name.strip_suffix(item).is_some_and(|stem| stem.ends_with('_'));
+    (is_lv_fn_name(name) && named_after).then(|| name.to_string())
+}
+
+/// `lv_name()`, `lv_name(args)` and `lv_name_fmt/vfmt()` inside one backtick
+/// span. A span holding other code (`lv_free(obj); return NULL;`,
+/// `lv_ll_ins_tail(&subject->subs_ll)`) quotes C, it does not cite a port.
 fn span_citations(span: &str) -> Vec<String> {
+    let span = span.trim();
     let Some(paren) = span.find('(') else {
         return Vec::new();
     };
+    if !span.ends_with(')') || [";", "->", "&", "="].iter().any(|c| span.contains(c)) {
+        return Vec::new();
+    }
+    let mut depth = 0i32;
+    for (k, c) in span[paren..].char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0 && paren + k + 1 != span.len() {
+            return Vec::new(); // `lv_a() + lv_b()`
+        }
+    }
     let mut parts = span[..paren].trim().split('/');
     let Some(first) = parts.next().filter(|f| is_lv_fn_name(f)) else {
         return Vec::new();
@@ -1918,6 +2036,8 @@ struct Row {
     /// `(path, cfgs beyond the module-wide ones)`.
     rust: Vec<(String, Vec<String>)>,
     status: Status,
+    /// A `#define` alias of another function.
+    alias: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1953,8 +2073,19 @@ impl Report {
         } else {
             mapped as f64 * 100.0 / total as f64
         };
+        let aliases = self
+            .modules
+            .iter()
+            .flat_map(|m| &m.rows)
+            .filter(|r| r.alias)
+            .count();
+        let what = if aliases == 0 {
+            "upstream public functions".to_string()
+        } else {
+            format!("upstream public functions and aliases ({aliases} deprecated aliases)")
+        };
         format!(
-            "Overall: {mapped}/{total} upstream public functions mapped ({pct:.1}%); {} crate-internal, {} excluded, {} not ported.",
+            "Overall: {mapped}/{total} {what} mapped ({pct:.1}%); {} crate-internal, {} excluded, {} not ported.",
             self.total(Status::is_internal),
             self.total(Status::is_excluded),
             self.total(Status::is_not_ported),
@@ -1992,23 +2123,42 @@ fn build_report(headers: &[Header], rust: &RustIndex) -> Report {
                 .filter(|i| rust.is_public(i) && !i.stub)
                 .collect();
             let stubs: Vec<&RustItem> = items.iter().copied().filter(|i| i.stub).collect();
+            // An alias row points at the Rust items of the function it names.
+            let target: Vec<&RustItem> = f
+                .alias_of
+                .as_deref()
+                .and_then(|t| by_name.get(t))
+                .map(|v| {
+                    v.iter()
+                        .copied()
+                        .filter(|i| rust.is_public(i) && !i.stub)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let excluded_header = matches!(note, Some((NoteKind::Excluded, _)));
             let shown = if !public.is_empty() {
                 public.clone()
             } else if !stubs.is_empty() {
                 stubs.clone()
+            } else if f.alias_of.is_some() {
+                target
+            } else if excluded_header {
+                Vec::new()
             } else {
                 items.to_vec()
             };
             let status = if !public.is_empty() {
                 Status::Mapped {
-                    deprecated: public.iter().all(|i| i.deprecated),
+                    deprecated: f.deprecated || public.iter().all(|i| i.deprecated),
                 }
             } else if !stubs.is_empty() {
                 Status::NotPorted("declared as a `todo!()` stub".into())
-            } else if !items.is_empty() {
-                Status::Internal
+            } else if let Some(t) = &f.alias_of {
+                Status::Excluded(format!("deprecated alias of `{t}()`"))
             } else if let Some((NoteKind::Excluded, why)) = note {
                 Status::Excluded(why.to_string())
+            } else if !items.is_empty() {
+                Status::Internal
             } else if f.deprecated {
                 Status::Excluded("deprecated upstream".into())
             } else if f.va_list {
@@ -2026,6 +2176,7 @@ fn build_report(headers: &[Header], rust: &RustIndex) -> Report {
                 guard: f.guard[guard.len()..].to_vec(),
                 rust: shown.iter().map(|i| (i.path.clone(), i.cfgs.clone())).collect(),
                 status,
+                alias: f.alias_of.is_some(),
             });
         }
         // Rust cfgs shared by every listed item become a module-wide line.
@@ -2129,21 +2280,27 @@ loop {
 ## Reading the tables
 
 Each upstream header under `include/lvgl/` has a table listing every public
-`lv_*` function it declares (prototypes and `static inline` functions), in
-header order.
+`lv_*` function it declares (prototypes and `static inline` functions) and
+every `#define lv_old lv_new` function alias (the old v8 and v9.x names of
+`api_map/`), in header order.
 
 - **mapped**: a public Rust item whose doc comment *starts* with the C
   name, e.g. `` /// `lv_obj_set_width()` ``. Several items can map one
-  function (layer-1 method, alias, widget method).
-- **crate-internal**: ported, but only as a `pub(crate)` or private item.
-- **excluded**: not ported on purpose, with the reason (PLAN.md, upstream
-  `@deprecated`, or a C `va_list` variant).
+  function (layer-1 method, alias, widget method). **mapped (deprecated)**:
+  the function is deprecated upstream (`@deprecated`, `LV_DEPRECATED` or a
+  leading `DEPRECATED`) or the Rust item is `#[deprecated]`.
+- **crate-internal**: ported, but only as a `pub(crate)` or private item
+  (not shown for a header excluded as a whole).
+- **excluded**: not ported on purpose, with the reason (PLAN.md, deprecated
+  upstream, or a C `va_list` variant). A deprecated alias lists the Rust
+  items of the function it names: `lv_scr_act()` is `Ui::screen_active`.
 - **not ported**: not available yet; the note says when it is planned or
   where the code explains the gap. `#if` conditions are the upstream ones.
 
 The Rust feature in brackets is the `cfg` the item needs; a feature shared by
 the whole table is given once above it. Run `cargo xtask gen-mapping` after
-porting functions; CI runs `cargo xtask gen-mapping --check`."#;
+porting functions; `cargo xtask gen-mapping --check` (after
+`cargo xtask refimgs sync`) fails when this page is out of date."#;
 
 fn render(report: &Report) -> String {
     let mut out = String::new();
@@ -2710,6 +2867,171 @@ impl Foo {
         assert!(page.contains("| `lv_foo_a()` | `Foo::a` | mapped |"));
         assert!(page.contains("| `lv_foo_f()` | - | not ported (upstream `#if LV_X`) |"));
         assert!(page.ends_with("|\n"));
+    }
+
+    #[test]
+    fn c_aliases_and_plain_deprecated_docs() {
+        let h = r#"
+#if LV_USE_BUTTON
+#define lv_btn_create lv_button_create
+#endif
+#define lv_scr_act      lv_screen_active
+#define lv_draw_buf_destroy_user(handlers, drawbuf) \
+        lv_draw_buf_destroy(drawbuf)
+#define lv_gradient_stop_t lv_grad_stop_t
+#define lv_draw_buf_malloc_cb lv_draw_buf_malloc_cb_t
+#define lv_test_get_free_mem() (65536)
+#define lv_a_or_b(x) lv_a(x) + lv_b(x)
+#define lv_log_add(level, file, line, ...)
+/**
+ * DEPRECATED, use lv_scale_set_section_range instead.
+ */
+void lv_scale_section_set_range(lv_scale_section_t * section, int32_t min, int32_t max);
+/** DEPRECATEDNESS is not a word upstream uses */
+void lv_foo(void);
+LV_DEPRECATED("Use lv_layout_create instead")
+uint32_t lv_layout_register(lv_layout_update_cb_t cb, void * user_data);
+"#;
+        let funcs = parse_c_header(h);
+        assert_eq!(
+            names(&funcs),
+            [
+                "lv_btn_create",
+                "lv_scr_act",
+                "lv_draw_buf_destroy_user",
+                "lv_scale_section_set_range",
+                "lv_foo",
+                "lv_layout_register"
+            ]
+        );
+        assert_eq!(funcs[0].alias_of.as_deref(), Some("lv_button_create"));
+        assert_eq!(funcs[0].guard, ["LV_USE_BUTTON"]);
+        assert!(funcs[0].deprecated);
+        assert_eq!(funcs[1].alias_of.as_deref(), Some("lv_screen_active"));
+        assert_eq!(funcs[2].alias_of.as_deref(), Some("lv_draw_buf_destroy"));
+        assert!(funcs[3].deprecated && funcs[3].alias_of.is_none());
+        assert!(!funcs[4].deprecated);
+        assert!(funcs[5].deprecated);
+    }
+
+    #[test]
+    fn code_snippets_and_trailing_citations() {
+        assert!(lead_citations("`lv_free(obj); return NULL;` of the failed path").is_empty());
+        assert!(
+            lead_citations("`lv_ll_ins_tail(&subject->subs_ll)` + `lv_memzero(observer)`")
+                .iter()
+                .all(|c| c == "lv_memzero")
+        );
+        assert!(lead_citations("`lv_ll_get_prev(style_trans_ll_p, tr)`") == ["lv_ll_get_prev"]);
+        assert!(span_citations("lv_a() + lv_b()").is_empty());
+        assert!(span_citations("x = lv_a()").is_empty());
+        assert_eq!(
+            span_citations("lv_label_set_text(label, NULL)"),
+            ["lv_label_set_text"]
+        );
+        let doc = "Release an unused default theme and its styles (`lv_theme_default_deinit`).";
+        assert_eq!(
+            trailing_citation(doc, "deinit").as_deref(),
+            Some("lv_theme_default_deinit")
+        );
+        assert_eq!(
+            trailing_citation("Release a theme (`lv_theme_simple_deinit()`). More.", "deinit").as_deref(),
+            Some("lv_theme_simple_deinit")
+        );
+        assert_eq!(
+            trailing_citation("A zeroed descriptor (`lv_memzero`).", "new"),
+            None
+        );
+        assert_eq!(
+            trailing_citation(
+                "Create a generator with the given seed (`lv_rand_set_seed`).",
+                "new"
+            ),
+            None
+        );
+        assert_eq!(
+            trailing_citation("See (`lv_x_deinit`) and more text", "deinit"),
+            None
+        );
+        let idx = scan(
+            r#"
+/// Release an unused simple theme (`lv_theme_simple_deinit`).
+/// Returns `false` while the theme is in use.
+pub fn deinit() {}
+/// A zeroed descriptor (`lv_memzero`).
+pub fn new() {}
+"#,
+        );
+        assert_eq!(idx.items.len(), 1);
+        assert_eq!(idx.items[0].cites, ["lv_theme_simple_deinit"]);
+    }
+
+    #[test]
+    fn upstream_deprecation_aliases_and_excluded_headers() {
+        let headers = vec![
+            Header {
+                path: "layouts/lv_layout.h".into(),
+                funcs: parse_c_header(
+                    "uint32_t lv_layout_create(void);
+                     LV_DEPRECATED(\"Use lv_layout_create instead\")
+uint32_t lv_layout_register(void);
+",
+                ),
+            },
+            Header {
+                path: "misc/lv_ll.h".into(),
+                funcs: parse_c_header(
+                    "void lv_ll_remove(void);
+",
+                ),
+            },
+            Header {
+                path: "api_map/lv_api_map_v8.h".into(),
+                funcs: parse_c_header(
+                    "#define lv_layout_new lv_layout_create
+#define lv_ll_rm lv_ll_remove
+",
+                ),
+            },
+        ];
+        let idx = scan(
+            r#"
+pub struct Ui;
+impl Ui {
+    /// `lv_layout_create()`
+    pub fn layout_create() {}
+    /// `lv_layout_register()`: deprecated alias of `layout_create`.
+    pub fn layout_register() {}
+}
+/// `lv_ll_remove()`
+fn unlink() {}
+"#,
+        );
+        let report = build_report(&headers, &idx);
+        let st = |m: usize, r: usize| report.modules[m].rows[r].status.clone();
+        assert_eq!(st(0, 0), Status::Mapped { deprecated: false });
+        assert_eq!(st(0, 1), Status::Mapped { deprecated: true });
+        // A private helper in an excluded header does not make it crate-internal.
+        assert_eq!(
+            st(1, 0),
+            Status::Excluded("C linked lists; the port uses `Vec` and arenas (PLAN.md 4.1)".into())
+        );
+        assert!(report.modules[1].rows[0].rust.is_empty());
+        assert_eq!(
+            st(2, 0),
+            Status::Excluded("deprecated alias of `lv_layout_create()`".into())
+        );
+        assert_eq!(
+            report.modules[2].rows[0].rust,
+            [("Ui::layout_create".to_string(), Vec::new())]
+        );
+        assert!(report.modules[2].rows[1].rust.is_empty());
+        let page = render(&report);
+        assert!(page.contains("**Overall: 2/5 upstream public functions and aliases (2 deprecated aliases) mapped (40.0%); 0 crate-internal, 3 excluded, 0 not ported.**"));
+        assert!(page.contains("| `lv_layout_register()` | `Ui::layout_register` | mapped (deprecated) |"));
+        assert!(page.contains(
+            "| `lv_layout_new()` | `Ui::layout_create` | excluded: deprecated alias of `lv_layout_create()` |"
+        ));
     }
 
     #[test]
