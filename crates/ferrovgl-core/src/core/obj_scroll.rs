@@ -1348,6 +1348,7 @@ mod tests {
     /// core files are still being ported).
     fn raw_obj(ui: &mut Ui, coords: Area, spec: Option<SpecAttr>) -> Obj {
         let data = ObjData {
+            ext_data: Default::default(),
             class: &OBJ_CLASS,
             parent: None,
             spec: spec.map(Box::new),
@@ -1370,6 +1371,8 @@ mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: Box::new(()),
         };
         Obj(ObjId(ui.objs.insert(data)))

@@ -13,7 +13,7 @@ categories.workspace = true
 readme = "README.md"
 
 [features]
-default = ["float", "flex", "grid", "observer", "snapshot", "bidi", "arabic-persian-chars"]
+default = ["float", "flex", "grid", "observer", "snapshot", "bidi", "arabic-persian-chars", "obj-id"]
 std = ["log?/std"]
 float = []
 libm = ["dep:libm"]
@@ -21,6 +21,7 @@ log = ["dep:log"]
 assert-style = []
 assert-obj = []
 check-arg-panic = []
+# `LV_USE_OBJ_ID` + `LV_USE_OBJ_ID_BUILTIN` + `LV_OBJ_ID_AUTO_ASSIGN` (on in the parity config).
 obj-id = []
 obj-name = []
 flex = []

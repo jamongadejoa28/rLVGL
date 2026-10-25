@@ -27,6 +27,10 @@ pub type ObjTreeWalkCallback<'a> = &'a mut dyn FnMut(&mut Ui, Obj) -> ObjTreeWal
 /// `LV_OBJ_NAME_MAX_LEN`: size of the buffers names are resolved into.
 pub const OBJ_NAME_MAX_LEN: usize = 128;
 
+/// `OBJ_DUMP_STRING_LEN`: size of the id buffer of `lv_obj_dump_tree()`.
+#[cfg(all(feature = "log", feature = "obj-id"))]
+const OBJ_DUMP_STRING_LEN: u32 = 128;
+
 impl Ui {
     /// `lv_obj_get_child(obj, i)` for `i >= 0`, read straight from `spec_attr`.
     #[inline]
@@ -1021,9 +1025,11 @@ impl Ui {
         }
         #[cfg(feature = "log")]
         {
-            // Known deviation: LV_USE_OBJ_ID=y in the parity config, but
-            // `ObjData` has no `id` field and `lv_obj_stringify_id()` is not
-            // ported, so this is the `lv_obj_stringify_id() == NULL` fallback.
+            #[cfg(feature = "obj-id")]
+            let buf = self.obj_stringify_id(obj, OBJ_DUMP_STRING_LEN);
+            #[cfg(feature = "obj-id")]
+            let id = buf.as_deref().unwrap_or("obj0");
+            #[cfg(not(feature = "obj-id"))]
             let id = "obj0";
             // id of `obj0` is an invalid id for builtin id
             // LV_LOG_USER: the highest LVGL level, printed whenever logging is

@@ -2064,6 +2064,7 @@ mod tests {
 
     fn new_obj(ui: &mut Ui, parent: Option<Obj>, coords: Area) -> Obj {
         let data = ObjData {
+            ext_data: Default::default(),
             class: &OBJ_CLASS,
             parent: parent.map(|p| p.0),
             spec: None,
@@ -2086,6 +2087,8 @@ mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: Box::new(()),
         };
         let o = Obj(ObjId(ui.objs.insert(data)));

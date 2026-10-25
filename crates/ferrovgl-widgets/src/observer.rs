@@ -16,28 +16,44 @@
 //! (`ferrovgl_core::core::observer`), so that the observer port does not edit
 //! the widget modules; each binding is an `impl` block of its widget handle.
 //!
-//! SKELETON: `Arc::bind_value()` stays `todo!()` until the arc widget is
-//! ported.
+//! The `#if LV_USE_FLOAT` branches use the cfg-free bridges of the core
+//! (`USE_FLOAT`, `float_v_as_f64()`, ...), so they follow
+//! `ferrovgl-core/float` even when a dependent turns that on without this
+//! crate's `float` feature (as `ferrovgl-test` does).
 
-// Skeleton only: remove together with the last `todo!()`.
-#![allow(unused_variables, dead_code)]
-
-#[allow(unused_imports)]
+#[cfg(any(feature = "label", feature = "image"))]
 use alloc::rc::Rc;
-#[allow(unused_imports)]
+#[cfg(feature = "label")]
 use alloc::string::String;
-#[allow(unused_imports)]
+#[cfg(feature = "label")]
 use core::any::Any;
-#[allow(unused_imports)]
+#[cfg(any(
+    feature = "arc",
+    feature = "bar",
+    feature = "slider",
+    feature = "label",
+    feature = "image"
+))]
 use ferrovgl_core::Ui;
-#[allow(unused_imports)]
-use ferrovgl_core::core::observer::{ObserverId, SubjectId, SubjectType, USE_FLOAT, log_warn};
+#[cfg(any(feature = "label", feature = "image"))]
+use ferrovgl_core::core::observer::SubjectType;
+#[cfg(any(
+    feature = "arc",
+    feature = "bar",
+    feature = "slider",
+    feature = "label",
+    feature = "image"
+))]
+use ferrovgl_core::core::observer::{ObserverId, SubjectId};
+#[cfg(feature = "label")]
+use ferrovgl_core::core::observer::{USE_FLOAT, log_warn};
 
 #[cfg(feature = "arc")]
 impl crate::arc::Arc {
-    /// `lv_arc_bind_value()`: bind an integer subject to the arc's value.
+    /// `lv_arc_bind_value()`: bind an integer or float subject to the arc's
+    /// value.
     pub fn bind_value(self, ui: &mut Ui, subject: SubjectId) -> Option<ObserverId> {
-        todo!()
+        crate::arc::arc_bind_value(ui, self.obj(), subject)
     }
 }
 

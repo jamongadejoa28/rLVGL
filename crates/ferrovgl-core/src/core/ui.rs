@@ -243,6 +243,10 @@ pub struct Ui {
     /// `subject_ll` and the observers of every subject (`LV_USE_OBSERVER`).
     #[cfg(feature = "observer")]
     pub observer: crate::core::observer::ObserverState,
+    /// `objid_array` (+ `objid_count`, its length): the per-class object
+    /// counters of the builtin object id generator (`LV_USE_OBJ_ID_BUILTIN`).
+    #[cfg(feature = "obj-id")]
+    pub objid_array: Vec<crate::core::obj_id::ClassInfo>,
     /// File-scope `static` variables of widget modules (for example
     /// `ta_insert_replace` of `lv_textarea.c`), one value per type. See
     /// [`Ui::widget_static_mut`].
@@ -299,6 +303,8 @@ impl Ui {
             /*lv_subject_global_init(): an empty subject list*/
             #[cfg(feature = "observer")]
             observer: crate::core::observer::ObserverState::new(),
+            #[cfg(feature = "obj-id")]
+            objid_array: Vec::new(),
             widget_statics: Vec::new(),
             app: None,
             inited: false,
@@ -390,6 +396,9 @@ impl Ui {
         self.layouts = Vec::new();
 
         self.timer_core_deinit();
+
+        #[cfg(feature = "obj-id")]
+        self.objid_builtin_destroy();
 
         /*lv_fs_deinit(): nothing to do*/
 

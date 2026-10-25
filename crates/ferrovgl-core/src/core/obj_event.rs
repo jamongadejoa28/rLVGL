@@ -557,6 +557,7 @@ pub(crate) mod tests {
     /// ported elsewhere) and link it to `parent`.
     pub(crate) fn add_obj(ui: &mut Ui, class: &'static ObjClass, parent: Option<Obj>) -> Obj {
         let data = ObjData {
+            ext_data: Default::default(),
             class,
             parent: parent.map(|p| p.0),
             spec: None,
@@ -579,6 +580,8 @@ pub(crate) mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: Box::new(()),
         };
         let obj = Obj(ObjId(ui.objs.insert(data)));

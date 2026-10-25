@@ -5,18 +5,13 @@
 //! the parity configuration, so the property table (`lv_arc_properties[]`)
 //! is not provided.
 //!
-//! Observer binding (`lv_arc_bind_value()`, `arc_value_changed_event_cb()`,
+//! The observer binding (`lv_arc_bind_value()`, `arc_value_changed_event_cb()`,
 //! `arc_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) is
-//! NOT ported by this module: `Arc::bind_value()` is declared in this crate's
-//! `observer.rs` and stays a `todo!()` skeleton until the core subject/observer
-//! API (`ferrovgl_core::core::observer`) is ported. When it is, port it 1:1:
-//! return `None` unless the subject is `INT` or `FLOAT`; add a
-//! `VALUE_CHANGED` event callback that stores `lv_arc_get_value()` with
-//! `lv_subject_set_int()` (or `lv_subject_set_float((float)value)` for a
-//! `FLOAT` subject); then `lv_subject_add_observer_obj()` an observer that
-//! calls `lv_arc_set_value(target, subject->value.num)` (or
-//! `(int32_t)subject->value.float_v`, truncating). None of `test_arc.c` uses
-//! it.
+//! `arc_bind_value()`; its public entry point `Arc::bind_value()` is declared
+//! in this crate's `observer.rs`. Like the bar and slider bindings, its
+//! `#if LV_USE_FLOAT` branches use the cfg-free core bridges
+//! (`subject_set_float_from_i32()`, `float_v_as_i32()`), so they follow
+//! `ferrovgl-core/float`.
 //!
 //! `lv_value_precise_t` is `f32` with `LV_USE_FLOAT` (the parity config) and
 //! `i32` otherwise; `Precise` keeps the C conversions and arithmetic of both
@@ -37,6 +32,11 @@ use ferrovgl_core::{
     Align, Area, Event, EventCode, EventParam, IndevType, LvResult, Obj, ObjClass, Part, Point,
     StyleSelector, Ui,
 };
+
+#[cfg(feature = "observer")]
+use alloc::rc::Rc;
+#[cfg(feature = "observer")]
+use ferrovgl_core::core::observer::{ObserverId, SubjectId, SubjectType, USE_FLOAT};
 
 /// `VALUE_UNSET`: `INT16_MIN`.
 const VALUE_UNSET: i32 = i16::MIN as i32;
@@ -1414,6 +1414,72 @@ fn get_indicator_max_pad(ui: &Ui, obj: Obj) -> i32 {
     let top_indic = ui.obj_get_style_pad_top(obj, Part::INDICATOR);
     let bottom_indic = ui.obj_get_style_pad_bottom(obj, Part::INDICATOR);
     left_indic.max(right_indic).max(top_indic.max(bottom_indic))
+}
+
+/// `lv_arc_bind_value()`: bind an integer or float subject to the arc's
+/// value (both directions). Called by `Arc::bind_value()`.
+#[cfg(feature = "observer")]
+pub(crate) fn arc_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Option<ObserverId> {
+    if !ui.obj_is_valid(obj) {
+        return None; /*LV_CHECK_OBJ*/
+    }
+    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        ferrovgl_core::misc::check_arg_failed("lv_arc_bind_value: subject != NULL");
+        return None;
+    };
+    if !(type_ == SubjectType::Int || type_ == SubjectType::Float) {
+        ferrovgl_core::misc::check_arg_failed("Incompatible subject type");
+        return None;
+    }
+
+    let subject_ptr = ui.subject_as_user_data(subject);
+    ui.obj_add_event_cb(
+        obj,
+        Rc::new(arc_value_changed_event_cb),
+        EventCode::VALUE_CHANGED,
+        subject_ptr,
+    );
+
+    ui.subject_add_observer_obj(subject, Rc::new(arc_value_observer_cb), Some(obj), None)
+}
+
+/// `arc_value_changed_event_cb()`
+#[cfg(feature = "observer")]
+fn arc_value_changed_event_cb(ui: &mut Ui, e: &mut Event<'_>) {
+    let Some(arc) = e.current_target_obj() else {
+        return; /*LV_ASSERT(arc != NULL)*/
+    };
+    let Some(subject) = e.user_data().and_then(SubjectId::from_user_data) else {
+        return; /*LV_ASSERT(subject != NULL)*/
+    };
+    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+        return;
+    };
+
+    if type_ == SubjectType::Int {
+        let value = Arc(arc).value(ui);
+        ui.subject_set_int(subject, value);
+    } else if USE_FLOAT {
+        let value = Arc(arc).value(ui);
+        ui.subject_set_float_from_i32(subject, value);
+    }
+}
+
+/// `arc_value_observer_cb()`
+#[cfg(feature = "observer")]
+fn arc_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) {
+    let Some(target) = ui.observer_get_target_obj(observer) else {
+        return; /*LV_ASSERT(observer->target != NULL)*/
+    };
+    let Some(s) = ui.observer.subjects.get(subject.0) else {
+        return; /*LV_ASSERT(subject != NULL)*/
+    };
+    let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());
+    if type_ == SubjectType::Int {
+        Arc(target).set_value(ui, num);
+    } else if USE_FLOAT {
+        Arc(target).set_value(ui, float_v);
+    }
 }
 
 #[cfg(test)]

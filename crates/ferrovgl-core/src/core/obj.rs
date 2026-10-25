@@ -341,6 +341,19 @@ pub type DeleteCallback = Rc<dyn Fn(&mut Ui, Obj)>;
 /// `lv_screen_create_cb_t`
 pub type ScreenCreateCallback = fn(&mut Ui) -> Obj;
 
+/// The `free_cb` of an object's `lv_ext_data_t` (`void (*)(void * data)`).
+pub type ObjExtDataFreeCb = fn(Option<Rc<dyn Any>>);
+
+/// `lv_ext_data_t` of an object (`LV_USE_EXT_DATA`), set by
+/// [`Ui::obj_set_external_data`] and released by `lv_obj_destruct()`.
+#[derive(Default)]
+pub struct ObjExtData {
+    /// `data`; independent of the object's application `user_data`.
+    pub data: Option<Rc<dyn Any>>,
+    /// `free_cb`
+    pub free_cb: Option<ObjExtDataFreeCb>,
+}
+
 /// `lv_obj_spec_attr_t`: rarely used attributes, allocated on demand.
 pub struct SpecAttr {
     /// `children`
@@ -403,6 +416,8 @@ impl Default for SpecAttr {
 
 /// `lv_obj_t`: the data of one object.
 pub struct ObjData {
+    /// `ext_data` (`LV_USE_EXT_DATA`).
+    pub ext_data: ObjExtData,
     /// `class_p`
     pub class: &'static ObjClass,
     /// `parent`
@@ -447,6 +462,11 @@ pub struct ObjData {
     pub rendered: bool,
     /// `has_blur`
     pub has_blur: bool,
+    /// `id` (`LV_USE_OBJ_ID`): the `void *` object id as `lv_uintptr_t`,
+    /// 0 for `NULL`. Not the arena handle [`ObjId`]; see
+    /// [`obj_id`](crate::core::obj_id).
+    #[cfg(feature = "obj-id")]
+    pub id: usize,
     /// Widget specific state (the bytes after `lv_obj_t` in C).
     pub widget: Box<dyn WidgetState>,
 }
@@ -529,9 +549,9 @@ const OBJ_FLAG_BITS_MASK: u32 = ObjFlags::LAYOUT_1.bits() - 1;
 const USER_FLAGS_SHIFT: u32 = 23;
 
 /// `lv_obj_constructor()`
-fn obj_constructor(_class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
+fn obj_constructor(class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
     let Some(parent) = ui.obj(obj).and_then(|d| d.parent).map(Obj::from) else {
-        set_constructor_attributes(ui, obj, false);
+        set_constructor_attributes(class, ui, obj, false);
         return;
     };
 
@@ -548,11 +568,12 @@ fn obj_constructor(_class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
         d.coords.x2 = d.coords.x1 - 1;
     }
 
-    set_constructor_attributes(ui, obj, true);
+    set_constructor_attributes(class, ui, obj, true);
 }
 
-/// The "Set attributes" part of `lv_obj_constructor()`.
-fn set_constructor_attributes(ui: &mut Ui, obj: Obj, has_parent: bool) {
+/// The "Set attributes" part of `lv_obj_constructor()` and the
+/// `LV_OBJ_ID_AUTO_ASSIGN` id assignment that ends it.
+fn set_constructor_attributes(class: &'static ObjClass, ui: &mut Ui, obj: Obj, has_parent: bool) {
     let Some(d) = ui.obj_mut(obj) else {
         return;
     };
@@ -569,6 +590,12 @@ fn set_constructor_attributes(ui: &mut Ui, obj: Obj, has_parent: bool) {
         d.flags.insert(ObjFlags::SCROLL_CHAIN_VER);
         d.flags.insert(ObjFlags::GESTURE_BUBBLE);
     }
+
+    /*`LV_USE_OBJ_ID && LV_OBJ_ID_AUTO_ASSIGN`*/
+    #[cfg(feature = "obj-id")]
+    ui.obj_assign_id(class, obj);
+    #[cfg(not(feature = "obj-id"))]
+    let _ = class;
 }
 
 /// `lv_obj_destructor()`
@@ -598,6 +625,10 @@ fn obj_destructor(_class: &'static ObjClass, ui: &mut Ui, obj: Obj) {
          *`name_static` case owns nothing).*/
         drop(spec);
     }
+
+    /*`LV_USE_OBJ_ID && LV_OBJ_ID_AUTO_ASSIGN`*/
+    #[cfg(feature = "obj-id")]
+    ui.obj_free_id(obj);
 }
 
 /// `lv_obj_draw()`
@@ -1926,6 +1957,58 @@ impl Ui {
         /*`lv_free(dsc)` (only when found): the descriptor is released with its last `Rc`*/
     }
 
+    /// `lv_obj_get_id()` (`LV_USE_OBJ_ID`): the object id of `obj` (0 for
+    /// `NULL`).
+    #[cfg(feature = "obj-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "obj-id")))]
+    pub fn obj_get_id(&self, obj: Obj) -> usize {
+        let Some(d) = self.obj(obj) else {
+            check_arg_failed("lv_obj_get_id: obj != NULL");
+            return 0;
+        };
+        d.id
+    }
+
+    /// `lv_obj_find_by_id()` (`LV_USE_OBJ_ID`): the first descendant of
+    /// `obj` (the active screen of the default display for `None`) whose id
+    /// equals `id` by `lv_obj_id_compare()`, depth first.
+    #[cfg(feature = "obj-id")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "obj-id")))]
+    #[deprecated(note = "IDs are used only to print the widget trees. To find a widget use obj_find_by_name")]
+    pub fn obj_find_by_id(&self, obj: Option<Obj>, id: usize) -> Option<Obj> {
+        if id == 0 {
+            check_arg_failed("lv_obj_find_by_id: id != NULL");
+            return None;
+        }
+        #[cfg(feature = "log")]
+        log::warn!("IDs are used only to print the widget trees. To find a widget use obj_name");
+        let obj = match obj {
+            Some(obj) => obj,
+            /*`lv_display_get_screen_active(lv_display_get_default())`*/
+            None => self
+                .display_get_default()
+                .and_then(|d| self.display_get_screen_active(Some(d)))?,
+        };
+        self.obj_find_by_id_core(obj, id)
+    }
+
+    /// `obj_find_by_id()` (static)
+    #[cfg(feature = "obj-id")]
+    fn obj_find_by_id_core(&self, obj: Obj, id: usize) -> Option<Obj> {
+        let child_cnt = self.obj_get_child_count(obj);
+        for i in 0..child_cnt {
+            let child = self.obj_get_child(obj, i as i32)?;
+            if crate::core::obj_id::obj_id_compare(self.obj(child)?.id, id) == 0 {
+                return Some(child);
+            }
+            let found = self.obj_find_by_id_core(child, id);
+            if found.is_some() {
+                return found;
+            }
+        }
+        None
+    }
+
     /// Borrow an object's data (`None` for a stale handle).
     #[inline]
     pub fn obj(&self, obj: Obj) -> Option<&ObjData> {
@@ -2399,6 +2482,7 @@ mod tests {
     /// running any constructor.
     fn raw_obj(ui: &mut Ui, class: &'static ObjClass, parent: Option<Obj>) -> Obj {
         let data = ObjData {
+            ext_data: Default::default(),
             class,
             parent: parent.map(|p| p.id()),
             spec: None,
@@ -2421,6 +2505,8 @@ mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: (class.new_state)(),
         };
         let obj = Obj(ObjId(ui.objs.insert(data)));
