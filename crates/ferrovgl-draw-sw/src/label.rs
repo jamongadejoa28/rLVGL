@@ -4,9 +4,15 @@
 //! module is the Rust home of that entry point. The glyph callback is
 //! [`crate::letter::draw_letter_cb`].
 //!
-//! The FreeType outline event registration
-//! (`LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG`) is not
-//! compiled in the parity configuration and is not ported.
+//! Known gap: the FreeType outline event registration
+//! (`LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG`: the
+//! one-time `static bool is_init` call of
+//! `lv_freetype_outline_add_event(freetype_outline_event_cb, LV_EVENT_ALL, t)`)
+//! is active in the parity configuration (`tests/configs/full.defconfig`
+//! sets all three) but is not ported: FreeType, vector graphics and ThorVG
+//! do not exist yet and no cargo feature selects them. When they are added,
+//! port it as per-unit state on [`SwDrawUnit`] (not a `static`) together
+//! with `draw_letter_outline()`, see [`crate::letter`].
 
 use ferrovgl_core::draw::label::{DrawGlyphDsc, LabelDsc};
 use ferrovgl_core::draw::rect::FillDsc;
@@ -28,6 +34,9 @@ pub fn label(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &Label
     if dsc.opa <= OPA_MIN {
         return;
     }
+
+    /* `LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG`:
+     * `freetype_outline_event_cb` registration, not ported (module docs). */
 
     let Some(tref) = task_ref(unit, ctx, t) else {
         return;

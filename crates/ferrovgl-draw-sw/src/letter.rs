@@ -7,10 +7,33 @@
 //! (`ferrovgl_core::draw::label`) already rendered `A1`..`A8` glyphs into
 //! the A8 scratch buffer [`DrawGlyphDsc::draw_buf`]
 //! (`lv_font_get_glyph_bitmap(g, _draw_buf)`) and flags the static-bitmap
-//! fast path with [`GlyphData::StaticBitmap`]. The FreeType outline path
-//! (`LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG`:
-//! `draw_letter_outline`, `freetype_outline_event_cb`) is not compiled in
-//! the parity configuration and is not ported.
+//! fast path with [`GlyphData::StaticBitmap`].
+//!
+//! Known gaps (upstream code that is active in the parity configuration,
+//! `tests/configs/full.defconfig`, but cannot be ported yet because the
+//! core lacks the APIs it depends on):
+//!
+//! * `LV_FONT_GLYPH_FORMAT_IMAGE` glyphs (`LV_USE_IMGFONT=y`): upstream
+//!   fetches the image source in `draw_letter_cb()` with
+//!   `lv_font_get_glyph_bitmap_internal(g, _draw_buf)` (`lv_imgfont`'s
+//!   `get_glyph_bitmap`). `ferrovgl_core::font::Font` has no image-glyph
+//!   API and the core never sets [`GlyphData::Image`], so an image glyph
+//!   is drawn with [`ImageSrc::None`], i.e. nothing is drawn. Once the
+//!   `Font` trait can return an image source, fetch it here (as upstream
+//!   does) instead of relying on [`GlyphData::Image`].
+//! * The FreeType outline path (`LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC
+//!   && LV_USE_THORVG`, all `y` in full.defconfig): the
+//!   `LV_FONT_GLYPH_FORMAT_VECTOR` case of `draw_letter_cb()`
+//!   (`draw_letter_outline()`: ThorVG renders the glyph paths into an
+//!   ARGB8888 buffer that is then drawn with `lv_draw_sw_image()`) and
+//!   `freetype_outline_event_cb()` with its one-time registration in
+//!   `lv_draw_sw_label()` (see [`crate::label`]). This needs FreeType,
+//!   vector graphics and a ThorVG backend, none of which exist yet and no
+//!   cargo feature selects them. The core currently rewrites `VECTOR`
+//!   glyphs to `NONE`, so the `Vector` arm below is a no-op. When a
+//!   freetype/vector feature is added, port `draw_letter_outline()` and
+//!   the `VECTOR` case behind it, and the event registration as per-unit
+//!   state (not a `static`).
 //!
 //! The renderer needs the unit (custom blend handlers, circle cache) and the
 //! task, which the glyph callback signature of the core does not carry: the
@@ -171,6 +194,11 @@ pub(crate) fn draw_letter_cb_impl(
                     draw_letter_image(unit, ctx, t, glyph_draw_dsc);
                 }
             }
+            GlyphFormat::Vector => {
+                /* `draw_letter_outline(t, glyph_draw_dsc)` under
+                 * `LV_USE_FREETYPE && LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG`:
+                 * not ported, see the module docs (known gap). */
+            }
             _ => {}
         }
     }
@@ -239,6 +267,10 @@ fn draw_letter_image(
     glyph_draw_dsc: &mut DrawGlyphDsc,
 ) {
     /*glyph_data = lv_font_get_glyph_bitmap_internal(g, _draw_buf)*/
+    /* Known gap: for `LV_FONT_GLYPH_FORMAT_IMAGE` upstream gets the image
+     * source here from the font (imgfont). `Font` has no such API and the
+     * core never sets `GlyphData::Image`, so such glyphs draw nothing; see
+     * the module docs. */
     if glyph_draw_dsc.glyph_data == GlyphData::StaticBitmap {
         /* Without `req_raw_bitmap` the bitmap is rendered into the draw buffer */
         let g = glyph_draw_dsc.g;
@@ -447,6 +479,27 @@ pub(crate) mod tests {
         assert_eq!(px(&ctx, layer, 0, 0), [0, 0, 0]);
         assert_eq!(px(&ctx, layer, 5, 3), [0, 0, 0]);
         assert_eq!(px(&ctx, layer, 2, 2), WHITE);
+    }
+
+    /// `LV_FONT_GLYPH_FORMAT_VECTOR` has its own case upstream
+    /// (`draw_letter_outline`, not ported): it never falls into the `NONE`
+    /// placeholder branch, so nothing is drawn even with `bg_coords` set.
+    #[test]
+    fn vector_glyph_draws_no_placeholder() {
+        let (mut ctx, layer) = ctx_with_layer();
+        let coords = Area::new(0, 0, 30, 30);
+        let tref = ctx.add_task(layer, &coords, DrawTaskType::Label);
+        let mut g = DrawGlyphDsc::new();
+        g.format = GlyphFormat::Vector;
+        g.bg_coords = Some(Area::new(0, 0, 5, 5));
+        g.letter_coords = Area::new(0, 0, 5, 5);
+        g.opa = 255;
+        draw_letter_cb(&mut ctx, tref, &mut g, None);
+        for y in 0..10 {
+            for x in 0..10 {
+                assert_eq!(px(&ctx, layer, x, y), WHITE);
+            }
+        }
     }
 
     #[test]
