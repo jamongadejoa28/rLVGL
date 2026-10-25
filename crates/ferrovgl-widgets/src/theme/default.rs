@@ -7,10 +7,11 @@
 //! dropdown, menu, table, calendar, msgbox, keyboard, list, tabview, scale) are
 //! always built, as with those widgets enabled in the reference configuration.
 //!
-//! `theme_apply()` covers screens, base objects (cards), buttons, bars,
-//! sliders, switches and checkboxes. Labels and images receive no own styles,
-//! as upstream. Branches that need classes which are not ported yet (tabview,
-//! win, calendar, menu, ...) are omitted. Each `Ui` owns one default theme,
+//! `theme_apply()` covers screens, base objects (cards), buttons, lines,
+//! button matrices, bars, sliders, checkboxes, switches, arcs, spinners, text
+//! areas (with their label's selection), and LEDs. Other labels and images
+//! receive no own styles, as upstream. Branches that need classes which are
+//! not ported yet (tabview, win, calendar, menu, ...) are omitted. Each `Ui` owns one default theme,
 //! like C's global `theme_def` (`LV_GLOBAL_DEFAULT()->theme_default`): every
 //! display created with [`init_display`] after the first one shares it, and
 //! [`init`] re-initializes that single instance for the display it is given.
@@ -923,6 +924,33 @@ fn theme_apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
         return;
     }
 
+    #[cfg(feature = "line")]
+    if ui.obj_check_type(obj, &crate::line::LINE_CLASS) {
+        add_styles(ui, obj, &[(s.line, DEFAULT)]);
+        return;
+    }
+
+    #[cfg(feature = "buttonmatrix")]
+    if ui.obj_check_type(obj, &crate::buttonmatrix::BUTTONMATRIX_CLASS) {
+        // The calendar parent case needs a class that is not ported yet.
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.card, DEFAULT),
+                (s.outline_primary, focus_key),
+                (s.outline_secondary, edited),
+                (s.btn, Part::ITEMS.into()),
+                (s.disabled, Part::ITEMS | State::DISABLED),
+                (s.pressed, Part::ITEMS | State::PRESSED),
+                (s.bg_color_primary, Part::ITEMS | State::CHECKED),
+                (s.outline_primary, Part::ITEMS | State::FOCUS_KEY),
+                (s.outline_secondary, Part::ITEMS | State::EDITED),
+            ],
+        );
+        return;
+    }
+
     #[cfg(feature = "bar")]
     if ui.obj_check_type(obj, &crate::bar::BAR_CLASS) {
         add_styles(
@@ -1004,6 +1032,77 @@ fn theme_apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
                 (s.transition_normal, Part::INDICATOR.into()),
             ],
         );
+        return;
+    }
+
+    #[cfg(feature = "arc")]
+    if ui.obj_check_type(obj, &crate::arc::ARC_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.arc_indic, DEFAULT),
+                (s.arc_indic, Part::INDICATOR.into()),
+                (s.arc_indic_primary, Part::INDICATOR.into()),
+                (s.knob, Part::KNOB.into()),
+                (s.outline_primary, focus_key),
+                (s.outline_secondary, edited),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "spinner")]
+    if ui.obj_check_type(obj, &crate::spinner::SPINNER_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.arc_indic, DEFAULT),
+                (s.arc_indic, Part::INDICATOR.into()),
+                (s.arc_indic_primary, Part::INDICATOR.into()),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "textarea")]
+    if ui.obj_check_type(obj, &crate::textarea::TEXTAREA_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.card, DEFAULT),
+                (s.pad_small, DEFAULT),
+                (s.disabled, State::DISABLED.into()),
+                (s.outline_primary, focus_key),
+                (s.outline_secondary, edited),
+                (s.scrollbar, scrollbar),
+                (s.scrollbar_scrolled, scrollbar_scrolled),
+                (s.ta_cursor, Part::CURSOR | State::FOCUSED),
+                (
+                    s.ta_placeholder,
+                    crate::textarea::PART_TEXTAREA_PLACEHOLDER.into(),
+                ),
+            ],
+        );
+        return;
+    }
+
+    // LV_USE_LABEL && LV_USE_TEXTAREA: the label of a text area.
+    #[cfg(all(feature = "label", feature = "textarea"))]
+    if ui.obj_check_type(obj, &crate::label::LABEL_CLASS)
+        && ui
+            .obj_get_parent(obj)
+            .is_some_and(|parent| ui.obj_check_type(parent, &crate::textarea::TEXTAREA_CLASS))
+    {
+        add_styles(ui, obj, &[(s.bg_color_primary, Part::SELECTED.into())]);
+        return;
+    }
+
+    #[cfg(feature = "led")]
+    if ui.obj_check_type(obj, &crate::led::LED_CLASS) {
+        add_styles(ui, obj, &[(s.led, DEFAULT)]);
         return;
     }
 

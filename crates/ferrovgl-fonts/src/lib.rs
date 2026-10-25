@@ -75,6 +75,14 @@ builtin_font!(/// `lv_font_unscii_8` (1 bpp)
 builtin_font!(/// `lv_font_unscii_16` (1 bpp)
     "unscii-16", UNSCII_16, "unscii_16");
 
+// `lv_font_dejavu_16_persian_hebrew` (feature "dejavu-16-persian-hebrew"):
+// the static is left out until `cargo xtask fonts` has converted
+// `src/font/lv_font_dejavu_16_persian_hebrew.c` into
+// `data/dejavu_16_persian_hebrew.lvfnt`; `builtin_font!` would fail on the
+// missing file. Then add:
+// builtin_font!(/// `lv_font_dejavu_16_persian_hebrew`
+//     "dejavu-16-persian-hebrew", DEJAVU_16_PERSIAN_HEBREW, "dejavu_16_persian_hebrew");
+
 /// `LV_FONT_DEFAULT`: the font used when none is set.
 #[cfg(feature = "default-montserrat-14")]
 pub static FONT_DEFAULT: &FmtTxtFont<'static> = &MONTSERRAT_14;

@@ -22,10 +22,10 @@ sdl = ["std", "dep:ferrovgl-sdl"]
 embedded = ["dep:ferrovgl-embedded"]
 
 [dependencies]
-ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot"] }
+ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot", "bidi", "arabic-persian-chars"] }
 ferrovgl-draw-sw = { workspace = true, optional = true, features = ["complex", "complex-gradients", "cf-rgb565", "cf-rgb888", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-l8", "cf-al88", "cf-a8", "cf-i1"] }
 ferrovgl-fonts = { workspace = true, optional = true, features = ["montserrat-14", "default-montserrat-14"] }
-ferrovgl-widgets = { workspace = true, optional = true, features = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "theme-default", "theme-simple"] }
+ferrovgl-widgets = { workspace = true, optional = true, features = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "observer", "bidi", "arabic-persian-chars", "theme-default", "theme-simple"] }
 ferrovgl-sdl = { workspace = true, optional = true }
 ferrovgl-embedded = { workspace = true, optional = true }
 

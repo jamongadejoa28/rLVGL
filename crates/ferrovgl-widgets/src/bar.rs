@@ -12,8 +12,8 @@
 //! `lv_bar_destructor()` deletes both animations explicitly, as upstream.
 //!
 //! Not ported: observer binding (`lv_bar_bind_value()`,
-//! `bar_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) waits
-//! for core observer/subject support. The `LV_USE_OBJ_PROPERTY` table
+//! `bar_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) is
+//! declared in this crate's `observer.rs` and waits for the core observer port. The `LV_USE_OBJ_PROPERTY` table
 //! (`lv_bar_properties[]`, `lv_bar_set_value_helper()`,
 //! `lv_bar_set_start_value_helper()`) is compiled out by the parity config.
 

@@ -6,7 +6,8 @@
 //! image, exactly as a C build without a matching filesystem/decoder would.
 //! Bitmap masks are forwarded to image descriptors; the pinned software
 //! renderer applies them to layer composites only, not direct image tasks.
-//! Observer bindings and the optional object-property registry are not exposed.
+//! Observer binding (`lv_image_bind_src()`) is declared in this crate's
+//! `observer.rs`; the optional object-property registry is not exposed.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;

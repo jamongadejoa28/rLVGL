@@ -13,7 +13,7 @@ categories.workspace = true
 readme = "README.md"
 
 [features]
-default = ["float", "flex", "grid", "observer", "snapshot"]
+default = ["float", "flex", "grid", "observer", "snapshot", "bidi", "arabic-persian-chars"]
 std = ["log?/std"]
 float = []
 libm = ["dep:libm"]
@@ -28,6 +28,7 @@ grid = []
 observer = []
 snapshot = []
 bidi = []
+arabic-persian-chars = []
 gridnav = []
 gesture-recognition = []
 binfont = []

@@ -958,6 +958,11 @@ impl Ui {
             o.parent = None;
         }
 
+        // Drop observer references to the object (no-op until `observer.rs`
+        // is ported; upstream unsubscribes in the LV_EVENT_DELETE callback)
+        #[cfg(feature = "observer")]
+        self.observer_obj_deleted(obj);
+
         // Free the object itself
         self.objs.remove(obj.id().0);
     }

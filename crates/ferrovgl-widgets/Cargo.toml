@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "theme-default", "theme-simple"]
+default = ["label", "button", "image", "bar", "slider", "switch", "checkbox", "arc", "line", "led", "spinner", "buttonmatrix", "textarea", "observer", "bidi", "arabic-persian-chars", "theme-default", "theme-simple"]
 std = ["ferrovgl-core/std"]
 label = []
 button = []
@@ -27,6 +27,11 @@ led = []
 spinner = ["arc"]
 buttonmatrix = []
 textarea = ["label"]
+# `LV_USE_OBSERVER`: subject bindings of the widgets (`observer.rs`).
+observer = ["ferrovgl-core/observer"]
+# `LV_USE_BIDI` / `LV_USE_ARABIC_PERSIAN_CHARS` branches of the widgets.
+bidi = ["ferrovgl-core/bidi"]
+arabic-persian-chars = ["ferrovgl-core/arabic-persian-chars"]
 theme-default = []
 theme-simple = []
 theme-mono = []

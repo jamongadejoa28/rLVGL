@@ -4,6 +4,9 @@
 pub mod anim;
 pub mod area;
 pub mod arena;
+#[cfg(feature = "bidi")]
+#[cfg_attr(docsrs, doc(cfg(feature = "bidi")))]
+pub mod bidi;
 pub mod color;
 pub mod event;
 pub mod math;
@@ -11,6 +14,9 @@ pub mod palette;
 pub mod style;
 pub mod style_gen;
 pub mod text;
+#[cfg(feature = "arabic-persian-chars")]
+#[cfg_attr(docsrs, doc(cfg(feature = "arabic-persian-chars")))]
+pub mod text_ap;
 pub mod tick;
 pub mod timer;
 pub mod types;

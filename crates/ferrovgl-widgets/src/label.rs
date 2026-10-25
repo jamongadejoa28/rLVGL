@@ -4,7 +4,8 @@
 //! display's UPDATE_LAYOUT_COMPLETED event, exactly as in upstream. UTF-8 text
 //! has owned or static storage, and draw tasks share an Rc text snapshot.
 //!
-//! Observer bindings, translation and Arabic shaping require core subsystems
+//! Observer binding (`lv_label_bind_text()`) is declared in this crate's
+//! `observer.rs`; translation and Arabic shaping require core subsystems
 //! that are not implemented yet and are not exposed here. BiDi paragraph
 //! processing has the same identity fallback as the current core text renderer.
 //!

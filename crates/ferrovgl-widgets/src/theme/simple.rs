@@ -2,10 +2,11 @@
 //!
 //! `style_init()` builds the complete `my_theme_styles_t` set; the arc and
 //! textarea styles follow their `#if LV_USE_<WIDGET>` crate features.
-//! `theme_apply()` covers screens, base objects, buttons, bars, sliders,
-//! checkboxes and switches. Label and image classes intentionally receive no
-//! own styles, as in C. Branches that need classes which are not ported yet
-//! (tabview, win, buttonmatrix, ...) are omitted.
+//! `theme_apply()` covers screens, base objects, buttons, button matrices,
+//! bars, sliders, checkboxes, switches, arcs, spinners, text areas and LEDs.
+//! Label, line and image classes intentionally receive no own styles, as in
+//! C. Branches that need classes which are not ported yet (tabview, win,
+//! msgbox, ...) are omitted.
 //!
 //! Each `Ui` owns one simple theme, like C's global `theme_def`
 //! (`LV_GLOBAL_DEFAULT()->theme_simple`). The styles keep their IDs across
@@ -268,6 +269,14 @@ fn theme_apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
         return;
     }
 
+    #[cfg(feature = "buttonmatrix")]
+    if ui.obj_check_type(obj, &crate::buttonmatrix::BUTTONMATRIX_CLASS) {
+        // The msgbox and tabview parent cases need classes that are not
+        // ported yet.
+        add_styles(ui, obj, &[(s.white, DEFAULT), (s.light, Part::ITEMS.into())]);
+        return;
+    }
+
     #[cfg(feature = "bar")]
     if ui.obj_check_type(obj, &crate::bar::BAR_CLASS) {
         add_styles(ui, obj, &[(s.light, DEFAULT), (s.dark, Part::INDICATOR.into())]);
@@ -304,6 +313,60 @@ fn theme_apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
     #[cfg(feature = "switch")]
     if ui.obj_check_type(obj, &crate::switch::SWITCH_CLASS) {
         add_styles(ui, obj, &[(s.light, DEFAULT), (s.dim, Part::KNOB.into())]);
+        return;
+    }
+
+    #[cfg(feature = "arc")]
+    if ui.obj_check_type(obj, &crate::arc::ARC_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.light, DEFAULT),
+                (s.transp, DEFAULT),
+                (s.arc_line, DEFAULT),
+                (s.dark, Part::INDICATOR.into()),
+                (s.arc_line, Part::INDICATOR.into()),
+                (s.dim, Part::KNOB.into()),
+                (s.arc_knob, Part::KNOB.into()),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "spinner")]
+    if ui.obj_check_type(obj, &crate::spinner::SPINNER_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.light, DEFAULT),
+                (s.transp, DEFAULT),
+                (s.arc_line, DEFAULT),
+                (s.dark, Part::INDICATOR.into()),
+                (s.arc_line, Part::INDICATOR.into()),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "textarea")]
+    if ui.obj_check_type(obj, &crate::textarea::TEXTAREA_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.white, DEFAULT),
+                (s.scrollbar, Part::SCROLLBAR.into()),
+                (s.ta_cursor, Part::CURSOR | ferrovgl_core::State::FOCUSED),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "led")]
+    if ui.obj_check_type(obj, &crate::led::LED_CLASS) {
+        add_styles(ui, obj, &[(s.light, DEFAULT)]);
     }
 }
 

@@ -240,6 +240,13 @@ pub struct Ui {
     pub draw_units: Vec<Box<dyn DrawUnit>>,
     /// `math_rand_seed`
     pub rand: Rand,
+    /// `subject_ll` and the observers of every subject (`LV_USE_OBSERVER`).
+    #[cfg(feature = "observer")]
+    pub observer: crate::core::observer::ObserverState,
+    /// File-scope `static` variables of widget modules (for example
+    /// `ta_insert_replace` of `lv_textarea.c`), one value per type. See
+    /// [`Ui::widget_static_mut`].
+    pub widget_statics: Vec<(core::any::TypeId, Box<dyn Any>)>,
     /// Application state reachable from callbacks (`lv_global_t::user_data`).
     pub app: Option<Box<dyn Any>>,
     /// `inited`
@@ -289,6 +296,10 @@ impl Ui {
             draw: DrawCtx::new(),
             draw_units: Vec::new(),
             rand: Rand::default(),
+            /*lv_subject_global_init(): an empty subject list*/
+            #[cfg(feature = "observer")]
+            observer: crate::core::observer::ObserverState::new(),
+            widget_statics: Vec::new(),
             app: None,
             inited: false,
             deinit_in_progress: false,
@@ -380,7 +391,12 @@ impl Ui {
 
         self.timer_core_deinit();
 
-        /*lv_fs_deinit(), lv_mem_deinit(): nothing to do*/
+        /*lv_fs_deinit(): nothing to do*/
+
+        #[cfg(feature = "observer")]
+        self.subject_global_deinit();
+
+        /*lv_mem_deinit(): nothing to do*/
 
         self.inited = false;
     }
@@ -412,6 +428,35 @@ impl Ui {
             cur_unit.delete();
         }
         self.draw_units = Vec::new();
+    }
+
+    /// The file-scope `static` variable of type `T` of a widget module,
+    /// created with `T::default()` (C's zero-initialized static) on first
+    /// use. Like a C `static`, it lives as long as this `Ui` and is not reset
+    /// by [`Ui::deinit`].
+    pub fn widget_static_mut<T: Any + Default>(&mut self) -> &mut T {
+        let id = core::any::TypeId::of::<T>();
+        let index = match self.widget_statics.iter().position(|(t, _)| *t == id) {
+            Some(index) => index,
+            None => {
+                self.widget_statics.push((id, Box::new(T::default())));
+                self.widget_statics.len() - 1
+            }
+        };
+        match self.widget_statics[index].1.downcast_mut::<T>() {
+            Some(value) => value,
+            None => unreachable!("widget static stored under a foreign TypeId"),
+        }
+    }
+
+    /// The file-scope `static` variable of type `T` of a widget module, or
+    /// `None` if it was never written (C: still zero-initialized).
+    pub fn widget_static<T: Any>(&self) -> Option<&T> {
+        let id = core::any::TypeId::of::<T>();
+        self.widget_statics
+            .iter()
+            .find(|(t, _)| *t == id)
+            .and_then(|(_, value)| value.downcast_ref::<T>())
     }
 
     /// Store application state (`lv_global_t::user_data`).

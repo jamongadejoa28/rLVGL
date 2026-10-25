@@ -10,8 +10,8 @@
 //!
 //! Not ported: observer binding (`lv_slider_bind_value()`,
 //! `slider_value_changed_event_cb()`, `slider_value_observer_cb()`;
-//! `LV_USE_OBSERVER=y` in the parity config) waits for core observer/subject
-//! support. The `LV_USE_OBJ_PROPERTY` table (`lv_slider_properties[]`) is
+//! `LV_USE_OBSERVER=y` in the parity config) is declared in this crate's
+//! `observer.rs` and waits for the core observer port. The `LV_USE_OBJ_PROPERTY` table (`lv_slider_properties[]`) is
 //! compiled out by the parity config.
 
 use alloc::boxed::Box;

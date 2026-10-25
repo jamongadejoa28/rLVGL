@@ -475,6 +475,10 @@ pub struct DrawCtx {
     /// the layers' [`Layer::display`] (`None` for layers created without a
     /// known display). Appended in creation order like upstream.
     layer_heads: Vec<(Option<DisplayId>, LayerId)>,
+    /// The file-scope state of `lv_bidi.c` (`custom_neutrals`), here so that
+    /// the label drawing and the widgets share it (`LV_USE_BIDI`).
+    #[cfg(feature = "bidi")]
+    pub bidi: crate::misc::bidi::BidiState,
 }
 
 impl DrawCtx {
@@ -488,6 +492,8 @@ impl DrawCtx {
             task_running: false,
             unit_cnt: 0,
             layer_heads: Vec::new(),
+            #[cfg(feature = "bidi")]
+            bidi: crate::misc::bidi::BidiState::new(),
         }
     }
 

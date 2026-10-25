@@ -11,6 +11,9 @@ pub mod obj_pos;
 pub mod obj_scroll;
 pub mod obj_style;
 pub mod obj_tree;
+#[cfg(feature = "observer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "observer")))]
+pub mod observer;
 pub mod refr;
 pub mod ui;
 
