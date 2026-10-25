@@ -6,10 +6,23 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-wasm"
+readme = "README.md"
+keywords = ["gui", "wasm", "canvas", "browser", "lvgl"]
+categories = ["gui", "wasm", "web-programming"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+    "/scripts/node-smoke.mjs",
+    "/www/index.html",
+    "/www/main.js",
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

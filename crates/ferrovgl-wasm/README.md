@@ -1,5 +1,8 @@
 # ferrovgl-wasm
 
+Part of [ferrovgl](https://github.com/jamongadejoa28/rLVGL) (independent project, not affiliated with
+LVGL LLC). API documentation: <https://docs.rs/ferrovgl-wasm>.
+
 Browser backend for ferrovgl. A display is rendered by the pure Rust
 software renderer and copied into a `<canvas>` with Canvas2D
 `ImageData`/`putImageData`; pointer, keyboard and wheel events drive real
@@ -7,7 +10,7 @@ LVGL input devices; a `requestAnimationFrame` loop feeds `lv_tick_inc()` from
 the frame timestamps and runs `lv_timer_handler()`.
 
 The demo page shows a gallery of all 13 v0.1 widgets on the default theme
-and, once `ferrovgl_examples::EXAMPLES` has entries, a picker that runs the
+and a picker that runs the
 ported `lv_example_*` functions.
 
 ## Build and serve the demo
@@ -130,3 +133,22 @@ gzipped), 1,162,247 bytes without `wasm-opt`.
 
 Not implemented yet: multi-touch, IME composition, canvas resizing of the
 display, rotation/offsets and the remaining color formats.
+
+## About ferrovgl
+
+This crate is part of [ferrovgl](https://github.com/jamongadejoa28/rLVGL), a pure-Rust reimplementation of
+LVGL v9.6.0. ferrovgl is an independent project and is **not** affiliated
+with, endorsed by, or sponsored by LVGL LLC or LVGL Kft. "LVGL" is a trademark
+of LVGL LLC, used here only to describe compatibility and provenance (see
+[TRADEMARK.md](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/TRADEMARK.md)).
+
+- Repository: <https://github.com/jamongadejoa28/rLVGL>
+- Changelog: [CHANGELOG.md](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/CHANGELOG.md)
+- Minimum supported Rust version: 1.97
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-APACHE)
+or [MIT license](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/LICENSE-MIT) at your option. ferrovgl is derived from
+LVGL (MIT, Copyright LVGL Kft); the upstream notice is reproduced in
+[NOTICE](https://github.com/jamongadejoa28/rLVGL/blob/HEAD/NOTICE), which ships in this package.

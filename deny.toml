@@ -19,6 +19,12 @@ allow = [
 ]
 confidence-threshold = 0.9
 
+# The DejaVu Sans glyph data in ferrovgl-fonts (data/*.lvfnt) is under the
+# Bitstream Vera Fonts licence (crates/ferrovgl-fonts/LICENSE-DejaVu.txt).
+[[licenses.exceptions]]
+crate = "ferrovgl-fonts"
+allow = ["Bitstream-Vera"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

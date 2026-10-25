@@ -17,8 +17,9 @@ in each file's header, e.g. for `montserrat_14`:
 the same `font_conv` encoder (its C file header records
 `--no-compress --no-prefilter --bpp 4 --size 16 --font DejaVuSans.ttf
 -r 0x20-0x7f,0x5d0-0x5ea,0x600-0x6FF,0xFB50-0xFDFF,0xFE70-0xFEFF` plus the
-Font Awesome symbol range). It is not yet listed in `font_conv::BUILTIN_FONTS`,
-so `cargo xtask fonts` only (re)generates it once that list names it.
+Font Awesome symbol range). Like the Montserrat blobs, it is listed in
+`font_conv::BUILTIN_FONTS`, so `cargo xtask fonts` regenerates it and
+`cargo xtask fonts --check` verifies it.
 
 `cargo xtask fonts --check` fails when a blob no longer matches the upstream
 source, so the files are reproducible from the pinned upstream commit.
@@ -26,8 +27,9 @@ source, so the files are reproducible from the pinned upstream commit.
 Licences:
 
 - Montserrat: SIL Open Font License 1.1 (`../OFL.txt`).
-- Font Awesome 5 Free (symbol glyphs): SIL Open Font License 1.1.
-- DejaVu Sans: Bitstream Vera Fonts licence with the DejaVu changes in the
-  public domain (<https://dejavu-fonts.github.io/License.html>), as shipped by
-  LVGL.
+- Font Awesome 5 Free (symbol glyphs): SIL Open Font License 1.1 (its
+  copyright notice is in `../OFL.txt` too).
+- DejaVu Sans: Bitstream Vera Fonts licence and Arev Fonts licence, with the
+  DejaVu changes in the public domain (`../LICENSE-DejaVu.txt`,
+  <https://dejavu-fonts.github.io/License.html>).
 - UNSCII: public domain (the author's dedication), as shipped by LVGL.

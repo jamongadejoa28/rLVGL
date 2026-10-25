@@ -6,11 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 authors.workspace = true
-keywords.workspace = true
-categories.workspace = true
+documentation = "https://docs.rs/ferrovgl-core"
 readme = "README.md"
+keywords = ["gui", "embedded", "no-std", "lvgl", "ui"]
+categories = ["gui", "embedded", "no-std", "graphics", "rendering"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/NOTICE",
+    "/TRADEMARK.md",
+    "/src/**",
+]
 
 [features]
 default = ["float", "flex", "grid", "observer", "snapshot", "bidi", "arabic-persian-chars", "obj-id"]
