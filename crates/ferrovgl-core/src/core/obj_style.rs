@@ -318,34 +318,18 @@ fn union_color(n: i32) -> Color {
 
 /// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 0`)
 #[cfg(not(feature = "bidi"))]
-fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
-    let _ = (txt, base_dir);
+fn bidi_calculate_align(ui: &Ui, align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
+    let _ = (ui, txt, base_dir);
     if *align == TextAlign::Auto {
         *align = TextAlign::Left;
     }
 }
 
-/// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 1`). The BiDi
-/// algorithm is not ported yet: `lv_bidi_detect_base_dir()` is stubbed to
-/// `LV_BIDI_BASE_DIR_DEF` (LTR), like `draw/label.rs`.
-///
-/// Known parity gap: `full.defconfig` sets `LV_USE_BIDI=y` but the crate's
-/// default features leave `bidi` off, and `AUTO` base direction never
-/// detects RTL text until `misc/bidi.rs` (`lv_bidi.c`) exists.
+/// `lv_bidi_calculate_align()` (`LV_USE_BIDI == 1`), with the
+/// `custom_neutrals` of `ui.draw.bidi`.
 #[cfg(feature = "bidi")]
-fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
-    let _ = txt;
-    if *base_dir == BaseDir::Auto {
-        *base_dir = BaseDir::Ltr;
-    }
-
-    if *align == TextAlign::Auto {
-        if *base_dir == BaseDir::Rtl {
-            *align = TextAlign::Right;
-        } else {
-            *align = TextAlign::Left;
-        }
-    }
+fn bidi_calculate_align(ui: &Ui, align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
+    ui.draw.bidi.calculate_align(align, base_dir, txt.as_bytes());
 }
 
 /// The `(enum_t)v.num` casts of `lv_obj_style_internal_gen.h` for the enum
@@ -1508,7 +1492,7 @@ impl Ui {
         }
         let mut align = self.obj_get_style_text_align(obj, part);
         let mut base_dir = self.obj_get_style_base_dir(obj, part);
-        bidi_calculate_align(&mut align, &mut base_dir, txt);
+        bidi_calculate_align(self, &mut align, &mut base_dir, txt);
         align
     }
 
