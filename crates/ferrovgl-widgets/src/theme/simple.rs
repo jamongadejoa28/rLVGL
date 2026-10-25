@@ -1,27 +1,56 @@
-//! LVGL v9.6.0 `src/themes/simple/lv_theme_simple.c` for screens, base objects
-//! and buttons. Label and image classes intentionally receive no own styles,
-//! as in C. Other widget branches are not implemented.
+//! Ported from LVGL v9.6.0: `src/themes/simple/lv_theme_simple.c`.
 //!
-//! Theme state is owned per display, replacing C's global singleton. The four
-//! styles used by these classes keep their IDs across reinitialization; copied
-//! and shared themes retain their resources until their users are detached.
-//! This theme uses fixed pixel sizes, so resolution and DPI changes need no
-//! style rebuild or resolution callback.
+//! `style_init()` builds the complete `my_theme_styles_t` set; the arc and
+//! textarea styles follow their `#if LV_USE_<WIDGET>` crate features.
+//! `theme_apply()` covers screens, base objects, buttons, bars, sliders,
+//! checkboxes and switches. Label and image classes intentionally receive no
+//! own styles, as in C. Branches that need classes which are not ported yet
+//! (tabview, win, buttonmatrix, ...) are omitted.
+//!
+//! Theme state is owned per display, replacing C's global singleton. The
+//! styles keep their IDs across reinitialization; copied and shared themes
+//! retain their resources until their users are detached. This theme uses
+//! fixed pixel sizes, so resolution and DPI changes need no style rebuild or
+//! resolution callback.
 
 use alloc::rc::Rc;
 
 use ferrovgl_core::core::obj::OBJ_CLASS;
 use ferrovgl_core::core::obj_style::StyleId;
+use ferrovgl_core::misc::color::{OPA_COVER, OPA_TRANSP};
 use ferrovgl_core::misc::palette::{self, Palette};
+#[cfg(feature = "textarea")]
+use ferrovgl_core::misc::style::BorderSide;
 use ferrovgl_core::theme::ThemeId;
-use ferrovgl_core::{Color, DisplayId, Obj, Part, State, Style, StyleSelector, Ui};
+use ferrovgl_core::{Color, DisplayId, Obj, Part, Style, StyleSelector, Ui};
+
+/// `SCROLLBAR_WIDTH`
+const SCROLLBAR_WIDTH: i32 = 2;
+
+theme_styles! {
+    /// `my_theme_styles_t`, in C declaration order.
+    struct Styles {
+        scr,
+        transp,
+        white,
+        light,
+        dark,
+        dim,
+        scrollbar,
+        #[cfg(feature = "arc")]
+        arc_line,
+        #[cfg(feature = "arc")]
+        arc_knob,
+        #[cfg(feature = "textarea")]
+        ta_cursor,
+    }
+}
 
 #[derive(Clone)]
 struct SimpleThemeData {
     owner: ThemeId,
     display: DisplayId,
-    // scr, white, dark, scrollbar. The other C styles serve unported widgets.
-    styles: [StyleId; 4],
+    styles: Styles<StyleId>,
 }
 
 fn data(ui: &Ui, theme: ThemeId) -> Option<&SimpleThemeData> {
@@ -38,18 +67,18 @@ pub fn init(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
         (state.display == display && state.owner == ThemeId(key)).then_some(ThemeId(key))
     });
     let theme = existing.unwrap_or_else(|| ui.theme_create());
-    let styles = if let Some(old) = data(ui, theme) {
-        let mut ids = old.styles;
-        for (index, style) in build_styles().into_iter().enumerate() {
-            if let Some(target) = ui.style_mut(ids[index]) {
+    // style_init_reset(): reset the existing shared styles in place.
+    let styles = if let Some(old) = data(ui, theme).map(|data| data.styles) {
+        old.zip(style_init()).map(|(id, style)| {
+            if let Some(target) = ui.style_mut(id) {
                 *target = style;
+                id
             } else {
-                ids[index] = ui.style_create(style);
+                ui.style_create(style)
             }
-        }
-        ids
+        })
     } else {
-        build_styles().map(|style| ui.style_create(style))
+        style_init().map(|style| ui.style_create(style))
     };
     let font = ui.config().font_default.clone();
     let base = ui.theme_mut(theme)?;
@@ -57,7 +86,7 @@ pub fn init(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
     base.font_small = font.clone();
     base.font_normal = font.clone();
     base.font_large = font;
-    base.apply = Some(apply);
+    base.apply = Some(theme_apply);
     base.extension = Some(Rc::new(SimpleThemeData {
         owner: theme,
         display,
@@ -69,14 +98,16 @@ pub fn init(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
     Some(theme)
 }
 
-/// Alias suitable for the same display-creation hook as `default::init_display`.
+/// Alias of `lv_theme_simple_init()` suitable for the same display-creation
+/// hook as `default::init_display`.
 pub fn init_display(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
     init(ui, display)
 }
 
-/// Release an unused original simple theme. Returns `false` while a live
-/// display, child theme or shallow theme copy references its shared resources.
-/// `Ui::deinit` also releases all theme resources.
+/// Release an unused original simple theme (`lv_theme_simple_deinit`).
+/// Returns `false` while a live display, child theme or shallow theme copy
+/// references its shared resources. `Ui::deinit` also releases all theme
+/// resources.
 pub fn deinit(ui: &mut Ui, theme: ThemeId) -> bool {
     let Some(state) = data(ui, theme).filter(|data| data.owner == theme).cloned() else {
         return false;
@@ -98,58 +129,147 @@ pub fn deinit(ui: &mut Ui, theme: ThemeId) -> bool {
         return false;
     }
     ui.theme_delete(theme);
-    for style in state.styles {
-        ui.style_delete(style);
-    }
+    state.styles.map(|style| ui.style_delete(style));
     true
 }
 
-fn build_styles() -> [Style; 4] {
-    let mut screen = Style::new();
-    screen.set_bg_opa(255);
-    screen.set_bg_color(palette::lighten(Palette::Grey, 4));
-    screen.set_text_color(palette::darken(Palette::Grey, 2));
-    let color_style = |color| {
-        let mut style = Style::new();
-        style.set_bg_opa(255);
+/// `style_init()`: every `lv_style_set_*` call, in the upstream order.
+fn style_init() -> Styles<Style> {
+    let color_scr = palette::lighten(Palette::Grey, 4);
+    let color_white = Color::WHITE;
+    let color_light = palette::lighten(Palette::Grey, 2);
+    let color_dark = palette::main(Palette::Grey);
+    let color_dim = palette::darken(Palette::Grey, 2);
+
+    let mut s = Styles::from_fn(Style::new);
+
+    s.scrollbar.set_bg_opa(OPA_COVER);
+    s.scrollbar.set_bg_color(color_dark);
+    s.scrollbar.set_width(SCROLLBAR_WIDTH);
+
+    s.scr.set_bg_opa(OPA_COVER);
+    s.scr.set_bg_color(color_scr);
+    s.scr.set_text_color(color_dim);
+
+    s.transp.set_bg_opa(OPA_TRANSP);
+
+    for (style, color) in [
+        (&mut s.white, color_white),
+        (&mut s.light, color_light),
+        (&mut s.dark, color_dark),
+        (&mut s.dim, color_dim),
+    ] {
+        style.set_bg_opa(OPA_COVER);
         style.set_bg_color(color);
         style.set_line_width(1);
         style.set_line_color(color);
         style.set_arc_width(2);
         style.set_arc_color(color);
-        style
-    };
-    let white = color_style(Color::WHITE);
-    let dark = color_style(palette::main(Palette::Grey));
-    let mut scrollbar = Style::new();
-    scrollbar.set_bg_opa(255);
-    scrollbar.set_bg_color(palette::main(Palette::Grey));
-    scrollbar.set_width(2);
-    [screen, white, dark, scrollbar]
+    }
+
+    #[cfg(feature = "arc")]
+    {
+        s.arc_line.set_arc_width(6);
+        s.arc_knob.set_pad_all(5);
+    }
+
+    #[cfg(feature = "textarea")]
+    {
+        s.ta_cursor.set_border_side(BorderSide::LEFT);
+        s.ta_cursor.set_border_color(color_dim);
+        s.ta_cursor.set_border_width(2);
+        s.ta_cursor.set_bg_opa(OPA_TRANSP);
+        s.ta_cursor.set_anim_duration(500);
+    }
+
+    s
 }
 
-fn apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
+/// Attach `styles` in order with `lv_obj_add_style()`, stopping if a
+/// STYLE_CHANGED callback deleted the object.
+fn add_styles(ui: &mut Ui, obj: Obj, styles: &[(StyleId, StyleSelector)]) {
+    for &(style, selector) in styles {
+        if !ui.obj_is_valid(obj) {
+            return;
+        }
+        ui.obj_add_style(obj, style, selector);
+    }
+}
+
+/// `theme_apply()`. The C `else if` chain checks exact classes, so each
+/// ported branch returns after adding its styles.
+// With some widget features disabled, an earlier branch's `return` is last.
+#[allow(clippy::needless_return)]
+fn theme_apply(ui: &mut Ui, theme: ThemeId, obj: Obj) {
     if !ui.obj_is_valid(obj) {
         return;
     }
-    let Some([screen, white, _dark, scrollbar]) = data(ui, theme).map(|data| data.styles) else {
+    let Some(s) = data(ui, theme).map(|data| data.styles) else {
         return;
     };
+    const DEFAULT: StyleSelector = StyleSelector::DEFAULT;
+
     if ui.obj_get_parent(obj).is_none() {
-        ui.obj_add_style(obj, screen, StyleSelector::DEFAULT);
-        if ui.obj_is_valid(obj) {
-            ui.obj_add_style(obj, scrollbar, Part::SCROLLBAR | State::DEFAULT);
-        }
-    } else if ui.obj_check_type(obj, &OBJ_CLASS) {
-        ui.obj_add_style(obj, white, StyleSelector::DEFAULT);
-        if ui.obj_is_valid(obj) {
-            ui.obj_add_style(obj, scrollbar, Part::SCROLLBAR | State::DEFAULT);
-        }
-    } else {
-        #[cfg(feature = "button")]
-        if ui.obj_check_type(obj, &crate::button::BUTTON_CLASS) {
-            ui.obj_add_style(obj, _dark, StyleSelector::DEFAULT);
-        }
+        add_styles(
+            ui,
+            obj,
+            &[(s.scr, DEFAULT), (s.scrollbar, Part::SCROLLBAR.into())],
+        );
+        return;
+    }
+
+    if ui.obj_check_type(obj, &OBJ_CLASS) {
+        // The tabview and win parent cases need classes that are not ported yet.
+        add_styles(
+            ui,
+            obj,
+            &[(s.white, DEFAULT), (s.scrollbar, Part::SCROLLBAR.into())],
+        );
+        return;
+    }
+
+    #[cfg(feature = "button")]
+    if ui.obj_check_type(obj, &crate::button::BUTTON_CLASS) {
+        add_styles(ui, obj, &[(s.dark, DEFAULT)]);
+        return;
+    }
+
+    #[cfg(feature = "bar")]
+    if ui.obj_check_type(obj, &crate::bar::BAR_CLASS) {
+        add_styles(ui, obj, &[(s.light, DEFAULT), (s.dark, Part::INDICATOR.into())]);
+        return;
+    }
+
+    #[cfg(feature = "slider")]
+    if ui.obj_check_type(obj, &crate::slider::SLIDER_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.light, DEFAULT),
+                (s.dark, Part::INDICATOR.into()),
+                (s.dim, Part::KNOB.into()),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "checkbox")]
+    if ui.obj_check_type(obj, &crate::checkbox::CHECKBOX_CLASS) {
+        add_styles(
+            ui,
+            obj,
+            &[
+                (s.light, Part::INDICATOR.into()),
+                (s.dark, Part::INDICATOR | ferrovgl_core::State::CHECKED),
+            ],
+        );
+        return;
+    }
+
+    #[cfg(feature = "switch")]
+    if ui.obj_check_type(obj, &crate::switch::SWITCH_CLASS) {
+        add_styles(ui, obj, &[(s.light, DEFAULT), (s.dim, Part::KNOB.into())]);
     }
 }
 
@@ -223,7 +343,21 @@ mod tests {
             ui.theme_get_user_data(theme).unwrap().downcast_ref::<u32>(),
             Some(&42)
         );
-        assert_eq!(ids.map(|id| ui.style(id).unwrap().len()), [3, 6, 6, 3]);
+        assert_eq!(
+            [ids.scr, ids.white, ids.dark, ids.scrollbar].map(|id| ui.style(id).unwrap().len()),
+            [3, 6, 6, 3]
+        );
+        assert_eq!(
+            [ids.transp, ids.light, ids.dim].map(|id| ui.style(id).unwrap().len()),
+            [1, 6, 6]
+        );
+        #[cfg(feature = "arc")]
+        assert_eq!(
+            [ids.arc_line, ids.arc_knob].map(|id| ui.style(id).unwrap().len()),
+            [1, 4]
+        );
+        #[cfg(feature = "textarea")]
+        assert_eq!(ui.style(ids.ta_cursor).unwrap().len(), 5);
     }
 
     #[test]
@@ -267,7 +401,10 @@ mod tests {
         );
         ui.obj_add_state(
             button.obj(),
-            State::PRESSED | State::CHECKED | State::DISABLED | State::FOCUS_KEY,
+            ferrovgl_core::State::PRESSED
+                | ferrovgl_core::State::CHECKED
+                | ferrovgl_core::State::DISABLED
+                | ferrovgl_core::State::FOCUS_KEY,
         );
         assert_eq!(
             ui.obj_get_style_bg_color(button.obj(), Part::MAIN),
@@ -290,5 +427,82 @@ mod tests {
             ui.obj_get_style_text_color(image.obj(), Part::MAIN),
             Color::hex(0x616161)
         );
+    }
+
+    /// Apply the theme to a widget allocated without its (not yet ported)
+    /// constructor, with style refresh disabled as in `lv_obj_class_init_obj`.
+    /// Returns the attached styles in `lv_obj_add_style()` call order.
+    #[cfg(any(feature = "bar", feature = "slider", feature = "switch", feature = "checkbox"))]
+    fn applied(
+        class: &'static ferrovgl_core::ObjClass,
+    ) -> (alloc::vec::Vec<(StyleId, StyleSelector)>, Styles<StyleId>) {
+        use ferrovgl_core::core::obj_style::ObjStyleSrc;
+        let mut ui = ui();
+        let display = ui.display_create_ex(800, 480, Some(init_display)).unwrap();
+        let theme = ui.display_get_theme(Some(display)).unwrap();
+        let screen = ui.display_get_screen_active(Some(display)).unwrap();
+        let obj = ui.obj_class_create_obj(class, Some(screen));
+        ui.obj_enable_style_refresh(false);
+        ui.theme_apply(obj);
+        let entries = ui
+            .obj(obj)
+            .unwrap()
+            .styles
+            .iter()
+            .rev()
+            .map(|entry| match entry.src {
+                ObjStyleSrc::Shared(id) if entry.is_theme => (id, entry.selector),
+                _ => panic!("only shared theme styles are expected"),
+            })
+            .collect();
+        (entries, data(&ui, theme).unwrap().styles)
+    }
+
+    /// `lv_theme_simple.c:290..335`
+    #[test]
+    #[cfg(any(feature = "bar", feature = "slider", feature = "switch", feature = "checkbox"))]
+    fn widget_branches_match_upstream_order() {
+        #[cfg(feature = "bar")]
+        {
+            let (entries, s) = applied(&crate::bar::BAR_CLASS);
+            assert_eq!(
+                entries,
+                [
+                    (s.light, StyleSelector::DEFAULT),
+                    (s.dark, Part::INDICATOR.into())
+                ]
+            );
+        }
+        #[cfg(feature = "slider")]
+        {
+            let (entries, s) = applied(&crate::slider::SLIDER_CLASS);
+            assert_eq!(
+                entries,
+                [
+                    (s.light, StyleSelector::DEFAULT),
+                    (s.dark, Part::INDICATOR.into()),
+                    (s.dim, Part::KNOB.into()),
+                ]
+            );
+        }
+        #[cfg(feature = "checkbox")]
+        {
+            let (entries, s) = applied(&crate::checkbox::CHECKBOX_CLASS);
+            assert_eq!(
+                entries,
+                [
+                    (s.light, Part::INDICATOR.into()),
+                    (s.dark, Part::INDICATOR | ferrovgl_core::State::CHECKED),
+                ]
+            );
+        }
+        #[cfg(feature = "switch")]
+        {
+            let (entries, s) = applied(&crate::switch::SWITCH_CLASS);
+            assert_eq!(
+                entries,
+                [(s.light, StyleSelector::DEFAULT), (s.dim, Part::KNOB.into())]
+            );
+        }
     }
 }
