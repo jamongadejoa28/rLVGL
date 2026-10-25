@@ -1,17 +1,19 @@
 //! no_std size probe: the smallest complete ferrovgl application.
 //!
 //! Builds for `thumbv7em-none-eabihf` and `thumbv6m-none-eabi` only. The
-//! reset handler creates a [`Ui`], a 320x240 RGB565 display with a
+//! application ([`app`], entered from [`Reset`]) creates a [`Ui`], a 320x240 RGB565 display with a
 //! 1/10-screen partial buffer, a label and a button (with a label child),
 //! renders one frame and then runs the timer loop forever. Everything
 //! reachable from [`Reset`] is what an application pays for: the linker
 //! script (`link.x`) keeps only the vector table and lets `--gc-sections`
 //! drop the rest. `cargo xtask size-report` measures the result.
 //!
-//! The global allocator is a bump allocator over a static pool that can
-//! roll back / grow in place its most recent block (enough for the
-//! `Vec` growth patterns of the library). The probe is never executed on
-//! hardware by CI; it is only linked and measured.
+//! The global allocator ([`FreeListAlloc`], in the library part of this
+//! package so it can be tested on the host) is a first-fit free list over
+//! a static pool: it reuses and coalesces freed blocks, so the timer loop
+//! runs on a fixed heap like upstream's TLSF pool. `.bss` / `.data` are
+//! initialised in assembly before any Rust code runs. The probe is never
+//! executed on hardware by CI; it is only linked and measured.
 
 #![no_std]
 #![no_main]
@@ -20,14 +22,14 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::alloc::{GlobalAlloc, Layout};
+use core::arch::global_asm;
 use core::cell::UnsafeCell;
 use core::panic::PanicInfo;
-use core::ptr;
 
 use ferrovgl_core::display::FlushResult;
 use ferrovgl_core::draw::draw_buf::BufStorage;
 use ferrovgl_core::{Align, Area, ColorFormat, DisplayDriver, DisplayId, FontRef, RenderMode, Ui, UiConfig};
+use ferrovgl_nostd_size::heap::FreeListAlloc;
 use ferrovgl_widgets::{Button, Label};
 
 /// Display width in pixels.
@@ -51,45 +53,72 @@ const HEAP_BYTES: usize = 64 * 1024;
 pub static RESET_VECTOR: unsafe extern "C" fn() -> ! = Reset;
 
 unsafe extern "C" {
-    /// Start of `.bss` (from `link.x`).
-    static mut __sbss: u32;
-    /// End of `.bss` (from `link.x`).
-    static mut __ebss: u32;
-    /// Start of `.data` in RAM (from `link.x`).
-    static mut __sdata: u32;
-    /// End of `.data` in RAM (from `link.x`).
-    static mut __edata: u32;
-    /// Load address of `.data` in flash (from `link.x`).
-    static __sidata: u32;
+    /// Reset handler (assembly, below): zero `.bss`, copy `.data`, enable
+    /// the FPU on hard-float targets and call [`probe_main`].
+    fn Reset() -> !;
 }
 
-/// Reset handler: initialise `.bss` / `.data` and run the application.
-///
-/// # Safety
-///
-/// Only the hardware may call this, once, out of reset.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Reset() -> ! {
-    // SAFETY: the linker script defines these symbols as word-aligned
-    // bounds of `.bss` and `.data`. Nothing has touched static memory yet
-    // (this runs first out of reset, single-threaded), so writing the
-    // regions through raw pointers cannot alias a live reference.
-    unsafe {
-        let mut dst = &raw mut __sbss;
-        let end = &raw mut __ebss;
-        while dst < end {
-            ptr::write_volatile(dst, 0);
-            dst = dst.add(1);
-        }
-        let mut dst = &raw mut __sdata;
-        let end = &raw mut __edata;
-        let mut src = &raw const __sidata;
-        while dst < end {
-            ptr::write_volatile(dst, ptr::read(src));
-            dst = dst.add(1);
-            src = src.add(1);
-        }
-    }
+/// Emits `Reset`. Static memory is initialised in assembly, as
+/// cortex-m-rt >= 0.7.3 does: walking the linker-defined bounds with Rust
+/// pointers derived from one-word extern statics would step outside their
+/// provenance, which is undefined behaviour. `$pre` are extra instructions
+/// run first (the FPU enable).
+macro_rules! reset_handler {
+    ($($pre:literal,)*) => {
+        global_asm!(
+            ".section .text.Reset, \"ax\", %progbits",
+            ".global Reset",
+            ".type Reset, %function",
+            ".thumb_func",
+            "Reset:",
+            $($pre,)*
+            // Zero `.bss` (word-aligned bounds from `link.x`).
+            "ldr r0, =__sbss",
+            "ldr r1, =__ebss",
+            "movs r2, #0",
+            "0:",
+            "cmp r1, r0",
+            "beq 1f",
+            "stm r0!, {{r2}}",
+            "b 0b",
+            "1:",
+            // Copy `.data` from its load address in flash.
+            "ldr r0, =__sdata",
+            "ldr r1, =__edata",
+            "ldr r2, =__sidata",
+            "2:",
+            "cmp r1, r0",
+            "beq 3f",
+            "ldm r2!, {{r3}}",
+            "stm r0!, {{r3}}",
+            "b 2b",
+            "3:",
+            "bl {main}",
+            "udf #0",
+            ".ltorg",
+            ".size Reset, . - Reset",
+            main = sym probe_main,
+        );
+    };
+}
+
+// Hard-float targets: grant full access to CP10/CP11 (CPACR) before any
+// floating-point instruction can run.
+#[cfg(target_abi = "eabihf")]
+reset_handler!(
+    "ldr r0, =0xE000ED88",
+    "ldr r1, [r0]",
+    "ldr r2, =0x00F00000",
+    "orrs r1, r2",
+    "str r1, [r0]",
+    "dsb",
+    "isb",
+);
+#[cfg(not(target_abi = "eabihf"))]
+reset_handler!();
+
+/// Rust entry, called by `Reset` once static memory is initialised.
+extern "C" fn probe_main() -> ! {
     app()
 }
 
@@ -105,101 +134,19 @@ fn panic(_info: &PanicInfo<'_>) -> ! {
  * Allocator
  *********************/
 
-/// A static, 8-byte aligned byte pool.
-#[repr(C, align(8))]
-struct Pool<const N: usize>(UnsafeCell<[u8; N]>);
-
-/// Bump allocator over [`Pool`]; `dealloc` / `realloc` of the most recent
-/// block shrink / grow it in place, anything else is never reused.
-struct BumpAlloc {
-    pool: Pool<HEAP_BYTES>,
-    /// Offset of the first free byte in `pool`.
-    next: UnsafeCell<usize>,
-}
-
-// SAFETY: the probe is single-threaded and no interrupt handler allocates,
-// so `next` and the pool are never accessed concurrently.
-unsafe impl Sync for BumpAlloc {}
-
-impl BumpAlloc {
-    /// Start of the pool.
-    fn base(&self) -> *mut u8 {
-        self.pool.0.get().cast::<u8>()
-    }
-}
-
-// SAFETY: blocks are disjoint, in bounds of the pool and aligned as
-// requested; a block is only resized in place when it is the last one, so
-// no live block is ever handed out twice.
-unsafe impl GlobalAlloc for BumpAlloc {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: single-threaded (see the `Sync` impl), so this is the only
-        // access to `next` for the duration of the call.
-        let next = unsafe { &mut *self.next.get() };
-        let base = self.base();
-        let Some(start) = (base.addr() + *next)
-            .checked_next_multiple_of(layout.align())
-            .map(|a| a - base.addr())
-        else {
-            return ptr::null_mut();
-        };
-        let Some(end) = start.checked_add(layout.size()) else {
-            return ptr::null_mut();
-        };
-        if end > HEAP_BYTES {
-            return ptr::null_mut();
-        }
-        *next = end;
-        base.wrapping_add(start)
-    }
-
-    unsafe fn dealloc(&self, block: *mut u8, layout: Layout) {
-        // SAFETY: as in `alloc`.
-        let next = unsafe { &mut *self.next.get() };
-        let start = block.addr() - self.base().addr();
-        if start + layout.size() == *next {
-            *next = start;
-        }
-    }
-
-    unsafe fn realloc(&self, block: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let start = block.addr() - self.base().addr();
-        {
-            // SAFETY: as in `alloc`; the borrow ends before `alloc` below.
-            let next = unsafe { &mut *self.next.get() };
-            if start + layout.size() == *next {
-                if let Some(end) = start.checked_add(new_size)
-                    && end <= HEAP_BYTES
-                {
-                    *next = end;
-                    return block;
-                }
-                return ptr::null_mut();
-            }
-        }
-        // SAFETY: the caller guarantees `layout.align()` is valid and
-        // `new_size` does not overflow when rounded up to it.
-        let new_layout = unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) };
-        // SAFETY: `new_layout` has the non-zero size of the caller's request.
-        let new_block = unsafe { self.alloc(new_layout) };
-        if !new_block.is_null() {
-            // SAFETY: both blocks are valid for the copied length and
-            // disjoint (the new block lies after every existing one).
-            unsafe { ptr::copy_nonoverlapping(block, new_block, layout.size().min(new_size)) };
-        }
-        new_block
-    }
-}
-
+/// The heap (see [`FreeListAlloc`]).
 #[global_allocator]
-static HEAP: BumpAlloc = BumpAlloc {
-    pool: Pool(UnsafeCell::new([0; HEAP_BYTES])),
-    next: UnsafeCell::new(0),
-};
+// SAFETY: the probe is single-threaded and installs no interrupt handler,
+// so the allocator is only ever used from one execution context.
+static HEAP: FreeListAlloc<HEAP_BYTES> = unsafe { FreeListAlloc::new() };
 
 /*********************
  * Display
  *********************/
+
+/// A static, 8-byte aligned byte pool.
+#[repr(C, align(8))]
+struct Pool<const N: usize>(UnsafeCell<[u8; N]>);
 
 /// The partial draw buffer (`static` like an application's frame buffer).
 static DISP_BUF: Pool<BUF_BYTES> = Pool(UnsafeCell::new([0; BUF_BYTES]));

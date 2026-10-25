@@ -4,13 +4,13 @@
 # Measured with rustc 1.99.1 (58cf8f9c3 2026-10-13)
 
 [thumbv7em-none-eabihf]
-text = 205136
+text = 202328
 rodata = 17568
 data = 0
-bss = 80904
+bss = 80912
 
 [thumbv6m-none-eabi]
-text = 209992
+text = 207384
 rodata = 17568
 data = 0
-bss = 80904
+bss = 80912

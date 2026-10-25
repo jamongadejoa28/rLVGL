@@ -21,6 +21,12 @@ ferrovgl-draw-sw = { path = "../../crates/ferrovgl-draw-sw", default-features = 
 ferrovgl-fonts = { path = "../../crates/ferrovgl-fonts", default-features = false, features = ["montserrat-14"] }
 ferrovgl-widgets = { path = "../../crates/ferrovgl-widgets", default-features = false, features = ["label", "button"] }
 
+# The allocator, also built and tested on the host.
+[lib]
+name = "ferrovgl_nostd_size"
+path = "src/lib.rs"
+doctest = false
+
 [[bin]]
 name = "ferrovgl-nostd-size"
 test = false

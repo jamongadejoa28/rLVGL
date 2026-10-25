@@ -1,5 +1,6 @@
-//! `cargo xtask size-report [--update-baseline]`: builds the no_std size
-//! probe in `tools/nostd-size` in release mode for the Cortex-M targets,
+//! `cargo xtask size-report [--update-baseline]`: runs the host tests of
+//! the probe's allocator, builds the no_std size probe in
+//! `tools/nostd-size` in release mode for the Cortex-M targets,
 //! prints its `.text` / `.rodata` / `.data` / `.bss` sizes (measured with
 //! `llvm-size` from the rustup `llvm-tools` component) and compares them
 //! with `tools/nostd-size/baseline.toml`.
@@ -44,16 +45,24 @@ pub fn size_report(root: &Path, args: &[&str]) -> Result<()> {
     let probe = root.join(PROBE_DIR);
     let llvm_size = llvm_size()?;
     let mut measured = BTreeMap::new();
+    let target_dir = probe.join("target");
+    // The probe's allocator lives in its library so it can be tested on the
+    // host before the firmware is measured.
+    run(probe_cargo(&probe)
+        .args(["test", "--locked", "--lib", "--target-dir"])
+        .arg(&target_dir))?;
     for target in TARGETS {
-        run(Command::new("cargo")
-            .current_dir(&probe)
-            // `cargo xtask` runs inside the workspace's cargo; do not let its
-            // environment leak into the standalone probe build.
-            .env_remove("CARGO_TARGET_DIR")
-            .env_remove("RUSTFLAGS")
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .args(["build", "--locked", "--release", "--target", target]))?;
-        let elf = probe.join("target").join(target).join("release").join(PROBE_BIN);
+        run(probe_cargo(&probe)
+            .args([
+                "build",
+                "--locked",
+                "--release",
+                "--target",
+                target,
+                "--target-dir",
+            ])
+            .arg(&target_dir))?;
+        let elf = target_dir.join(target).join("release").join(PROBE_BIN);
         measured.insert((*target).to_string(), section_sizes(&llvm_size, &elf)?);
     }
 
@@ -109,6 +118,34 @@ pub fn size_report(root: &Path, args: &[&str]) -> Result<()> {
         )
         .into())
     }
+}
+
+/// A `cargo` command in the probe package with the build-affecting
+/// environment removed (see [`leaks_into_probe`]).
+fn probe_cargo(probe: &Path) -> Command {
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(probe);
+    for (key, _) in std::env::vars_os() {
+        if key.to_str().is_some_and(leaks_into_probe) {
+            cmd.env_remove(key);
+        }
+    }
+    cmd
+}
+
+/// Whether the environment variable `key` would change where or how the
+/// probe is built. `cargo xtask` may run under a caller's cargo
+/// configuration; flags, target directory, profile or per-target
+/// overrides from it must not reach the standalone probe build, or the
+/// measured ELF would be stale (built elsewhere) or built differently.
+/// Covers both spellings: `RUSTFLAGS` / `CARGO_TARGET_DIR` and their
+/// `CARGO_BUILD_*` config equivalents, plus `CARGO_TARGET_<triple>_*` and
+/// `CARGO_PROFILE_*`.
+fn leaks_into_probe(key: &str) -> bool {
+    matches!(key, "RUSTFLAGS" | "CARGO_ENCODED_RUSTFLAGS")
+        || ["CARGO_BUILD_", "CARGO_TARGET_", "CARGO_PROFILE_"]
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
 }
 
 /// Signed change of `now` relative to `was`, e.g. `+1234 (+0.61%)`.
@@ -254,6 +291,31 @@ mod tests {
         assert_eq!(b["thumbv7em-none-eabihf"]["text"], 9);
         assert!(parse_baseline("text = 1").is_err());
         assert!(parse_baseline("[t]\ntext = x").is_err());
+    }
+
+    #[test]
+    fn build_environment_is_scrubbed() {
+        for key in [
+            "RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_TARGET_DIR",
+            "CARGO_BUILD_TARGET_DIR",
+            "CARGO_BUILD_RUSTFLAGS",
+            "CARGO_BUILD_TARGET",
+            "CARGO_TARGET_THUMBV6M_NONE_EABI_RUSTFLAGS",
+            "CARGO_PROFILE_RELEASE_OPT_LEVEL",
+        ] {
+            assert!(leaks_into_probe(key), "{key}");
+        }
+        for key in [
+            "CARGO_HOME",
+            "CARGO_PKG_NAME",
+            "PATH",
+            "RUSTUP_TOOLCHAIN",
+            "CARGO_NET_OFFLINE",
+        ] {
+            assert!(!leaks_into_probe(key), "{key}");
+        }
     }
 
     #[test]
