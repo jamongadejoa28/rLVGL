@@ -14,10 +14,10 @@ use core::cell::Cell;
 use crate::core::Ui;
 use crate::core::obj_style::{ObjStyle, ObjStyleSrc, ObjStyleTransitionDsc, StyleStateCmp};
 use crate::display::ScreenLoadAnim;
-use crate::draw::LayerId;
 use crate::draw::blur::BlurDsc;
 use crate::draw::grad::GradDir;
 use crate::draw::rect::RectDsc;
+use crate::draw::{DrawDsc, DrawTaskType, LayerId};
 use crate::group::{GroupId, KEY_DOWN, KEY_ENTER, KEY_LEFT, KEY_RIGHT, KEY_UP};
 use crate::indev::IndevType;
 use crate::misc::anim::{AnimEnable, AnimTarget};
@@ -505,6 +505,21 @@ struct DeleteDsc {
     event_cb: EventCallback,
 }
 
+/// `lv_delete_dsc_t *`: the descriptor returned by [`Ui::obj_add_delete_cb`],
+/// passed to [`Ui::obj_remove_delete_cb`] to cancel the callback.
+///
+/// It is the `user_data` of the `call_delete_cb` event descriptor; clones
+/// refer to the same descriptor (`Rc` identity, like the C pointer).
+#[derive(Clone)]
+pub struct DeleteDscRef(Rc<dyn Any>);
+
+impl core::fmt::Debug for DeleteDscRef {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let obj = self.0.downcast_ref::<DeleteDsc>().map(|d| d.obj);
+        f.debug_struct("DeleteDscRef").field("obj", &obj).finish()
+    }
+}
+
 /// Bits of [`ObjFlags`] stored in [`ObjData::flags`] (`hidden` ..
 /// `state_trickle`); everything from `LV_OBJ_FLAG_LAYOUT_1` up lives in
 /// [`SpecAttr::user_flags`] like upstream.
@@ -619,7 +634,7 @@ fn obj_draw(ui: &mut Ui, e: &mut Event<'_>) {
             ui.obj_init_draw_blur_dsc(obj, Part::MAIN, &mut blur_dsc);
             blur_dsc.corner_radius = draw_dsc.radius;
             blur_dsc.base.layer = Some(layer);
-            ui.draw.draw_blur(layer, &blur_dsc, &coords);
+            draw_blur(ui, layer, &blur_dsc, &coords);
         }
 
         ui.obj_init_draw_rect_dsc(obj, Part::MAIN, &mut draw_dsc);
@@ -642,7 +657,7 @@ fn obj_draw(ui: &mut Ui, e: &mut Event<'_>) {
             ui.obj_init_draw_blur_dsc(obj, Part::MAIN, &mut blur_dsc);
             blur_dsc.corner_radius = ui.style_num(obj, Part::MAIN, StyleProp::RADIUS);
             blur_dsc.base.layer = Some(layer);
-            ui.draw.draw_blur(layer, &blur_dsc, &coords);
+            draw_blur(ui, layer, &blur_dsc, &coords);
         }
     } else if code == EventCode::DRAW_POST {
         let Some(layer) = e.layer() else {
@@ -734,28 +749,50 @@ fn draw_scrollbar(ui: &mut Ui, obj: Obj, layer: LayerId) {
             ui.obj_init_draw_blur_dsc(obj, Part::SCROLLBAR, &mut blur_dsc);
         }
         blur_dsc.base.id1 = 0;
-        ui.draw.draw_blur(layer, &blur_dsc, &hor_area);
+        draw_blur(ui, layer, &blur_dsc, &hor_area);
 
         rect_dsc.base.id1 = 0;
         ui.draw_rect(layer, &rect_dsc, &hor_area);
 
         if !backdrop_blur {
-            ui.draw.draw_blur(layer, &blur_dsc, &hor_area);
+            draw_blur(ui, layer, &blur_dsc, &hor_area);
         }
     }
     if ver_area.size() > 0 {
         blur_dsc.base.id1 = 1;
         if backdrop_blur {
-            ui.draw.draw_blur(layer, &blur_dsc, &ver_area);
+            draw_blur(ui, layer, &blur_dsc, &ver_area);
         }
 
         rect_dsc.base.id1 = 1;
         ui.draw_rect(layer, &rect_dsc, &ver_area);
 
         if !backdrop_blur {
-            ui.draw.draw_blur(layer, &blur_dsc, &ver_area);
+            draw_blur(ui, layer, &blur_dsc, &ver_area);
         }
     }
+}
+
+/// `lv_draw_blur()` ending in the full `lv_draw_finalize_task_creation()`
+/// ([`Ui::draw_finalize_task_creation`]: `LV_EVENT_DRAW_TASK_ADDED`, unit
+/// evaluation, failing untaken tasks, dispatch), like the `ui.draw_rect()`
+/// calls next to it. `DrawCtx::draw_blur` only binds the layer.
+///
+/// Kept private here until `draw/blur.rs` provides a `Ui`-level
+/// `draw_blur`; the body follows `src/draw/lv_draw_blur.c` 1:1.
+fn draw_blur(ui: &mut Ui, layer: LayerId, dsc: &BlurDsc, coords: &Area) {
+    /*`layer`, `dsc` and `coords` are references / handles: the NULL checks can't fail*/
+    if dsc.blur_radius <= 0 {
+        return;
+    }
+
+    let t = ui.draw.add_task(layer, coords, DrawTaskType::Blur);
+
+    if let Some(task) = ui.draw.task_mut(t) {
+        task.dsc = DrawDsc::Blur(Box::new(dsc.clone()));
+    }
+
+    ui.draw_finalize_task_creation(t);
 }
 
 /// `scrollbar_init_draw_dsc()`: initialize the draw descriptor for the
@@ -1090,7 +1127,86 @@ fn call_delete_cb(ui: &mut Ui, e: &mut Event<'_>) {
 
     let cb = dsc.cb.clone();
     cb(ui, dsc.obj);
-    ui.obj_remove_delete_cb(&user_data);
+    ui.obj_remove_delete_cb(Some(&DeleteDscRef(user_data)));
+}
+
+/*-------------------
+ * OTHER FUNCTIONS
+ *------------------*/
+
+/// `lv_obj_add_child()`: append `child` to `parent->spec_attr->children`.
+///
+/// Defined in `lv_obj.c` upstream; the `Ui::obj_add_child` declaration of
+/// `obj_tree.rs` delegates here. Like upstream the caller allocates the
+/// parent's `spec_attr` first (`lv_obj_class_create_obj()`,
+/// `lv_obj_set_parent()`); C dereferences it unchecked, here a missing
+/// `spec_attr` returns [`LvResult::Invalid`] (the realloc-failure result).
+pub fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
+    if !ui.check_obj(parent) {
+        return LvResult::Invalid;
+    }
+    /*`child != NULL`: a handle can't be NULL*/
+
+    let Some(spec_attr) = ui.obj_mut(parent).and_then(|d| d.spec.as_deref_mut()) else {
+        return LvResult::Invalid;
+    };
+
+    spec_attr.children.push(child.id());
+    LvResult::Ok
+}
+
+/// `lv_obj_remove_child()`: remove `child` from
+/// `parent->spec_attr->children`, shifting the following children down.
+///
+/// Defined in `lv_obj.c` upstream; the `Ui::obj_remove_child` declaration
+/// of `obj_tree.rs` delegates here. Like upstream the start index is
+/// `lv_obj_get_index(child)` (looked up in the child's own parent), the
+/// array is freed when it held one child and shrunk by one otherwise.
+pub fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
+    if !ui.check_obj(parent) || !ui.check_obj(child) {
+        return;
+    }
+
+    let index = obj_get_index_raw(ui, child);
+
+    let Some(spec_attr) = ui.obj_mut(parent).and_then(|d| d.spec.as_deref_mut()) else {
+        return;
+    };
+    let child_cnt = spec_attr.children.len() as i32;
+
+    /*C reads `children[-1]` when the child isn't found (LV_ASSERT(0) in
+     *lv_obj_get_index); the shift is skipped then*/
+    if index >= 0 {
+        let mut i = index;
+        while i < child_cnt - 1 {
+            spec_attr.children[i as usize] = spec_attr.children[(i + 1) as usize];
+            i += 1;
+        }
+    }
+
+    /* No more children*/
+    if child_cnt == 1 {
+        spec_attr.children = Vec::new();
+        return;
+    }
+    /*`child_cnt--` + shrinking realloc (C underflows on an empty array)*/
+    spec_attr.children.pop();
+}
+
+/// `lv_obj_get_index()` read straight from `spec_attr` (`-1` without a
+/// parent or when the parent doesn't list `obj`).
+fn obj_get_index_raw(ui: &Ui, obj: Obj) -> i32 {
+    let Some(parent) = ui.obj(obj).and_then(|d| d.parent) else {
+        return -1;
+    };
+    let Some(spec) = ui.objs.get(parent.0).and_then(|d| d.spec.as_deref()) else {
+        return -1;
+    };
+    match spec.children.iter().position(|&c| c == obj.id()) {
+        Some(i) => i as i32,
+        /*Shouldn't reach this point*/
+        None => -1,
+    }
 }
 
 macro_rules! simple_flag_setters {
@@ -1790,9 +1906,13 @@ impl Ui {
 
     /// `lv_obj_add_delete_cb()`: call `cb` once when the object is deleted
     /// (on `LV_EVENT_DELETE`); the callback removes itself afterwards.
-    pub fn obj_add_delete_cb(&mut self, obj: Obj, cb: DeleteCallback) {
+    ///
+    /// Returns the descriptor to pass to [`Ui::obj_remove_delete_cb`], or
+    /// `None` (C `NULL`) for an invalid object. The C `user_data` argument
+    /// is captured by the `cb` closure instead.
+    pub fn obj_add_delete_cb(&mut self, obj: Obj, cb: DeleteCallback) -> Option<DeleteDscRef> {
         if !self.check_obj(obj) {
-            return;
+            return None;
         }
 
         let event_cb: EventCallback = Rc::new(call_delete_cb);
@@ -1802,24 +1922,30 @@ impl Ui {
             event_cb: event_cb.clone(),
         });
 
-        self.obj_add_event_cb(obj, event_cb, EventCode::DELETE, Some(dsc));
+        /*`lv_obj_add_event_cb()` can't fail (no allocation failure in Rust)*/
+        self.obj_add_event_cb(obj, event_cb, EventCode::DELETE, Some(dsc.clone()));
+        Some(DeleteDscRef(dsc))
     }
 
-    /// `lv_obj_remove_delete_cb()`: `dsc` is the `user_data` of a
-    /// `call_delete_cb` event descriptor.
-    fn obj_remove_delete_cb(&mut self, dsc: &Rc<dyn Any>) {
-        let Some(d) = dsc.downcast_ref::<DeleteDsc>() else {
+    /// `lv_obj_remove_delete_cb()`: cancel a callback added with
+    /// [`Ui::obj_add_delete_cb`]. `None` (C `NULL`) is ignored.
+    pub fn obj_remove_delete_cb(&mut self, dsc: Option<&DeleteDscRef>) {
+        let Some(dsc) = dsc else {
+            return;
+        };
+        let Some(d) = dsc.0.downcast_ref::<DeleteDsc>() else {
             return;
         };
         let (obj, event_cb) = (d.obj, d.event_cb.clone());
 
-        let count = self.obj_remove_event_cb_with_user_data(obj, &event_cb, dsc);
+        let count = self.obj_remove_event_cb_with_user_data(obj, &event_cb, &dsc.0);
         #[cfg(feature = "log")]
         if count == 0 {
             log::warn!("Delete callback descriptor not found on object or already removed");
         }
         #[cfg(not(feature = "log"))]
         let _ = count;
+        /*`lv_free(dsc)` (only when found): the descriptor is released with its last `Rc`*/
     }
 
     /// Borrow an object's data (`None` for a stale handle).
@@ -2621,5 +2747,110 @@ mod tests {
         let obj = raw_obj(&mut ui, &OBJ_CLASS, None);
         ui.obj_transition_states(obj, State::DEFAULT, State::PRESSED);
         assert!(ui.style_trans.is_empty());
+    }
+
+    #[test]
+    fn add_child_appends_to_spec_attr() {
+        let mut ui = Ui::new(UiConfig::default());
+        let scr = raw_obj(&mut ui, &OBJ_CLASS, None);
+        let a = raw_obj(&mut ui, &OBJ_CLASS, None);
+        let b = raw_obj(&mut ui, &OBJ_CLASS, None);
+
+        /*`lv_obj_class_create_obj()` allocates the parent's spec_attr first*/
+        assert_eq!(obj_add_child(&mut ui, scr, a), LvResult::Invalid);
+        ui.obj_allocate_spec_attr(scr);
+        assert_eq!(obj_add_child(&mut ui, scr, a), LvResult::Ok);
+        assert_eq!(obj_add_child(&mut ui, scr, b), LvResult::Ok);
+        assert_eq!(ui.child_count(scr), 2);
+        assert_eq!(ui.child_at(scr, 0), Some(a));
+        assert_eq!(ui.child_at(scr, 1), Some(b));
+    }
+
+    #[test]
+    fn remove_child_shifts_from_the_index_and_frees_the_last() {
+        let mut ui = Ui::new(UiConfig::default());
+        let scr = raw_obj(&mut ui, &OBJ_CLASS, None);
+        let a = raw_obj(&mut ui, &OBJ_CLASS, Some(scr));
+        let b = raw_obj(&mut ui, &OBJ_CLASS, Some(scr));
+        let c = raw_obj(&mut ui, &OBJ_CLASS, Some(scr));
+        assert_eq!(obj_get_index_raw(&ui, b), 1);
+        assert_eq!(obj_get_index_raw(&ui, scr), -1);
+
+        obj_remove_child(&mut ui, scr, b);
+        assert_eq!(ui.child_count(scr), 2);
+        assert_eq!(ui.child_at(scr, 0), Some(a));
+        assert_eq!(ui.child_at(scr, 1), Some(c));
+
+        obj_remove_child(&mut ui, scr, a);
+        assert_eq!(ui.child_count(scr), 1);
+        assert_eq!(ui.child_at(scr, 0), Some(c));
+
+        /*"No more children": the array is freed, spec_attr stays*/
+        obj_remove_child(&mut ui, scr, c);
+        assert_eq!(ui.child_count(scr), 0);
+        let spec = ui.obj(scr).unwrap().spec.as_deref().unwrap();
+        assert_eq!(spec.children.capacity(), 0);
+    }
+
+    #[test]
+    fn remove_delete_cb_ignores_none() {
+        let mut ui = Ui::new(UiConfig::default());
+        let obj = raw_obj(&mut ui, &OBJ_CLASS, None);
+        ui.obj_remove_delete_cb(None);
+        assert!(ui.obj_is_valid(obj));
+    }
+
+    fn blur_dsc(blur_radius: i32) -> BlurDsc {
+        BlurDsc {
+            base: crate::draw::DrawDscBase::new(),
+            blur_radius,
+            corner_radius: 3,
+            quality: crate::misc::style::BlurQuality::Auto,
+        }
+    }
+
+    #[test]
+    fn obj_blur_runs_the_full_task_finalization() {
+        let mut ui = Ui::new(UiConfig::default());
+        let layer = ui.draw.layer_create(
+            None,
+            crate::misc::color::ColorFormat::Argb8888,
+            &Area::new(0, 0, 99, 99),
+        );
+        let coords = Area::new(10, 10, 29, 29);
+
+        /*`blur_radius <= 0`: no task*/
+        draw_blur(&mut ui, layer, &blur_dsc(0), &coords);
+        assert!(ui.draw.layer(layer).unwrap().tasks.is_empty());
+
+        /*Keep the task in the layer: with a running task the finalization
+         *only evaluates*/
+        ui.draw.task_running = true;
+        draw_blur(&mut ui, layer, &blur_dsc(10), &coords);
+        ui.draw.task_running = false;
+        {
+            let tasks = &ui.draw.layer(layer).unwrap().tasks;
+            assert_eq!(tasks.len(), 1);
+            let task = &tasks[0];
+            assert_eq!(task.ty, DrawTaskType::Blur);
+            assert_eq!(task.area, coords);
+            /*The draw units' evaluation ran (`DrawCtx::draw_blur` skips it)*/
+            assert_eq!(task.preference_score, 100);
+            match &task.dsc {
+                DrawDsc::Blur(d) => {
+                    assert_eq!(d.blur_radius, 10);
+                    assert_eq!(d.corner_radius, 3);
+                    assert_eq!(d.base.layer, Some(layer));
+                }
+                _ => panic!("not a blur descriptor"),
+            }
+        }
+
+        /*Not taken by any draw unit: failed, then removed by the dispatch that
+         *ends the finalization (`DrawCtx::draw_blur` would leave it waiting)*/
+        draw_blur(&mut ui, layer, &blur_dsc(10), &coords);
+        let tasks = &ui.draw.layer(layer).unwrap().tasks;
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].state, crate::draw::DrawTaskState::Waiting);
     }
 }
