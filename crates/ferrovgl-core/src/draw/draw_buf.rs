@@ -909,6 +909,28 @@ mod tests {
     use crate::misc::color::Color;
     use alloc::vec;
 
+    /// `LV_DRAW_BUF_DEFINE_STATIC` stand-in: a zeroed, deliberately leaked
+    /// buffer for [`BufStorage::StaticMut`]. Under Miri the allocation is
+    /// registered as a static root so the leak checker treats it like the
+    /// `static` array of the C macro instead of reporting it.
+    fn static_bytes(n: usize) -> &'static mut [u8] {
+        let mem: &'static mut [u8] = Box::leak(vec![0u8; n].into_boxed_slice());
+        #[cfg(miri)]
+        {
+            unsafe extern "Rust" {
+                /// Miri shim: treat the allocation behind `ptr` as reachable
+                /// from a static.
+                fn miri_static_root(ptr: *const u8);
+            }
+            // SAFETY: `miri_static_root` is provided by the Miri interpreter
+            // (this block only exists under `cfg(miri)`); it only marks the
+            // live heap allocation behind the pointer as a leak-check root
+            // and neither reads nor writes it.
+            unsafe { miri_static_root(mem.as_ptr()) };
+        }
+        mem
+    }
+
     fn px32(d: &[u8], i: usize) -> Color32 {
         Color32 {
             blue: d[i * 4],
@@ -1009,7 +1031,7 @@ mod tests {
     fn xy_access() {
         let cf = ColorFormat::Rgb565;
         let size = DrawBuf::size_for(100, 100, cf);
-        let mem: &'static mut [u8] = Box::leak(vec![0u8; size as usize].into_boxed_slice());
+        let mem = static_bytes(size as usize);
         let stride = DrawBuf::width_to_stride(100, cf);
         let mut buf = DrawBuf::init(100, 100, cf, stride, BufStorage::StaticMut(mem), size).unwrap();
         buf.set_flag(ImageFlags::MODIFIABLE);
@@ -1113,7 +1135,7 @@ mod tests {
         }
 
         /* Not modifiable */
-        let mem: &'static mut [u8] = Box::leak(vec![0u8; 16].into_boxed_slice());
+        let mem = static_bytes(16);
         let mut b = DrawBuf::init(2, 2, ColorFormat::Argb8888, 0, BufStorage::StaticMut(mem), 16).unwrap();
         assert_eq!(b.premultiply(), LvResult::Invalid);
     }
@@ -1289,7 +1311,7 @@ mod tests {
             BufStorage::Static(&PIXELS[..3]),
             BufStorage::Shared(Rc::from(&PIXELS[..3])),
             BufStorage::Owned(vec![0u64].into_boxed_slice()),
-            BufStorage::StaticMut(Box::leak(vec![0; 3].into_boxed_slice())),
+            BufStorage::StaticMut(static_bytes(3)),
         ];
         for storage in short {
             assert!(DrawBuf::init(4, 4, ColorFormat::A8, 4, storage, 16).is_err());
@@ -1311,7 +1333,7 @@ mod tests {
         );
         for storage in [
             BufStorage::Shared(Rc::from(&PIXELS[..])),
-            BufStorage::StaticMut(Box::leak(vec![0; 16].into_boxed_slice())),
+            BufStorage::StaticMut(static_bytes(16)),
         ] {
             assert!(
                 DrawBuf::init(4, 4, ColorFormat::A8, 4, storage, 16)
