@@ -31,8 +31,24 @@ pub type TimerCallback = Rc<dyn Fn(&mut Ui, TimerId)>;
 /// `lv_timer_handler_resume_cb_t`
 pub type TimerHandlerResumeCallback = Rc<dyn Fn(&mut Ui)>;
 
+/// `free_cb` of a timer's `lv_ext_data_t` (`void (*)(void * data)`).
+pub type TimerExtDataFreeCb = fn(Option<Rc<dyn Any>>);
+
+/// `lv_ext_data_t` of a timer (`LV_USE_EXT_DATA`), set by
+/// `lv_timer_set_external_data()`.
+#[derive(Default)]
+pub struct TimerExtData {
+    /// `data`; independent of the timer's application `user_data`.
+    pub data: Option<Rc<dyn Any>>,
+    /// `free_cb`; called by `lv_timer_delete()` only (not by
+    /// `lv_timer_core_deinit()`'s `lv_ll_clear`).
+    pub free_cb: Option<TimerExtDataFreeCb>,
+}
+
 /// `lv_timer_t`
 pub struct TimerData {
+    /// `ext_data` (`LV_USE_EXT_DATA`).
+    pub ext_data: TimerExtData,
     /// `period`: how often the timer should run, in ms.
     pub period: u32,
     /// `last_run`: tick of the last run.
@@ -71,13 +87,12 @@ pub struct TimerState {
     pub time_until_next: u32,
     /// `already_running`
     pub already_running: bool,
-    /// `periodic_last_tick`
-    ///
-    /// Also stands in for the function-local `static uint32_t last_tick` of
-    /// `lv_timer_handler_run_in_period()`: both are "last time the super-loop
-    /// helper ran `lv_timer_handler()`" and an application uses one helper or
-    /// the other, never both.
+    /// `periodic_last_tick`: written only by `lv_timer_periodic_handler()`.
     pub periodic_last_tick: u32,
+    /// The function-local `static uint32_t last_tick` of
+    /// `lv_timer_handler_run_in_period()` (independent of
+    /// `periodic_last_tick`; per `Ui` instead of process-global).
+    pub run_in_period_last_tick: u32,
     /// `busy_time`
     pub busy_time: u32,
     /// `idle_period_start`
@@ -101,6 +116,7 @@ impl TimerState {
             time_until_next: 0,
             already_running: false,
             periodic_last_tick: 0,
+            run_in_period_last_tick: 0,
             busy_time: 0,
             idle_period_start: 0,
             run_cnt: 0,
@@ -247,6 +263,7 @@ impl Ui {
             last_run: self.tick_get(),
             user_data,
             auto_delete: true,
+            ext_data: TimerExtData::default(),
         };
         // lv_ll_ins_head()
         let id = TimerId(self.timers.timers.insert(new_timer));
@@ -269,13 +286,23 @@ impl Ui {
     }
 
     /// `lv_timer_delete()`: a stale handle is `timer == NULL` (ignored).
+    ///
+    /// Calls the `ext_data.free_cb` (if any) after the timer is unlinked,
+    /// then frees the timer.
     pub fn timer_delete(&mut self, timer: TimerId) {
-        if self.timers.timers.remove(timer.0).is_none() {
-            return;
-        }
         // lv_ll_remove()
+        let Some(mut removed) = self.timers.timers.remove(timer.0) else {
+            return;
+        };
         self.timers.order.retain(|&t| t != timer);
         self.timers.deleted = true;
+
+        if let Some(free_cb) = removed.ext_data.free_cb {
+            free_cb(removed.ext_data.data.take());
+        }
+
+        // lv_free()
+        drop(removed);
     }
 
     /// `lv_timer_pause()`
@@ -309,9 +336,13 @@ impl Ui {
 
     /// `lv_timer_ready()`: make the timer run on the next `timer_handler()`.
     pub fn timer_ready(&mut self, timer: TimerId) {
+        // LV_CHECK_ARG runs before lv_tick_get()
+        if self.timer(timer).is_none() {
+            crate::misc::check_arg_failed("timer_ready: invalid timer");
+            return;
+        }
         let tick = self.tick_get();
         let Some(data) = self.timer_mut(timer) else {
-            crate::misc::check_arg_failed("timer_ready: invalid timer");
             return;
         };
         data.last_run = tick.wrapping_sub(data.period).wrapping_sub(1);
@@ -347,9 +378,13 @@ impl Ui {
 
     /// `lv_timer_reset()`: restart the period from now.
     pub fn timer_reset(&mut self, timer: TimerId) {
+        // LV_CHECK_ARG runs before lv_tick_get()
+        if self.timer(timer).is_none() {
+            crate::misc::check_arg_failed("timer_reset: invalid timer");
+            return;
+        }
         let tick = self.tick_get();
         let Some(data) = self.timer_mut(timer) else {
-            crate::misc::check_arg_failed("timer_reset: invalid timer");
             return;
         };
         data.last_run = tick;
@@ -399,9 +434,9 @@ impl Ui {
     /// [`Ui::timer_handler`] every `period` ms. Returns the time after which
     /// it must be called again.
     pub fn timer_handler_run_in_period(&mut self, period: u32) -> u32 {
-        // `static uint32_t last_tick` upstream; see `TimerState::periodic_last_tick`.
-        if self.tick_elaps(self.timers.periodic_last_tick) >= period {
-            self.timers.periodic_last_tick = self.tick_get();
+        // `static uint32_t last_tick` upstream.
+        if self.tick_elaps(self.timers.run_in_period_last_tick) >= period {
+            self.timers.run_in_period_last_tick = self.tick_get();
             return self.timer_handler();
         }
         1
@@ -423,6 +458,22 @@ impl Ui {
             return false;
         };
         data.paused
+    }
+
+    /// `lv_timer_set_external_data()`: attach `data` and the `free_cb` that
+    /// `lv_timer_delete()` calls with it.
+    pub fn timer_set_external_data(
+        &mut self,
+        timer: TimerId,
+        data: Option<Rc<dyn Any>>,
+        free_cb: Option<TimerExtDataFreeCb>,
+    ) {
+        let Some(t) = self.timer_mut(timer) else {
+            crate::misc::check_arg_failed("timer_set_external_data: invalid timer");
+            return;
+        };
+        t.ext_data.data = data;
+        t.ext_data.free_cb = free_cb;
     }
 
     /// Borrow a timer's data.
@@ -1008,7 +1059,11 @@ mod tests {
             "period elapsed: runs the handler"
         );
         assert_eq!(count.get(), 1);
-        assert_eq!(ui.timers.periodic_last_tick, 10);
+        assert_eq!(ui.timers.run_in_period_last_tick, 10);
+        assert_eq!(
+            ui.timers.periodic_last_tick, 0,
+            "run_in_period has its own last_tick"
+        );
         ui.tick_inc(5);
         assert_eq!(ui.timer_handler_run_in_period(10), 1, "within the period: 1");
         assert_eq!(count.get(), 1);
@@ -1068,6 +1123,87 @@ mod tests {
         ui.timer_set_user_data(t, None);
         assert!(ui.timer_get_user_data(t).is_none());
         assert!(!ui.timer_get_paused(t));
-        assert!(ui.timers.timers.is_empty());
+        // Only lv_anim_core_init()'s timer remains.
+        let animation = ui.anim_get_timer().unwrap();
+        assert_eq!(ui.timers.timers.len(), 1);
+        assert_eq!(ui.timers.order, vec![animation]);
+    }
+    #[test]
+    fn run_in_period_last_tick_is_independent_of_periodic_handler() {
+        // tick 100: lv_timer_periodic_handler() runs (time_until_next == 0)
+        let mut ui = ui();
+        ui.tick_inc(100);
+        ui.timer_periodic_handler();
+        assert_eq!(ui.timers.periodic_last_tick, 100);
+        // tick 105: run_in_period's own last_tick is still 0 => 105 >= 10 runs
+        ui.tick_inc(5);
+        let (count, cb) = counter();
+        let t = ui.timer_create(cb, 0, None);
+        assert_ne!(ui.timer_handler_run_in_period(10), 1);
+        assert_eq!(count.get(), 1);
+        assert_eq!(ui.timers.run_in_period_last_tick, 105);
+        assert_eq!(ui.timers.periodic_last_tick, 100);
+        ui.timer_delete(t);
+    }
+
+    #[test]
+    fn delete_calls_ext_data_free_cb_once_but_deinit_does_not() {
+        use core::sync::atomic::{AtomicU32, Ordering};
+        static FREED: AtomicU32 = AtomicU32::new(0);
+        static FREED_WITH_DATA: AtomicU32 = AtomicU32::new(0);
+        fn free_fn(data: Option<Rc<dyn Any>>) {
+            FREED.fetch_add(1, Ordering::Relaxed);
+            if let Some(v) = data.and_then(|d| d.downcast::<u32>().ok()) {
+                FREED_WITH_DATA.store(*v, Ordering::Relaxed);
+            }
+        }
+
+        let mut ui = ui();
+        ui.tick_inc(1);
+        let (count, cb) = counter();
+        let t = ui.timer_create(cb, 0, None);
+        ui.timer_set_repeat_count(t, 1);
+        ui.timer_set_external_data(t, Some(Rc::new(42u32)), Some(free_fn));
+        assert!(ui.timer(t).unwrap().ext_data.free_cb.is_some());
+        // Auto-delete inside lv_timer_exec calls free_cb(data) exactly once
+        ui.timer_handler();
+        assert_eq!(count.get(), 1);
+        assert!(ui.timer(t).is_none());
+        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+        assert_eq!(FREED_WITH_DATA.load(Ordering::Relaxed), 42);
+        // Deleting the stale handle again is `timer == NULL`: no second call
+        ui.timer_delete(t);
+        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+
+        // lv_timer_core_deinit() (lv_ll_clear) does not call free_cb
+        let t2 = ui.timer_create_basic();
+        ui.timer_set_external_data(t2, None, Some(free_fn));
+        ui.timer_core_deinit();
+        assert_eq!(FREED.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(not(feature = "check-arg-panic"))]
+    #[test]
+    fn ready_and_reset_check_arg_before_reading_tick() {
+        use core::sync::atomic::{AtomicU32, Ordering};
+        static TICK: AtomicU32 = AtomicU32::new(0);
+        fn counting_tick() -> u32 {
+            TICK.fetch_add(1, Ordering::Relaxed)
+        }
+
+        let mut ui = ui();
+        let t = ui.timer_create_basic();
+        ui.timer_delete(t);
+        ui.set_tick_cb(Some(counting_tick));
+        let before = TICK.load(Ordering::Relaxed);
+        ui.timer_ready(t);
+        ui.timer_reset(t);
+        ui.timer_set_external_data(t, None, None);
+        assert_eq!(
+            TICK.load(Ordering::Relaxed),
+            before,
+            "stale handle must not read the tick"
+        );
+        ui.set_tick_cb(None);
     }
 }

@@ -361,6 +361,24 @@ fn str_tail(txt: &str, i: u32) -> &str {
     txt.get(i as usize..).unwrap_or("")
 }
 
+/// The `LV_USE_BIDI` line copy of `lv_draw_label_iterate_characters()`:
+/// `txt[start..end]`, clamped to the text and cut back to a character
+/// boundary (`lv_bidi_process_paragraph()` drops a trailing partial
+/// character, zeroing its bytes).
+#[cfg(feature = "bidi")]
+#[inline]
+fn str_range(txt: &str, start: u32, end: u32) -> &str {
+    let tail = str_tail(txt, start);
+    let mut len = (end.wrapping_sub(start) as usize).min(tail.len());
+    if start > end {
+        len = 0;
+    }
+    while len > 0 && !tail.is_char_boundary(len) {
+        len -= 1;
+    }
+    &tail[..len]
+}
+
 /// `lv_strndup(txt, n)`: at most `n` bytes, stopping at a NUL, cut back to
 /// a character boundary so that the copy stays valid UTF-8.
 fn strndup(txt: &str, n: u32) -> Rc<str> {
@@ -536,6 +554,9 @@ fn draw_character_impl<S: TaskSink + ?Sized>(
         .iter()
         .position(|&b| b == 0)
         .map_or(letter_buf.len(), |p| start + p);
+    /*Known divergence: a `str` cannot hold the bytes upstream encodes for a surrogate or a code
+     *point above 0x10FFFF (lenient `lv_text_unicode_to_utf8()`), so no task is added for
+     *them where upstream draws the placeholder of the missing glyph.*/
     let letter_str = core::str::from_utf8(&letter_buf[start..end]).unwrap_or("");
 
     dsc.text = Rc::from(letter_str);
@@ -621,8 +642,11 @@ fn label_iterate_characters_impl(
         w = coords.width();
     } else {
         /*If EXPAND is enabled then not limit the text's width to the object's width*/
-        /*`lv_obj_is_send_draw_task_events(obj)` needs the object tree, which a
-         *renderer does not have: an object's `text_size` is trusted.*/
+        /*`lv_obj_is_send_draw_task_events(obj)` needs the object tree, which a renderer does not
+         *have: an object's `text_size` is trusted. This is not observable: `w` only becomes
+         *`attributes.max_width`, which `lv_text_get_next_line()` ignores with
+         *`LV_TEXT_FLAG_EXPAND` (it only looks for new lines) and `lv_text_get_line_width()`
+         *never reads.*/
         if base_obj.is_some() {
             w = dsc.text_size.x;
         } else {
@@ -782,8 +806,13 @@ fn label_iterate_characters_impl(
 
         /*Write all letter of a line*/
         let mut next_char_offset: u32 = 0;
-        /*`LV_USE_BIDI`: `lv_bidi_process_paragraph()` is stubbed to a copy,
-         *so the logical and visual orders are the same.*/
+        /*`LV_USE_BIDI`: the line is copied into a buffer of `line_end - line_start + 1` bytes
+         *that `lv_bidi_process_paragraph()` zero-terminates at the line end, so the last
+         *letter of the line has no `letter_next` (no kerning). The reordering itself is
+         *stubbed to a copy, so the logical and visual orders are the same.*/
+        #[cfg(feature = "bidi")]
+        let bidi_txt: &str = str_range(txt, line_start, line_end);
+        #[cfg(not(feature = "bidi"))]
         let bidi_txt: &str = str_tail(txt, line_start);
         let bidi_bytes = bidi_txt.as_bytes();
 
@@ -1679,6 +1708,108 @@ mod tests {
             ]
         );
         assert_eq!(dsc.g.adv_w, 6);
+    }
+
+    /// [`TestFont`] with one kerning pair: `'A'` before `'V'` advances 5 px.
+    struct KernFont;
+
+    impl Font for KernFont {
+        fn line_height(&self) -> i32 {
+            TestFont.line_height()
+        }
+        fn base_line(&self) -> i32 {
+            TestFont.base_line()
+        }
+        fn underline_position(&self) -> i8 {
+            TestFont.underline_position()
+        }
+        fn underline_thickness(&self) -> i8 {
+            TestFont.underline_thickness()
+        }
+        fn glyph_dsc(&self, out: &mut GlyphDsc, letter: u32, letter_next: u32) -> bool {
+            let found = TestFont.glyph_dsc(out, letter, letter_next);
+            if letter == u32::from('A') && letter_next == u32::from('V') {
+                out.adv_w = 5;
+            }
+            found
+        }
+        fn glyph_bitmap_a8(&self, _g: &GlyphDsc, _out: &mut [u8], _stride: usize) -> bool {
+            false
+        }
+    }
+
+    /// Iterate the label task `t` of `ctx`, recording the callbacks.
+    fn collect(ctx: &mut DrawCtx, t: DrawTaskRef, coords: Area) -> Vec<Call> {
+        let task_dsc = ctx.task_get_label_dsc(t).unwrap().clone();
+        let mut calls = Vec::new();
+        let mut cb =
+            |_: &mut DrawCtx, _: DrawTaskRef, g: &mut DrawGlyphDsc, fill: Option<(&FillDsc, &Area)>| {
+                match fill {
+                    Some((f, a)) => calls.push(Call::Fill {
+                        area: *a,
+                        color: f.color,
+                    }),
+                    None => calls.push(Call::Glyph {
+                        coords: g.letter_coords,
+                        color: g.color,
+                        format: g.format,
+                    }),
+                }
+            };
+        ctx.label_iterate_characters(t, &task_dsc, &coords, &mut cb);
+        calls
+    }
+
+    #[test]
+    fn line_end_bounds_the_kerning_pair() {
+        /*`LV_USE_BIDI`: the per-line copy ends at the line end, so the last letter has no
+         *`letter_next`; without BiDi the next letter of the text is read*/
+        let last_w = if cfg!(feature = "bidi") { 6 } else { 5 };
+
+        /*A long word wrapped between 'A' and 'V'*/
+        let mut d = label("AV");
+        d.font = Some(FontRef::Shared(Rc::new(KernFont)));
+        d.decor = TextDecor::UNDERLINE;
+        assert_eq!(
+            run_clipped(&d, Area::new(0, 0, 7, 49), Area::new(-100, -100, 299, 299)),
+            vec![
+                Call::Fill {
+                    area: Area::new(0, 11, last_w - 1, 11),
+                    color: BLACK
+                },
+                glyph(0, 3, BLACK),
+                Call::Fill {
+                    area: Area::new(0, 23, 5, 23),
+                    color: BLACK
+                },
+                glyph(0, 15, BLACK),
+            ]
+        );
+    }
+
+    #[test]
+    fn expand_width_is_not_used_for_line_breaking() {
+        /*A stale `text_size` (e.g. the text was changed in LV_EVENT_DRAW_TASK_ADDED) does not
+         *wrap the text: with LV_TEXT_FLAG_EXPAND only new lines break*/
+        use crate::core::UiConfig;
+        use crate::core::obj_event::tests::{PLAIN_CLASS, add_obj};
+        let mut ui = Ui::new(UiConfig::default());
+        let obj = add_obj(&mut ui, &PLAIN_CLASS, None);
+        let (mut ctx, layer) = ctx_with_layer(Area::new(-100, -100, 299, 299));
+        let mut d = label("AB CD");
+        d.base.obj = Some(obj);
+        d.flag = TextFlags::EXPAND;
+        d.text_size = Point::new(12, 12);
+        let coords = Area::new(0, 0, 99, 49);
+        ctx.draw_label(layer, &d, &coords);
+        let ys: Vec<i32> = collect(&mut ctx, DrawTaskRef { layer, index: 0 }, coords)
+            .iter()
+            .filter_map(|c| match c {
+                Call::Glyph { coords, .. } => Some(coords.y1),
+                Call::Fill { .. } => None,
+            })
+            .collect();
+        assert_eq!(ys, [3, 3, 3, 3]);
     }
 
     #[test]

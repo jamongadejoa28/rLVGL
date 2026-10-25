@@ -21,7 +21,7 @@ use alloc::rc::Rc;
 
 use crate::core::Ui;
 use crate::draw::grad::{GradDir, GradDsc};
-use crate::draw::image::{DrawImageDsc, image_header_of};
+use crate::draw::image::{DrawImageDsc, image_header_of, image_src_get_type};
 use crate::draw::label::LabelDsc;
 use crate::draw::{DrawCtx, DrawDsc, DrawDscBase, DrawTaskRef, DrawTaskType, ImageHeader, LayerId};
 use crate::font::FontRef;
@@ -548,7 +548,8 @@ fn draw_rect_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &RectDsc
 
     /*Background image*/
     if has_bg_img {
-        let src_type = dsc.bg_image_src.src_type();
+        /*`lv_image_src_get_type()` decides by the first byte, not by the `ImageSrc` variant*/
+        let src_type = image_src_get_type(&dsc.bg_image_src);
         let mut res_ok = true;
         let mut header = ImageHeader::default();
         if src_type == ImageSrcType::Variable || src_type == ImageSrcType::File {
@@ -584,7 +585,11 @@ fn draw_rect_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &RectDsc
                 bg_image_dsc.image_area = *coords;
                 set_task_dsc(s.ctx(), t, DrawDsc::Image(Box::new(bg_image_dsc)));
                 s.finalize(t);
-            } else if let ImageSrc::Symbol(sym) = &dsc.bg_image_src {
+            } else if let ImageSrc::Symbol(sym) | ImageSrc::Path(sym) = &dsc.bg_image_src {
+                /*`bg_label_dsc->text = dsc->bg_image_src`: any string source whose first byte is
+                 *0x80 or above is drawn as a symbol, whichever variant carries it*/
+                /*A C string ends at the first NUL*/
+                let sym: &str = sym.split('\0').next().unwrap_or("");
                 let mut attributes = TextAttributes::new();
                 attributes.text_flags = TextFlags::NONE;
                 attributes.max_width = coord::MAX;
@@ -605,7 +610,7 @@ fn draw_rect_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &RectDsc
                 bg_label_dsc.base = dsc.base.clone();
                 bg_label_dsc.color = dsc.bg_image_recolor;
                 bg_label_dsc.font = dsc.bg_image_symbol_font.clone();
-                bg_label_dsc.text = Rc::from(&**sym);
+                bg_label_dsc.text = Rc::from(sym);
                 set_task_dsc(s.ctx(), t, DrawDsc::Label(Box::new(bg_label_dsc)));
                 if let Some(task) = s.ctx().task_mut(t) {
                     task.ty = DrawTaskType::Label;
@@ -1065,7 +1070,8 @@ mod tests {
         let font = FontRef::Shared(Rc::new(TestFont));
         let mut dsc = RectDsc::new();
         dsc.bg_opa = 0;
-        dsc.bg_image_src = ImageSrc::Symbol(SharedRef::Static("AB"));
+        /*LV_SYMBOL_OK LV_SYMBOL_OK: the first byte is 0x80 or above*/
+        dsc.bg_image_src = ImageSrc::Symbol(SharedRef::Static("\u{F00C}\u{F00C}"));
         dsc.bg_image_symbol_font = Some(font.clone());
         dsc.bg_image_recolor = Color::make(5, 6, 7);
         ctx.draw_rect(layer, &dsc, &COORDS);
@@ -1078,11 +1084,52 @@ mod tests {
         assert_eq!(tasks(&ctx, layer)[0].area, expected);
 
         let l = ctx.task_get_label_dsc(DrawTaskRef { layer, index: 0 }).unwrap();
-        assert_eq!(&*l.text, "AB");
+        assert_eq!(&*l.text, "\u{F00C}\u{F00C}");
         assert_eq!(l.font, Some(font));
         assert_eq!(l.color, Color::make(5, 6, 7));
         assert_eq!(l.opa, OPA_COVER);
         assert_eq!(l.base.layer, Some(layer));
+    }
+
+    #[test]
+    fn bg_image_branch_follows_the_first_byte_not_the_variant() {
+        let run = |src: ImageSrc| {
+            let (mut ctx, layer) = ctx_with_layer();
+            let mut dsc = RectDsc::new();
+            dsc.bg_opa = 0;
+            dsc.bg_image_src = src;
+            dsc.bg_image_symbol_font = Some(FontRef::Shared(Rc::new(TestFont)));
+            ctx.draw_rect(layer, &dsc, &COORDS);
+            let t = tasks(&ctx, layer);
+            let text = ctx
+                .task_get_label_dsc(DrawTaskRef { layer, index: 0 })
+                .map(|l| alloc::string::String::from(&*l.text));
+            (t, text)
+        };
+
+        /*An ASCII "symbol" is a file name for `lv_image_src_get_type()`: the (missing) decoder
+         *fails and nothing is drawn*/
+        let (t, _) = run(ImageSrc::Symbol(SharedRef::Static("AB")));
+        assert!(t.is_empty());
+        /*An empty string: first byte 0 is not the header magic, LV_IMAGE_SRC_UNKNOWN*/
+        let (t, _) = run(ImageSrc::Symbol(SharedRef::Static("")));
+        assert!(t.is_empty());
+        let (t, _) = run(ImageSrc::Symbol(SharedRef::Static("\0\u{F00C}")));
+        assert!(t.is_empty());
+
+        /*A symbol given as a path is still a symbol: one centered 6 x 12 px label task*/
+        let (t, text) = run(ImageSrc::Path(SharedRef::Static("\u{F00C}")));
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].ty, DrawTaskType::Label);
+        let mut expected = Area::new(0, 0, 5, 11);
+        Area::align(&COORDS, &mut expected, Align::Center, 0, 0);
+        assert_eq!(t[0].area, expected);
+        assert_eq!(text.as_deref(), Some("\u{F00C}"));
+
+        /*The C string ends at the first NUL*/
+        let (t, text) = run(ImageSrc::Symbol(SharedRef::Static("\u{F00C}\0AB")));
+        assert_eq!(t[0].area, expected);
+        assert_eq!(text.as_deref(), Some("\u{F00C}"));
     }
 
     #[test]

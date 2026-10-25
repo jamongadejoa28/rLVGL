@@ -17,12 +17,27 @@
 //! `lv_refr_get_disp_refreshing()`) and `lv_draw_dispatch()` walks that
 //! list. [`DrawCtx`] cannot see the displays, so it keeps the same singly
 //! linked `next` chains itself, one per display (keyed by [`Layer::display`]):
-//! [`DrawCtx::dispatch`] walks every chain, which is equivalent to upstream
-//! because only the display being refreshed has pending tasks. The
-//! display-aware entry points are the `Ui::draw_*` methods at the bottom of
-//! this file: they bind root layers to `Ui::disp_refresh`, forward
+//! [`DrawCtx::dispatch`] walks the chain of the refreshing display only, like
+//! upstream. The display-aware entry points are the `Ui::draw_*` methods at
+//! the bottom of this file: they bind root layers to `Ui::disp_refresh`,
+//! dispatch the chain of `Ui::disp_refresh`, forward
 //! `LV_EVENT_CHILD_CREATED` / `LV_EVENT_CHILD_DELETED` to the draw units and
 //! send `LV_EVENT_DRAW_TASK_ADDED` to the drawn object.
+//!
+//! Known deviation: when no display is refreshing, upstream
+//! `lv_draw_dispatch()` dispatches nothing, while [`DrawCtx::dispatch`] with
+//! `disp == None` walks every chain. Layers created outside a refresh (the
+//! `None`-keyed chain, which upstream cannot have: `lv_draw_layer_init()`
+//! would dereference a `NULL` display) and roots retained from a snapshot
+//! are only rendered that way.
+//!
+//! Unit-less entry points: the `DrawCtx` methods that do not take the draw
+//! units ([`DrawCtx::layer_create`], [`DrawCtx::layer_init`],
+//! [`DrawCtx::layer_create_drop_shadow`], [`DrawCtx::layer_deinit`],
+//! [`DrawCtx::layer_delete`]) behave like upstream with an empty
+//! `unit_head`: no `LV_EVENT_CHILD_CREATED` / `LV_EVENT_CHILD_DELETED` and
+//! no `lv_draw_wait_for_finish()`. With registered units use the matching
+//! `Ui::draw_*` method, which reaches every unit.
 //!
 //! Task handles: a [`DrawTaskRef`] is an index into the layer queue, so it is
 //! stable exactly as long as no finished task is removed in front of it. Like
@@ -108,6 +123,11 @@ pub enum DrawTaskType {
     MaskBitmap,
     /// `LV_DRAW_TASK_TYPE_BLUR`
     Blur,
+    /// `LV_DRAW_TASK_TYPE_VECTOR` (`#if LV_USE_VECTOR_GRAPHIC`, on in the
+    /// parity config). No task of this type is created yet:
+    /// `lv_draw_vector()` / `lv_draw_vector_dsc_t` are not ported, so
+    /// [`DrawDsc`] has no matching variant.
+    Vector,
 }
 
 /// `lv_draw_task_state_t`
@@ -536,7 +556,8 @@ impl DrawCtx {
     ///
     /// This is the object-less variant: `LV_EVENT_DRAW_TASK_ADDED` is sent by
     /// `Ui::draw_finalize_task_creation`, which needs the object tree.
-    pub fn finalize_task_creation(&mut self, units: &mut DrawUnits, t: DrawTaskRef) {
+    /// `disp` is the refreshing display handed to [`DrawCtx::dispatch`].
+    pub fn finalize_task_creation(&mut self, units: &mut DrawUnits, disp: Option<DisplayId>, t: DrawTaskRef) {
         let Some(task) = self.task_mut(t) else {
             return;
         };
@@ -550,21 +571,29 @@ impl DrawCtx {
             /*Let the draw units set their preference score*/
             self.evaluate_task(units, t);
             self.fail_untaken_task(t);
-            self.dispatch(units);
+            self.dispatch(units, disp);
         } else {
             /*Let the draw units set their preference score*/
             self.evaluate_task(units, t);
         }
     }
 
-    /// `lv_draw_dispatch()`: dispatch every display's layers through `units`.
+    /// `lv_draw_dispatch()`: dispatch the layers of `disp` through `units`.
     ///
-    /// Upstream walks `lv_refr_get_disp_refreshing()->layer_head`; here every
-    /// display's chain is walked (see the module docs), then, if no task was
-    /// dispatched, `lv_draw_wait_for_finish()` + `lv_draw_dispatch_request()`.
-    pub fn dispatch(&mut self, units: &mut DrawUnits) {
+    /// `disp` is `lv_refr_get_disp_refreshing()` (`Ui::disp_refresh`, which
+    /// [`Ui::draw_dispatch`] passes). Like upstream, only the `layer_head`
+    /// chain of that display is walked; the chains of the other displays are
+    /// left alone until their own refresh. `None` walks every chain (a known
+    /// deviation, see the module docs). Then, if no task was dispatched,
+    /// `lv_draw_wait_for_finish()` + `lv_draw_dispatch_request()`.
+    pub fn dispatch(&mut self, units: &mut DrawUnits, disp: Option<DisplayId>) {
         let mut task_dispatched = false;
-        let heads: Vec<(Option<DisplayId>, LayerId)> = self.layer_heads.clone();
+        let heads: Vec<(Option<DisplayId>, LayerId)> = match disp {
+            /*`lv_display_t * disp = lv_refr_get_disp_refreshing(); if(disp != NULL)`*/
+            Some(_) => self.chain_head(disp).map(|h| (disp, h)).into_iter().collect(),
+            /*No display is refreshing (see the module docs)*/
+            None => self.layer_heads.clone(),
+        };
         for (disp, head) in heads {
             let mut layer = Some(head);
             while let Some(l) = layer {
@@ -766,7 +795,9 @@ impl DrawCtx {
     ///
     /// Freeing means removing the task from its layer queue (the caller
     /// unlinks it upstream); the handles of the tasks behind it shift by one.
-    pub fn cleanup_task(&mut self, t: DrawTaskRef) {
+    /// The layer freed with a `LV_DRAW_TASK_TYPE_LAYER` task is deleted
+    /// through `units` (`lv_draw_layer_delete()`: `LV_EVENT_CHILD_DELETED`).
+    pub fn cleanup_task(&mut self, units: &mut DrawUnits, t: DrawTaskRef) {
         let Some(task) = self
             .layers
             .get_mut(t.layer.0)
@@ -774,7 +805,7 @@ impl DrawCtx {
         else {
             return;
         };
-        self.cleanup_task_owned(None, task);
+        self.cleanup_task_owned(Some(units), task);
     }
 
     /// `lv_draw_cleanup_task()` on a task already taken out of its queue.
@@ -799,7 +830,9 @@ impl DrawCtx {
         drop(task);
     }
 
-    /// `lv_draw_layer_create()`
+    /// `lv_draw_layer_create()` without draw units (no
+    /// `LV_EVENT_CHILD_CREATED`; see the module docs and
+    /// [`Ui::draw_layer_create`]).
     pub fn layer_create(
         &mut self,
         parent: Option<LayerId>,
@@ -838,6 +871,7 @@ impl DrawCtx {
     ///
     /// Without a parent the layer's display stays `None` (upstream binds it
     /// to `lv_refr_get_disp_refreshing()`, see `Ui::draw_layer_init`).
+    /// Without draw units: no `LV_EVENT_CHILD_CREATED` (see the module docs).
     pub fn layer_init(
         &mut self,
         layer: LayerId,
@@ -883,10 +917,15 @@ impl DrawCtx {
         self.chain_append(disp, layer);
     }
 
+    /// The head of the `next` chain of `disp` (`disp->layer_head`).
+    fn chain_head(&self, disp: Option<DisplayId>) -> Option<LayerId> {
+        self.layer_heads.iter().find(|(d, _)| *d == disp).map(|(_, h)| *h)
+    }
+
     /// Append `layer` at the tail of the `next` chain of `disp`
     /// (`disp->layer_head` handling of `lv_draw_layer_init()`).
     fn chain_append(&mut self, disp: Option<DisplayId>, layer: LayerId) {
-        if let Some(head) = self.layer_heads.iter().find(|(d, _)| *d == disp).map(|(_, h)| *h) {
+        if let Some(head) = self.chain_head(disp) {
             let mut tail = head;
             loop {
                 if tail == layer {
@@ -1001,7 +1040,8 @@ impl DrawCtx {
             .and_then(|buf| buf.goto_xy_checked(x as u32, y as u32))
     }
 
-    /// `lv_draw_layer_create_drop_shadow()`
+    /// `lv_draw_layer_create_drop_shadow()` without draw units (no
+    /// `LV_EVENT_CHILD_CREATED`; see [`Ui::layer_create_drop_shadow`]).
     pub fn layer_create_drop_shadow(
         &mut self,
         parent: LayerId,
@@ -1089,8 +1129,10 @@ impl DrawCtx {
 
     /// `lv_draw_layer_deinit()`
     ///
-    /// `LV_EVENT_CHILD_DELETED` is only sent through `Ui::draw_layer_deinit`
-    /// (or when the layer is freed by a dispatch, which has the units).
+    /// Without draw units: no `lv_draw_wait_for_finish()` and no
+    /// `LV_EVENT_CHILD_DELETED`, also not for the layers freed with nested
+    /// `LV_DRAW_TASK_TYPE_LAYER` tasks. Those go through
+    /// `Ui::draw_layer_deinit` (or a dispatch, which has the units).
     pub fn layer_deinit(&mut self, layer: LayerId) {
         self.layer_deinit_impl(None, layer);
     }
@@ -1120,7 +1162,8 @@ impl DrawCtx {
         self.layer_dealloc_buf(layer);
     }
 
-    /// `lv_draw_layer_delete()`
+    /// `lv_draw_layer_delete()` without draw units (see
+    /// [`DrawCtx::layer_deinit`] and [`Ui::draw_layer_delete`]).
     pub fn layer_delete(&mut self, layer: LayerId) {
         self.layer_delete_impl(None, layer);
     }
@@ -1281,7 +1324,8 @@ impl Ui {
             /*Let the draw units set their preference score*/
             self.draw.evaluate_task(&mut self.draw_units, t);
             self.draw.fail_untaken_task(t);
-            self.draw.dispatch(&mut self.draw_units);
+            let disp = self.disp_refresh;
+            self.draw.dispatch(&mut self.draw_units, disp);
         } else {
             /*Let the draw units set their preference score*/
             self.draw.evaluate_task(&mut self.draw_units, t);
@@ -1290,7 +1334,8 @@ impl Ui {
 
     /// `lv_draw_dispatch()`
     pub fn draw_dispatch(&mut self) {
-        self.draw.dispatch(&mut self.draw_units);
+        let disp = self.disp_refresh;
+        self.draw.dispatch(&mut self.draw_units, disp);
     }
 
     /// `lv_draw_layer_create()`: a root layer (no parent) is bound to the
@@ -1337,6 +1382,12 @@ impl Ui {
     /// draw units.
     pub fn draw_layer_delete(&mut self, layer: LayerId) {
         self.draw.layer_delete_impl(Some(&mut self.draw_units), layer);
+    }
+
+    /// `lv_draw_cleanup_task()`: [`DrawCtx::cleanup_task`] with the
+    /// registered draw units.
+    pub fn draw_cleanup_task(&mut self, t: DrawTaskRef) {
+        self.draw.cleanup_task(&mut self.draw_units, t);
     }
 }
 
@@ -1396,6 +1447,8 @@ mod tests {
         assert_eq!(DrawTaskType::Layer as u8, 7);
         assert_eq!(DrawTaskType::MaskRectangle as u8, 11);
         assert_eq!(DrawTaskType::Blur as u8, 13);
+        /*`#if LV_USE_VECTOR_GRAPHIC` (tests/configs/full.defconfig)*/
+        assert_eq!(DrawTaskType::Vector as u8, 14);
         assert_eq!(DrawTaskState::Failed as u8, 5);
         assert_eq!(DRAW_UNIT_IDLE, -1);
     }
@@ -1819,12 +1872,12 @@ mod tests {
         let a = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
         let b = ctx.add_task(layer, &Area::new(10, 10, 19, 19), DrawTaskType::Fill);
         ctx.task_mut(a).unwrap().state = DrawTaskState::Finished;
-        ctx.cleanup_task(a);
+        ctx.cleanup_task(&mut [], a);
         assert_eq!(ctx.layer(layer).unwrap().tasks.len(), 1);
         assert_eq!(ctx.task_get_area(a), Area::new(10, 10, 19, 19));
         let _ = b;
         /*Stale handle: no-op*/
-        ctx.cleanup_task(DrawTaskRef { layer, index: 5 });
+        ctx.cleanup_task(&mut [], DrawTaskRef { layer, index: 5 });
         assert_eq!(ctx.layer(layer).unwrap().tasks.len(), 1);
     }
 
@@ -1837,7 +1890,7 @@ mod tests {
         /*A Fill task is taken by the mock unit and rendered right away*/
         let t = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
         ctx.dispatch_req = false;
-        ctx.finalize_task_creation(&mut units, t);
+        ctx.finalize_task_creation(&mut units, None, t);
         {
             let task = ctx.task(t).unwrap();
             assert_eq!(task.preferred_draw_unit_id, 1);
@@ -1858,10 +1911,10 @@ mod tests {
         }
         /*... and the dispatch that follows in lv_draw_finalize_task_creation
          *removes it (together with the finished Fill task) right away*/
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
         let t3 = ctx.add_task(layer, &Area::new(10, 10, 19, 19), DrawTaskType::Arc);
-        ctx.finalize_task_creation(&mut units, t3);
+        ctx.finalize_task_creation(&mut units, None, t3);
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
 
         /*An untaken LAYER task is blocked instead of failed, so it stays*/
@@ -1869,7 +1922,7 @@ mod tests {
         let child = ctx.layer_create(Some(layer), ColorFormat::Argb8888, &Area::new(0, 0, 9, 9));
         let lt = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Layer);
         ctx.task_mut(lt).unwrap().dsc = layer_dsc(child);
-        ctx.finalize_task_creation(&mut no_units, lt);
+        ctx.finalize_task_creation(&mut no_units, None, lt);
         let tasks = &ctx.layer(layer).unwrap().tasks;
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].ty, DrawTaskType::Layer);
@@ -1885,7 +1938,7 @@ mod tests {
         ctx.task_running = true;
         let t = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
         ctx.dispatch_req = false;
-        ctx.finalize_task_creation(&mut units, t);
+        ctx.finalize_task_creation(&mut units, None, t);
         let task = ctx.task(t).unwrap();
         assert_eq!(task.preferred_draw_unit_id, 1);
         assert_eq!(task.state, DrawTaskState::Waiting);
@@ -1904,19 +1957,113 @@ mod tests {
             ctx.task_mut(t).unwrap().preferred_draw_unit_id = 1;
         }
 
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert_eq!(ctx.task(a).unwrap().state, DrawTaskState::Finished);
         assert_eq!(ctx.task(b).unwrap().state, DrawTaskState::Finished);
 
         /*Nothing left to do: the finished tasks are removed and a dispatch is requested*/
         ctx.dispatch_req = false;
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
         assert!(ctx.layer(child).unwrap().tasks.is_empty());
         assert!(ctx.dispatch_req);
 
         ctx.dispatch_wait_for_request();
         assert!(!ctx.dispatch_req);
+    }
+
+    #[test]
+    fn dispatch_walks_only_the_refreshing_display_chain() {
+        /*lv_draw_dispatch(): only `lv_refr_get_disp_refreshing()->layer_head`*/
+        let mut keys = Arena::<()>::new();
+        let d1 = DisplayId(keys.insert(()));
+        let d2 = DisplayId(keys.insert(()));
+        let d3 = DisplayId(keys.insert(()));
+        let mut ctx = DrawCtx::new();
+        let mut units: Vec<Box<dyn DrawUnit>> = vec![MockUnit::boxed(1)];
+        ctx.unit_cnt = 1;
+        let area = Area::new(0, 0, 9, 9);
+        let r1 = ctx.layer_create_impl(None, None, ColorFormat::Argb8888, &area, Some(d1));
+        let r2 = ctx.layer_create_impl(None, None, ColorFormat::Argb8888, &area, Some(d2));
+        let r0 = ctx.layer_create(None, ColorFormat::Argb8888, &area);
+        let mut tasks = Vec::new();
+        for l in [r1, r2, r0] {
+            let t = ctx.add_task(l, &area, DrawTaskType::Fill);
+            ctx.task_mut(t).unwrap().preferred_draw_unit_id = 1;
+            tasks.push(t);
+        }
+        let state = |ctx: &DrawCtx, i: usize| ctx.task(tasks[i]).unwrap().state;
+
+        /*d1 refreshes: the WAITING tasks of d2 and of the display-less chain stay*/
+        ctx.dispatch_req = false;
+        ctx.dispatch(&mut units, Some(d1));
+        assert_eq!(state(&ctx, 0), DrawTaskState::Finished);
+        assert_eq!(state(&ctx, 1), DrawTaskState::Waiting);
+        assert_eq!(state(&ctx, 2), DrawTaskState::Waiting);
+
+        /*A refreshing display without layers dispatches nothing and requests*/
+        ctx.dispatch_req = false;
+        ctx.dispatch(&mut units, Some(d3));
+        assert_eq!(state(&ctx, 1), DrawTaskState::Waiting);
+        assert!(ctx.dispatch_req);
+
+        ctx.dispatch(&mut units, Some(d2));
+        assert_eq!(state(&ctx, 1), DrawTaskState::Finished);
+        assert_eq!(state(&ctx, 2), DrawTaskState::Waiting);
+
+        /*No display refreshing: every chain (documented deviation)*/
+        ctx.dispatch(&mut units, None);
+        assert_eq!(state(&ctx, 2), DrawTaskState::Finished);
+    }
+
+    #[test]
+    fn ui_dispatch_uses_disp_refresh() {
+        use crate::core::UiConfig;
+        let mut ui = Ui::new(UiConfig::default());
+        ui.draw_units.push(MockUnit::boxed(1));
+        ui.draw.unit_cnt = 1;
+        let mut keys = Arena::<()>::new();
+        let d1 = DisplayId(keys.insert(()));
+        let d2 = DisplayId(keys.insert(()));
+        let area = Area::new(0, 0, 9, 9);
+        ui.disp_refresh = Some(d1);
+        let r1 = ui.draw_layer_create(None, ColorFormat::Argb8888, &area);
+        ui.disp_refresh = Some(d2);
+        let t = ui.draw.add_task(r1, &area, DrawTaskType::Fill);
+        ui.draw.task_mut(t).unwrap().preferred_draw_unit_id = 1;
+        /*d2 refreshing: the task of d1 is not taken*/
+        ui.draw_dispatch();
+        assert_eq!(ui.draw.task(t).unwrap().state, DrawTaskState::Waiting);
+        ui.disp_refresh = Some(d1);
+        ui.draw_dispatch();
+        assert_eq!(ui.draw.task(t).unwrap().state, DrawTaskState::Finished);
+    }
+
+    #[test]
+    fn cleanup_of_a_layer_task_notifies_the_units() {
+        use crate::core::UiConfig;
+        let mut ui = Ui::new(UiConfig::default());
+        let (unit, events) = MockUnit::recording(1);
+        ui.draw_units.push(unit);
+        ui.draw.unit_cnt = 1;
+        let area = Area::new(0, 0, 9, 9);
+        let root = ui.draw_layer_create(None, ColorFormat::Argb8888, &area);
+        let child = ui.draw_layer_create(Some(root), ColorFormat::Argb8888, &area);
+        let lt = ui.draw.add_task(root, &area, DrawTaskType::Layer);
+        ui.draw.task_mut(lt).unwrap().dsc = layer_dsc(child);
+        ui.draw.task_mut(lt).unwrap().state = DrawTaskState::Finished;
+        /*lv_draw_cleanup_task() -> lv_draw_layer_delete(layer_drawn) -> CHILD_DELETED*/
+        ui.draw_cleanup_task(lt);
+        assert!(ui.draw.layer(child).is_none());
+        assert!(ui.draw.layer(root).unwrap().tasks.is_empty());
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                (EventCode::CHILD_CREATED, Some(root)),
+                (EventCode::CHILD_CREATED, Some(child)),
+                (EventCode::CHILD_DELETED, Some(child)),
+            ]
+        );
     }
 
     #[test]
@@ -1930,13 +2077,13 @@ mod tests {
         let lt = ctx.add_task(layer, &Area::new(10, 10, 49, 49), DrawTaskType::Layer);
         ctx.task_mut(lt).unwrap().dsc = layer_dsc(child);
         ctx.task_mut(lt).unwrap().state = DrawTaskState::Blocked;
-        ctx.finalize_task_creation(&mut units, lt);
+        ctx.finalize_task_creation(&mut units, None, lt);
         assert_eq!(ctx.task(lt).unwrap().state, DrawTaskState::Blocked);
         assert_eq!(ctx.task(lt).unwrap().preferred_draw_unit_id, 1);
 
         /*Draw into the child, then mark it complete*/
         let ct = ctx.add_task(child, &Area::new(10, 10, 19, 19), DrawTaskType::Fill);
-        ctx.finalize_task_creation(&mut units, ct);
+        ctx.finalize_task_creation(&mut units, None, ct);
         assert_eq!(ctx.task(ct).unwrap().state, DrawTaskState::Finished);
         ctx.layer_mut(child).unwrap().all_tasks_added = true;
 
@@ -1944,15 +2091,15 @@ mod tests {
          *blocked), then the child's queue is cleaned and, being complete, it
          *releases the LAYER task and requests another dispatch*/
         ctx.dispatch_req = false;
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert_eq!(ctx.task(lt).unwrap().state, DrawTaskState::Waiting);
         assert!(ctx.dispatch_req);
         /*That dispatch blends the layer*/
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert_eq!(ctx.task(lt).unwrap().state, DrawTaskState::Finished);
         assert!(ctx.layer(child).is_some());
         /*And the one after that frees the LAYER task together with the child layer*/
-        ctx.dispatch(&mut units);
+        ctx.dispatch(&mut units, None);
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
         assert!(ctx.layer(child).is_none());
         assert_eq!(ctx.layer(layer).unwrap().next, None);

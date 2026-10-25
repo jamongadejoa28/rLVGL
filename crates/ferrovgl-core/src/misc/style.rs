@@ -596,11 +596,15 @@ pub fn register_prop(custom_table: &mut Vec<u8>, last_custom_prop_id: &mut u32, 
 
 /// `lv_style_get_num_custom_props()`: number of custom properties registered
 /// so far, derived from the `style_last_custom_prop_id` counter (see
-/// [`register_prop`]). Returned as `u32` like `Ui::style_get_num_custom_props`
-/// (C narrows it to `lv_style_prop_t`).
+/// [`register_prop`]).
+///
+/// The `uint32_t` difference is narrowed to `lv_style_prop_t` (8 bits) like
+/// the C return type, so it agrees with the ids [`register_prop`] returns
+/// once more than 255 custom properties exist. The narrowed value is handed
+/// back in a `u32` to keep `Ui::style_get_num_custom_props` unchanged.
 #[inline]
 pub const fn get_num_custom_props(last_custom_prop_id: u32) -> u32 {
-    last_custom_prop_id - StyleProp::LAST_BUILT_IN.0 as u32
+    last_custom_prop_id.wrapping_sub(StyleProp::LAST_BUILT_IN.0 as u32) as u8 as u32
 }
 
 /// `lv_style_prop_lookup_flags()` including custom properties: the same
@@ -813,20 +817,35 @@ pub enum StyleValue {
 }
 
 impl StyleValue {
-    /// The integer value, or 0 for non-numeric kinds (`.num` of the union).
+    /// `.num` of the `lv_style_value_t` union.
+    ///
+    /// A `.color` value reads back as its three bytes in `lv_color_t` memory
+    /// order (`blue | green << 8 | red << 16`, see `lv_color_to_int()`), as
+    /// the C union does. `NULL` and the pointer kinds, whose addresses have
+    /// no Rust equivalent, read as 0.
     #[inline]
     pub const fn num(&self) -> i32 {
         match self {
             StyleValue::Num(n) => *n,
+            StyleValue::Color(c) => c.to_int() as i32,
             _ => 0,
         }
     }
 
-    /// The colour value, or black for non-colour kinds.
+    /// `.color` of the `lv_style_value_t` union.
+    ///
+    /// A `.num` value reads back as its low three bytes in `lv_color_t`
+    /// memory order (blue, green, red), as the C union does. `NULL` and the
+    /// pointer kinds read as black.
     #[inline]
     pub const fn color(&self) -> Color {
         match self {
             StyleValue::Color(c) => *c,
+            StyleValue::Num(n) => Color {
+                blue: (*n & 0xFF) as u8,
+                green: ((*n >> 8) & 0xFF) as u8,
+                red: ((*n >> 16) & 0xFF) as u8,
+            },
             _ => Color::BLACK,
         }
     }
@@ -998,16 +1017,21 @@ impl ConstStyle {
     /// `has_group` of a const style is `0xFFFFFFFF`.
     pub const HAS_GROUP: u32 = 0xFFFF_FFFF;
 
-    /// Number of properties.
+    /// `prop_cnt` of a const style: `LV_STYLE_CONST_INIT` always sets 255.
+    pub const PROP_CNT: u8 = 255;
+
+    /// Number of entries in [`ConstStyle::props`] (for iteration). This is
+    /// not `prop_cnt`, which is always [`ConstStyle::PROP_CNT`].
     #[inline]
     pub const fn len(&self) -> usize {
         self.props.len()
     }
 
-    /// `lv_style_is_empty()`
+    /// `lv_style_is_empty()`: `prop_cnt == 0`, so always `false` for a const
+    /// style (`prop_cnt` is 255), even when the array holds no property.
     #[inline]
     pub const fn is_empty(&self) -> bool {
-        self.props.is_empty()
+        Self::PROP_CNT == 0
     }
 
     /// `lv_style_is_const()`: always `true`.
@@ -1628,6 +1652,53 @@ mod tests {
         assert_eq!(ra, ra.clone());
         assert_ne!(ra, rb);
         assert_eq!(&*ra, &[1, 2]);
+    }
+
+    /// `lv_style_value_t` is a union: `.color` of a `.num` value and `.num`
+    /// of a `.color` value reinterpret the same bytes.
+    #[test]
+    fn style_value_union_reinterpretation() {
+        let red = StyleValue::Num(0xFF0000);
+        assert_eq!(red.color(), Color::hex(0xFF0000));
+        assert_eq!(StyleValue::Num(0x7F_12_34_56).color(), Color::hex(0x123456));
+        assert_eq!(StyleValue::Color(Color::hex(0x123456)).num(), 0x123456);
+        assert_eq!(StyleValue::Null.num(), 0);
+        assert_eq!(StyleValue::Null.color(), Color::BLACK);
+
+        let mut st = Style::new();
+        st.set_prop(StyleProp::BG_COLOR, StyleValue::Num(0xFF0000));
+        assert_eq!(
+            st.get_prop(StyleProp::BG_COLOR).map(|v| v.color()),
+            Some(Color::hex(0xFF0000))
+        );
+    }
+
+    /// `LV_STYLE_CONST_INIT` sets `prop_cnt = 255`, so `lv_style_is_empty()`
+    /// is `false` even for `{ LV_STYLE_CONST_PROPS_END }`.
+    #[test]
+    fn const_style_is_never_empty() {
+        static END_ONLY: [ConstStyleEntry; 1] =
+            [ConstStyleEntry::new(StyleProp::INV, ConstStyleValue::Num(0))];
+        static S_END: ConstStyle = ConstStyle::new(&END_ONLY);
+        static S_NONE: ConstStyle = ConstStyle::new(&[]);
+        assert!(!S_END.is_empty());
+        assert!(!S_NONE.is_empty());
+        assert_eq!(ConstStyle::PROP_CNT, 255);
+    }
+
+    /// `lv_style_get_num_custom_props()` returns `lv_style_prop_t` (8 bits).
+    #[test]
+    fn num_custom_props_narrows_to_prop_t() {
+        let mut table = Vec::new();
+        let mut last = StyleProp::LAST_BUILT_IN.0 as u32;
+        let mut prop = StyleProp::INV;
+        for _ in 0..300 {
+            prop = register_prop(&mut table, &mut last, 0);
+        }
+        assert_eq!(last, StyleProp::LAST_BUILT_IN.0 as u32 + 300);
+        assert_eq!(get_num_custom_props(last), 300 % 256);
+        assert_eq!(prop.0, last as u8);
+        assert_eq!(get_num_custom_props(StyleProp::LAST_BUILT_IN.0 as u32), 0);
     }
 
     #[test]

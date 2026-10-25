@@ -1196,13 +1196,19 @@ pub fn mask_fade(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut
         len -= abs_x + len - p.coords.x2 - 1;
     }
 
-    let mut mask_buf = &mut mask_buf[..];
-    if abs_x < p.coords.x1 {
-        let x_ofs = p.coords.x1 - abs_x;
-        len -= x_ofs;
-        mask_buf = &mut mask_buf[x_ofs as usize..];
-    }
+    let x_ofs = if abs_x < p.coords.x1 {
+        p.coords.x1 - abs_x
+    } else {
+        0
+    };
+    len -= x_ofs;
 
+    /*C keeps `len` signed: with a degenerate area (x2 < x1) it can end up <= 0, every
+     *`for(i = 0; i < len; i++)` loop below is skipped and CHANGED is returned untouched.*/
+    if len <= 0 {
+        return MaskRes::Changed;
+    }
+    let mask_buf = &mut mask_buf[x_ofs as usize..];
     let len = len as usize;
 
     if abs_y <= p.y_top {
@@ -1219,8 +1225,10 @@ pub fn mask_fade(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut
         /*Calculate the opa proportionally*/
         let opa_diff: i16 = (p.opa_bottom as i32 - p.opa_top as i32) as i16;
         let y_diff: i32 = p.y_bottom - p.y_top + 1;
-        /*LV_OPA_MIX2(a1, a2) = ((int32_t)(a1) * (a2)) >> 8, then / y_diff, truncated to lv_opa_t*/
-        let mut opa_act: Opa = ((((abs_y - p.y_top) * opa_diff as i32) >> 8) / y_diff) as Opa;
+        /*LV_OPA_MIX2(a1, a2) = ((lv_opa_t)(((int32_t)(a1) * (a2)) >> 8)): the macro truncates to
+         *lv_opa_t BEFORE the `/ y_diff`, and the quotient is truncated to lv_opa_t again.*/
+        let mix2: Opa = (((abs_y - p.y_top) * opa_diff as i32) >> 8) as Opa;
+        let mut opa_act: Opa = (mix2 as i32 / y_diff) as Opa;
         opa_act = opa_act.wrapping_add(p.opa_top);
 
         for i in 0..len {
@@ -1247,23 +1255,29 @@ pub fn mask_map(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut 
     }
 
     /*Got to the current row in the map*/
-    let mut map_ofs = ((abs_y - p.coords.y1) * p.coords.width()) as usize;
+    let mut map_ofs: i32 = (abs_y - p.coords.y1) * p.coords.width();
 
     let mut len = len;
     if abs_x + len > p.coords.x2 {
         len -= abs_x + len - p.coords.x2 - 1;
     }
 
-    let mut mask_buf = &mut mask_buf[..];
+    let mut x_ofs = 0;
     if abs_x < p.coords.x1 {
-        let x_ofs = p.coords.x1 - abs_x;
+        x_ofs = p.coords.x1 - abs_x;
         len -= x_ofs;
-        mask_buf = &mut mask_buf[x_ofs as usize..];
     } else {
-        map_ofs += (abs_x - p.coords.x1) as usize;
+        map_ofs += abs_x - p.coords.x1;
     }
 
-    let map_tmp = &p.map[map_ofs..];
+    /*C keeps `len` signed: with a degenerate area (x2 < x1) it can end up <= 0, the loop is
+     *skipped and neither the mask buffer nor the map is read.*/
+    if len <= 0 {
+        return MaskRes::Changed;
+    }
+
+    let mask_buf = &mut mask_buf[x_ofs as usize..];
+    let map_tmp = &p.map[map_ofs as usize..];
     for i in 0..len as usize {
         mask_buf[i] = mask_mix(mask_buf[i], map_tmp[i]);
     }
@@ -2211,10 +2225,15 @@ mod tests {
         let y = 50;
         let opa_diff: i32 = -255;
         let y_diff = 90 - 10 + 1;
-        let expected = (((((y - 10) * opa_diff) >> 8) / y_diff) as u8).wrapping_add(255);
+        // LV_OPA_MIX2 casts to lv_opa_t before the division: (uint8)-40 = 216, 216 / 81 = 2,
+        // 2 + 255 wraps to 1.
+        let expected = (((((y - 10) * opa_diff) >> 8) as u8 as i32 / y_diff) as u8).wrapping_add(255);
+        assert_eq!(expected, 1);
         let mut buf = full(40);
         assert_eq!(mask_fade(&mut buf, 0, y, 40, &mut p), MaskRes::Changed);
         assert_eq!(buf[15], mask_mix(255, expected));
+        assert_eq!(buf[15], 0);
+        assert!(buf[10..30].iter().all(|&o| o == 0));
         assert_eq!(buf[0], 255);
         assert_eq!(buf[35], 255);
 
@@ -2226,6 +2245,31 @@ mod tests {
         assert!(buf.iter().all(|&o| o == 0));
         let mut buf = full(10);
         assert_eq!(mask_fade(&mut buf, 0, 1, 10, &mut p), MaskRes::Changed);
+        assert!(buf.iter().all(|&o| o == 255));
+    }
+
+    #[test]
+    fn fade_mask_degenerate_area_is_noop() {
+        // x2 < x1: clipping leaves len = 20 - 14 - 10 = -4; C skips the loop and returns CHANGED.
+        let mut p = MaskFadeParam::default();
+        fade_init(&mut p, &Area::new(10, 0, 5, 99), 255, 10, 0, 90);
+        for y in [5, 50, 95] {
+            let mut buf = full(20);
+            assert_eq!(mask_fade(&mut buf, 0, y, 20, &mut p), MaskRes::Changed);
+            assert!(buf.iter().all(|&o| o == 255));
+        }
+    }
+
+    #[test]
+    fn map_mask_degenerate_area_is_noop() {
+        let map: [Opa; 4] = [0; 4];
+        let mut p = MaskMapParam {
+            coords: Area::default(),
+            map: &[],
+        };
+        map_init(&mut p, &Area::new(10, 0, 5, 3), &map);
+        let mut buf = full(20);
+        assert_eq!(mask_map(&mut buf, 0, 2, 20, &mut p), MaskRes::Changed);
         assert!(buf.iter().all(|&o| o == 255));
     }
 

@@ -67,10 +67,36 @@ pub struct GradStop {
     pub frac: u8,
 }
 
+/// Size of the `params` union of `lv_grad_dsc_t` in 32-bit words: the
+/// largest member, `radial`, is four `lv_point_t` (`int32_t x, y`).
+pub const GRAD_PARAMS_WORDS: usize = 8;
+
 /// `params` union of `lv_grad_dsc_t`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+///
+/// Upstream the members overlay each other: `linear.start` / `linear.end`,
+/// `radial.focal` / `radial.focal_extent` and `conical.center` /
+/// `conical.start_angle` / `conical.end_angle` share the first 12-16 bytes,
+/// and only `radial.end` / `radial.end_extent` use bytes 16..31. The setup
+/// functions read whichever member matches `dir`, regardless of what wrote
+/// it. That memory is modelled by [`GradParams::words`]:
+///
+/// | word  | `linear`  | `radial`         | `conical`                     |
+/// |-------|-----------|------------------|-------------------------------|
+/// | 0, 1  | `start`   | `focal`          | `center`                      |
+/// | 2     | `end.x`   | `focal_extent.x` | `start_angle`, `end_angle` (2 x `int16_t`, native byte order) |
+/// | 3     | `end.y`   | `focal_extent.y` | -                             |
+/// | 4, 5  | -         | `end`            | -                             |
+/// | 6, 7  | -         | `end_extent`     | -                             |
+///
+/// The typed variants behave like a C designated initialiser
+/// (`.params.linear = {...}`): the words they do not name read as zero.
+/// The `lv_grad_*_init()` / `lv_grad_radial_set_focal()` helpers write only
+/// the words their upstream counterparts write and store the result as
+/// [`GradParams::Raw`]. Equality and hashing compare the union words, so a
+/// typed variant equals the `Raw` value holding the same memory.
+#[derive(Copy, Clone, Debug)]
 pub enum GradParams {
-    /// No parameters (simple `Ver` / `Hor`).
+    /// No parameters (simple `Ver` / `Hor`): the zeroed union (`lv_memzero`).
     None,
     /// `params.linear`
     Linear {
@@ -99,6 +125,112 @@ pub enum GradParams {
         /// `end_angle`
         end_angle: i16,
     },
+    /// The raw union memory as 32-bit words (see the table above).
+    Raw([i32; GRAD_PARAMS_WORDS]),
+}
+
+/// Word 2 of the union as `conical.start_angle` / `conical.end_angle`.
+#[inline]
+const fn pack_angles(start_angle: i16, end_angle: i16) -> i32 {
+    let s = start_angle.to_ne_bytes();
+    let e = end_angle.to_ne_bytes();
+    i32::from_ne_bytes([s[0], s[1], e[0], e[1]])
+}
+
+/// Inverse of [`pack_angles`].
+#[inline]
+const fn unpack_angles(word: i32) -> (i16, i16) {
+    let b = word.to_ne_bytes();
+    (i16::from_ne_bytes([b[0], b[1]]), i16::from_ne_bytes([b[2], b[3]]))
+}
+
+impl GradParams {
+    /// The union memory as 32-bit words (`lv_grad_dsc_t::params`); words a
+    /// typed variant does not name are zero.
+    pub const fn words(&self) -> [i32; GRAD_PARAMS_WORDS] {
+        match *self {
+            GradParams::None => [0; GRAD_PARAMS_WORDS],
+            GradParams::Linear { start, end } => [start.x, start.y, end.x, end.y, 0, 0, 0, 0],
+            GradParams::Radial {
+                focal,
+                focal_extent,
+                end,
+                end_extent,
+            } => [
+                focal.x,
+                focal.y,
+                focal_extent.x,
+                focal_extent.y,
+                end.x,
+                end.y,
+                end_extent.x,
+                end_extent.y,
+            ],
+            GradParams::Conical {
+                center,
+                start_angle,
+                end_angle,
+            } => [
+                center.x,
+                center.y,
+                pack_angles(start_angle, end_angle),
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+            GradParams::Raw(w) => w,
+        }
+    }
+
+    /// `params.linear` read through the union: `(start, end)`.
+    pub const fn linear(&self) -> (Point, Point) {
+        let w = self.words();
+        (Point::new(w[0], w[1]), Point::new(w[2], w[3]))
+    }
+
+    /// `params.radial` read through the union:
+    /// `(focal, focal_extent, end, end_extent)`.
+    pub const fn radial(&self) -> (Point, Point, Point, Point) {
+        let w = self.words();
+        (
+            Point::new(w[0], w[1]),
+            Point::new(w[2], w[3]),
+            Point::new(w[4], w[5]),
+            Point::new(w[6], w[7]),
+        )
+    }
+
+    /// `params.conical` read through the union:
+    /// `(center, start_angle, end_angle)`.
+    pub const fn conical(&self) -> (Point, i16, i16) {
+        let w = self.words();
+        let (start_angle, end_angle) = unpack_angles(w[2]);
+        (Point::new(w[0], w[1]), start_angle, end_angle)
+    }
+
+    /// Overwrite the words `first..first + vals.len()` of the union, keeping
+    /// the rest (a C member store).
+    fn store(&mut self, first: usize, vals: &[i32]) {
+        let mut w = self.words();
+        w[first..first + vals.len()].copy_from_slice(vals);
+        *self = GradParams::Raw(w);
+    }
+}
+
+impl PartialEq for GradParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.words() == other.words()
+    }
+}
+
+impl Eq for GradParams {}
+
+impl core::hash::Hash for GradParams {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.words().hash(state);
+    }
 }
 
 /// `lv_grad_dsc_t`. The renderer-private `state` pointer is not stored here;
@@ -194,22 +326,22 @@ impl GradDsc {
     /// `lv_grad_linear_init()`
     pub fn linear_init(&mut self, from_x: i32, from_y: i32, to_x: i32, to_y: i32, extend: GradExtend) {
         self.dir = GradDir::Linear;
-        self.params = GradParams::Linear {
-            start: Point::new(from_x, from_y),
-            end: Point::new(to_x, to_y),
-        };
+        // `params.linear.start` / `.end`: words 0..4 of the union.
+        self.params.store(0, &[from_x, from_y, to_x, to_y]);
         self.extend = extend;
     }
 
     /// `lv_grad_radial_init()`
     pub fn radial_init(&mut self, center_x: i32, center_y: i32, to_x: i32, to_y: i32, extend: GradExtend) {
         self.dir = GradDir::Radial;
-        self.params = GradParams::Radial {
-            focal: Point::new(center_x, center_y),
-            focal_extent: Point::new(center_x, center_y),
-            end: Point::new(center_x, center_y),
-            end_extent: Point::new(to_x, to_y),
-        };
+        // `params.radial.focal` / `.focal_extent` / `.end` / `.end_extent`:
+        // the whole union.
+        self.params.store(
+            0,
+            &[
+                center_x, center_y, center_x, center_y, center_x, center_y, to_x, to_y,
+            ],
+        );
         self.extend = extend;
     }
 
@@ -224,40 +356,27 @@ impl GradDsc {
         extend: GradExtend,
     ) {
         self.dir = GradDir::Conical;
-        self.params = GradParams::Conical {
-            center: Point::new(center_x, center_y),
-            start_angle: start_angle as i16,
-            end_angle: end_angle as i16,
-        };
+        // `params.conical.center` / `.start_angle` / `.end_angle`: words 0..3.
+        self.params.store(
+            0,
+            &[
+                center_x,
+                center_y,
+                pack_angles(start_angle as i16, end_angle as i16),
+            ],
+        );
         self.extend = extend;
     }
 
     /// `lv_grad_radial_set_focal()`
     ///
-    /// Upstream writes into the `radial` member of the `params` union without
-    /// touching `end` / `end_extent`; if the descriptor does not hold radial
-    /// parameters yet those two are zeroed.
+    /// Like upstream this writes only `params.radial.focal` /
+    /// `.focal_extent` (words 0..4 of the union) and leaves `dir`,
+    /// `radial.end` / `radial.end_extent` and whatever other member aliases
+    /// those words untouched.
     pub fn radial_set_focal(&mut self, center_x: i32, center_y: i32, radius: i32) {
-        let focal = Point::new(center_x, center_y);
-        let focal_extent = Point::new(center_x.wrapping_add(radius), center_y);
-        match &mut self.params {
-            GradParams::Radial {
-                focal: f,
-                focal_extent: fe,
-                ..
-            } => {
-                *f = focal;
-                *fe = focal_extent;
-            }
-            params => {
-                *params = GradParams::Radial {
-                    focal,
-                    focal_extent,
-                    end: Point::default(),
-                    end_extent: Point::default(),
-                };
-            }
-        }
+        self.params
+            .store(0, &[center_x, center_y, center_x.wrapping_add(radius), center_y]);
     }
 }
 
@@ -374,6 +493,68 @@ mod tests {
                 end_extent: Point::default(),
             }
         );
+    }
+
+    #[test]
+    fn set_focal_on_linear_writes_aliased_linear_words() {
+        // lv_grad_radial_set_focal() stores into params.radial.focal /
+        // focal_extent, which overlay params.linear.start / end; dir stays.
+        let mut g = GradDsc::new();
+        g.linear_init(0, 0, 100, 0, GradExtend::Pad);
+        g.radial_set_focal(20, 10, 5);
+        assert_eq!(g.dir, GradDir::Linear);
+        assert_eq!(g.params.linear(), (Point::new(20, 10), Point::new(25, 10)));
+        assert_eq!(g.params.words(), [20, 10, 25, 10, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn linear_init_keeps_radial_end_words() {
+        // params.linear covers only the first 16 bytes; radial.end /
+        // end_extent survive a later lv_grad_linear_init().
+        let mut g = GradDsc::new();
+        g.radial_init(50, 50, 90, 50, GradExtend::Pad);
+        g.linear_init(1, 2, 3, 4, GradExtend::Pad);
+        assert_eq!(g.params.linear(), (Point::new(1, 2), Point::new(3, 4)));
+        assert_eq!(
+            g.params.radial(),
+            (
+                Point::new(1, 2),
+                Point::new(3, 4),
+                Point::new(50, 50),
+                Point::new(90, 50)
+            )
+        );
+        // conical_init() writes 12 bytes: focal_extent.y and the end words stay.
+        g.conical_init(7, 8, 10, 20, GradExtend::Pad);
+        let w = g.params.words();
+        assert_eq!(&w[..2], &[7, 8]);
+        assert_eq!(&w[3..], &[4, 50, 50, 90, 50]);
+        assert_eq!(g.params.conical(), (Point::new(7, 8), 10, 20));
+    }
+
+    #[test]
+    fn conical_angles_alias_linear_end_x() {
+        // start_angle / end_angle are two int16_t in the bytes of linear.end.x.
+        let mut g = GradDsc::new();
+        g.conical_init(5, 6, -3, 450, GradExtend::Pad);
+        let s = (-3i16).to_ne_bytes();
+        let e = 450i16.to_ne_bytes();
+        let end_x = i32::from_ne_bytes([s[0], s[1], e[0], e[1]]);
+        assert_eq!(g.params.linear(), (Point::new(5, 6), Point::new(end_x, 0)));
+        g.linear_init(0, 0, end_x, 9, GradExtend::Pad);
+        assert_eq!(g.params.conical(), (Point::new(0, 0), -3, 450));
+    }
+
+    #[test]
+    fn params_compare_by_union_words() {
+        let typed = GradParams::Linear {
+            start: Point::new(1, 2),
+            end: Point::new(3, 4),
+        };
+        assert_eq!(typed, GradParams::Raw([1, 2, 3, 4, 0, 0, 0, 0]));
+        assert_ne!(typed, GradParams::Raw([1, 2, 3, 4, 0, 0, 0, 1]));
+        assert_eq!(GradParams::None, GradParams::Raw([0; GRAD_PARAMS_WORDS]));
+        assert_eq!(GradParams::None.words(), GradDsc::new().params.words());
     }
 
     #[test]

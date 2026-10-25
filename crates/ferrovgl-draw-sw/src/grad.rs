@@ -11,7 +11,7 @@ use ferrovgl_core::misc::color::{Color, Opa};
 use ferrovgl_core::misc::math::udiv255;
 
 #[cfg(feature = "complex-gradients")]
-use ferrovgl_core::draw::grad::{GradExtend, GradParams};
+use ferrovgl_core::draw::grad::GradExtend;
 #[cfg(feature = "complex-gradients")]
 use ferrovgl_core::misc::area::Point;
 #[cfg(feature = "complex-gradients")]
@@ -143,48 +143,26 @@ fn extend_w(w: i32, extend: GradExtend) -> i32 {
     w
 }
 
-/// `dsc->params.linear`. Upstream reads the union member unconditionally; a
-/// descriptor holding other parameters reads as all zero here.
+/// `dsc->params.linear`, read through the union like upstream (whatever
+/// member last wrote those words).
 #[cfg(feature = "complex-gradients")]
 fn linear_params(dsc: &GradDsc) -> (Point, Point) {
-    match dsc.params {
-        GradParams::Linear { start, end } => (start, end),
-        _ => (Point::default(), Point::default()),
-    }
+    dsc.params.linear()
 }
 
-/// `dsc->params.radial` as `(focal, end, focal_extent, end_extent)`; see
-/// [`linear_params`] for the mismatched-variant case.
+/// `dsc->params.radial` as `(focal, end, focal_extent, end_extent)`, read
+/// through the union like upstream.
 #[cfg(feature = "complex-gradients")]
 fn radial_params(dsc: &GradDsc) -> (Point, Point, Point, Point) {
-    match dsc.params {
-        GradParams::Radial {
-            focal,
-            focal_extent,
-            end,
-            end_extent,
-        } => (focal, end, focal_extent, end_extent),
-        _ => (
-            Point::default(),
-            Point::default(),
-            Point::default(),
-            Point::default(),
-        ),
-    }
+    let (focal, focal_extent, end, end_extent) = dsc.params.radial();
+    (focal, end, focal_extent, end_extent)
 }
 
-/// `dsc->params.conical` as `(center, start_angle, end_angle)`; see
-/// [`linear_params`] for the mismatched-variant case.
+/// `dsc->params.conical` as `(center, start_angle, end_angle)`, read through
+/// the union like upstream.
 #[cfg(feature = "complex-gradients")]
 fn conical_params(dsc: &GradDsc) -> (Point, i16, i16) {
-    match dsc.params {
-        GradParams::Conical {
-            center,
-            start_angle,
-            end_angle,
-        } => (center, start_angle, end_angle),
-        _ => (Point::default(), 0, 0),
-    }
+    dsc.params.conical()
 }
 
 /**********************
@@ -853,6 +831,7 @@ mod tests {
     #[cfg(feature = "complex-gradients")]
     mod complex {
         use super::*;
+        use ferrovgl_core::draw::grad::GradParams;
         use ferrovgl_core::misc::types::coord::pct;
 
         fn result(width: usize) -> GradCalc {
@@ -1038,6 +1017,84 @@ mod tests {
                 assert_eq!(r.color_map[x], st.cgrad.color_map[w], "x = {x}");
                 assert_eq!(r.opa_map[x], st.cgrad.opa_map[w], "x = {x}");
             }
+        }
+
+        #[test]
+        fn linear_setup_reads_focal_written_union_words() {
+            // lv_grad_radial_set_focal() on a linear descriptor rewrites the
+            // aliased linear.start / end: (20, 10) -> (25, 10).
+            let mut g = red_blue();
+            g.linear_init(0, 0, 100, 0, GradExtend::Pad);
+            g.radial_set_focal(20, 10, 5);
+            let coords = Area::from_size(0, 0, 100, 20);
+            let st = linear_setup(&g, &coords);
+            // dx = 5, dy = 0, l2 = 25: a = (5 << 16) / 25.
+            assert_eq!(st.a, 13107);
+            assert_eq!(st.b, 0);
+            let mut e = red_blue();
+            e.linear_init(20, 10, 25, 10, GradExtend::Pad);
+            let se = linear_setup(&e, &coords);
+            assert_eq!((st.a, st.b, st.c), (se.a, se.b, se.c));
+        }
+
+        #[test]
+        fn radial_setup_reads_end_words_left_by_radial_init() {
+            // linear_init() overwrites only the first 16 bytes; switching dir
+            // back to RADIAL reads focal = linear.start, focal_extent =
+            // linear.end and the old radial end / end_extent.
+            let mut g = red_blue();
+            g.radial_init(50, 50, 90, 50, GradExtend::Pad);
+            g.linear_init(0, 0, 100, 0, GradExtend::Pad);
+            g.dir = GradDir::Radial;
+            let coords = Area::from_size(0, 0, 100, 100);
+            let st = radial_setup(&g, &coords);
+            let mut e = red_blue();
+            e.radial_init(50, 50, 90, 50, GradExtend::Pad);
+            e.params = GradParams::Radial {
+                focal: Point::new(0, 0),
+                focal_extent: Point::new(100, 0),
+                end: Point::new(50, 50),
+                end_extent: Point::new(90, 50),
+            };
+            let se = radial_setup(&e, &coords);
+            assert_eq!((st.x0, st.y0, st.r0), (0, 0, 100));
+            assert_eq!(
+                (
+                    st.inv_dr,
+                    st.a4,
+                    st.inv_a4,
+                    st.dx,
+                    st.bpx,
+                    st.bpy,
+                    st.bc,
+                    st.clip_area
+                ),
+                (
+                    se.inv_dr,
+                    se.a4,
+                    se.inv_a4,
+                    se.dx,
+                    se.bpx,
+                    se.bpy,
+                    se.bc,
+                    se.clip_area
+                )
+            );
+        }
+
+        #[test]
+        fn conical_setup_reads_angles_from_linear_end_x() {
+            // linear.end.x = 90 | (180 << 16) holds start_angle = 90,
+            // end_angle = 180 (little-endian layout of the int16_t pair).
+            let s = 90i16.to_ne_bytes();
+            let e = 180i16.to_ne_bytes();
+            let end_x = i32::from_ne_bytes([s[0], s[1], e[0], e[1]]);
+            let mut g = red_blue();
+            g.linear_init(50, 50, end_x, 0, GradExtend::Pad);
+            g.dir = GradDir::Conical;
+            let coords = Area::from_size(0, 0, 100, 100);
+            let st = conical_setup(&g, &coords);
+            assert_eq!((st.x0, st.y0, st.a, st.da), (50, 50, 90, 90));
         }
 
         #[test]
