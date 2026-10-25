@@ -29,10 +29,17 @@
 //!   substitutes for the source). The buffer is taken out of the layer for
 //!   the duration of the core callback and put back afterwards, so the
 //!   callback can borrow the [`DrawCtx`] mutably.
-//! - [`ImageSrc::Path`] (needs a file system and a decoder registry),
-//!   [`ImageSrc::Symbol`] (the binary decoder only reports its info) and
-//!   compressed images (RLE / LZ4) cannot be opened: the open fails and
-//!   nothing is drawn, like an upstream build without a matching decoder.
+//! - [`ImageSrc::Path`] (needs a file system and a decoder registry) and
+//!   [`ImageSrc::Symbol`] (the binary decoder only reports its info) cannot
+//!   be opened: the open fails and nothing is drawn, like an upstream build
+//!   without a matching decoder.
+//! - Compressed images (`LV_IMAGE_FLAGS_COMPRESSED`) fail to open exactly
+//!   like upstream: `decode_compressed()` needs `LV_BIN_DECODER_RAM_LOAD`,
+//!   which the parity configuration (`full.defconfig`) leaves disabled.
+//!
+//! Which of these paths is taken is decided like upstream by
+//! [`image_src_get_type`] (the first byte of the source), not by the
+//! [`ImageSrc`] variant alone.
 //!
 //! Custom drawn images (`LV_IMAGE_FLAGS_CUSTOM_DRAW`, a decoder's
 //! `custom_draw_cb`) need a decoder too; that branch of `lv_draw_image` is a
@@ -473,26 +480,40 @@ impl Ui {
 
 /// `lv_image_src_get_type()`
 ///
-/// The variant decides between variable, file and symbol; like upstream a
-/// variable source whose header magic is neither `LV_IMAGE_HEADER_MAGIC` nor
+/// Like upstream the type is decided by the first byte of the source: the
+/// header magic of an image descriptor / draw buffer, the first byte of a
+/// path or symbol string (`0` for an empty string, the terminator). A
+/// variable source whose magic is neither `LV_IMAGE_HEADER_MAGIC` nor
 /// `LV_IMAGE_HEADER_LEGACY` (a freed or corrupted buffer) is
-/// `LV_IMAGE_SRC_UNKNOWN`.
+/// `LV_IMAGE_SRC_UNKNOWN`. [`ImageSrc::Layer`] stands for the layer's
+/// `draw_buf` and is always `LV_IMAGE_SRC_VARIABLE`.
 pub fn image_src_get_type(src: &ImageSrc) -> ImageSrcType {
-    let magic = match src {
+    let first_byte = match src {
+        ImageSrc::None => return ImageSrcType::Unknown,
         ImageSrc::Static(d) => d.header.magic,
         ImageSrc::Shared(d) => d.header.magic,
         ImageSrc::DrawBuf(b) => b.header.magic,
-        _ => return src.src_type(),
+        ImageSrc::Layer(_) => return ImageSrcType::Variable,
+        ImageSrc::Path(s) | ImageSrc::Symbol(s) => s.as_bytes().first().copied().unwrap_or(0),
     };
+
+    /*The first byte shows the type of the image source*/
+    if (0x20..=0x7F).contains(&first_byte) {
+        return ImageSrcType::File; /*If it's an ASCII character then it's file name*/
+    }
+
+    if first_byte >= 0x80 {
+        return ImageSrcType::Symbol; /*Symbols begins after 0x7F*/
+    }
 
     /*Only LV_IMAGE_HEADER_MAGIC and LV_IMAGE_HEADER_LEGACY are valid.
      *Any other value indicates a freed or corrupted buffer.*/
-    if magic == IMAGE_HEADER_MAGIC || magic == IMAGE_HEADER_LEGACY {
+    if first_byte == IMAGE_HEADER_MAGIC || first_byte == IMAGE_HEADER_LEGACY {
         return ImageSrcType::Variable;
     }
 
     #[cfg(feature = "log")]
-    log::error!("image src invalid magic: 0x{:02X}", magic);
+    log::error!("image src invalid magic: 0x{:02X}", first_byte);
     ImageSrcType::Unknown
 }
 
@@ -625,12 +646,19 @@ fn img_decode_and_draw(
 /// [`ImageSrc::Layer`] needs the [`DrawCtx`] and returns `None` here;
 /// [`ImageSrc::Path`] needs a file system and returns `None` too.
 pub fn image_header_of(src: &ImageSrc) -> Option<ImageHeader> {
-    let header = match src {
-        ImageSrc::None => {
-            crate::misc::check_arg_failed("src != NULL");
-            return None;
-        }
-        ImageSrc::Static(_) | ImageSrc::Shared(_) | ImageSrc::DrawBuf(_) => {
+    if src.is_none() {
+        crate::misc::check_arg_failed("src != NULL");
+        return None;
+    }
+    /*A layer needs the draw context*/
+    if matches!(src, ImageSrc::Layer(_)) {
+        return None;
+    }
+
+    /*lv_image_decoder_get_info(): dsc.src_type = lv_image_src_get_type(src)*/
+    let header = match image_src_get_type(src) {
+        ImageSrcType::Variable => {
+            /*A string starting with the magic byte cannot be read as a descriptor*/
             let (header, data) = variable_parts(src)?;
             /*image_decoder_get_info(): the variables should have valid data*/
             if data.is_empty() {
@@ -639,7 +667,9 @@ pub fn image_header_of(src: &ImageSrc) -> Option<ImageHeader> {
             /*lv_bin_decoder_info(): lv_memcpy(header, &image->header, ...)*/
             header
         }
-        ImageSrc::Symbol(_) => {
+        /*No file system / decoder registry*/
+        ImageSrcType::File => return None,
+        ImageSrcType::Symbol => {
             /*The size depend on the font but it is unknown here. It should be handled outside of the
              *function*/
             /*Symbols always have transparent parts. Important because of cover check in the draw
@@ -651,8 +681,11 @@ pub fn image_header_of(src: &ImageSrc) -> Option<ImageHeader> {
                 ..ImageHeader::default()
             }
         }
-        /*No file system / decoder registry; a layer needs the draw context*/
-        ImageSrc::Path(_) | ImageSrc::Layer(_) => return None,
+        ImageSrcType::Unknown => {
+            #[cfg(feature = "log")]
+            log::warn!("Image get info found unknown src type");
+            return None;
+        }
     };
     finish_info(header)
 }
@@ -881,16 +914,18 @@ fn image_decoder_open(ctx: &mut DrawCtx, src: &ImageSrc) -> Option<DecoderDsc> {
     let header = image_decoder_get_info(ctx, src)?;
     let mut dsc = DecoderDsc::new(header);
 
-    match src {
-        ImageSrc::Layer(l) => {
-            /*The layer's `draw_buf` is used in place*/
-            let buf = ctx.layer_mut(*l)?.draw_buf.take()?;
-            dsc.decoded = Some(Decoded::Owned(buf));
-            dsc.layer = Some(*l);
-            return Some(dsc);
-        }
-        ImageSrc::Static(_) | ImageSrc::Shared(_) | ImageSrc::DrawBuf(_) => {}
-        _ => return None,
+    if let ImageSrc::Layer(l) = src {
+        /*The layer's `draw_buf` is used in place*/
+        let buf = ctx.layer_mut(*l)?.draw_buf.take()?;
+        dsc.decoded = Some(Decoded::Owned(buf));
+        dsc.layer = Some(*l);
+        return Some(dsc);
+    }
+
+    /*lv_bin_decoder_open(): only LV_IMAGE_SRC_FILE (no file system here) and
+     *LV_IMAGE_SRC_VARIABLE can be opened*/
+    if image_src_get_type(src) != ImageSrcType::Variable {
+        return None;
     }
 
     let (image_header, data) = variable_parts(src)?;
@@ -901,7 +936,10 @@ fn image_decoder_open(ctx: &mut DrawCtx, src: &ImageSrc) -> Option<DecoderDsc> {
 
     let cf = image_header.cf;
     if dsc.header.flags.contains(ImageFlags::COMPRESSED) {
-        /*decode_compressed(): RLE / LZ4 are not supported*/
+        /*decode_compressed() with LV_BIN_DECODER_RAM_LOAD == 0 (the parity configuration):
+         *"Need LV_BIN_DECODER_RAM_LOAD to be enabled"*/
+        #[cfg(feature = "log")]
+        log::error!("Need LV_BIN_DECODER_RAM_LOAD to be enabled");
         return None;
     } else if cf.is_indexed() {
         /*decode_indexed() with LV_BIN_DECODER_RAM_LOAD == 0: only the palette is loaded,
@@ -1336,8 +1374,8 @@ mod tests {
         assert_eq!(h.cf, ColorFormat::Argb8888);
         assert_eq!((h.w, h.h, h.stride), (2, 2, 8));
 
-        /*Symbol: 1x1 A8, no magic*/
-        let h = image_header_of(&ImageSrc::Symbol(SharedRef::Static("x"))).unwrap();
+        /*Symbol (first byte >= 0x80): 1x1 A8, no magic*/
+        let h = image_header_of(&ImageSrc::Symbol(SharedRef::Static("\u{F00C}"))).unwrap();
         assert_eq!((h.w, h.h, h.cf, h.stride, h.magic), (1, 1, ColorFormat::A8, 1, 0));
 
         #[cfg(not(feature = "check-arg-panic"))]
@@ -1437,6 +1475,73 @@ mod tests {
         ctx.draw_image(layer, &dsc, &Area::new(0, 0, 1, 1));
         dsc.scale_x = SCALE_NONE;
         dsc.src = ImageSrc::Path(SharedRef::Static("A:nope.bin"));
+        ctx.draw_image(layer, &dsc, &Area::new(0, 0, 1, 1));
+        assert!(ctx.layer(layer).unwrap().tasks.is_empty());
+    }
+
+    /*Fidelity review: the source type comes from the first byte, like upstream*/
+    #[test]
+    fn src_get_type_first_byte_of_strings() {
+        let path = |s: &'static str| ImageSrc::Path(SharedRef::Static(s));
+        let sym = |s: &'static str| ImageSrc::Symbol(SharedRef::Static(s));
+        /*Empty string: the terminator 0 is LV_IMAGE_HEADER_LEGACY*/
+        assert_eq!(image_src_get_type(&path("")), ImageSrcType::Variable);
+        assert_eq!(image_src_get_type(&path("\u{1}x")), ImageSrcType::Unknown);
+        assert_eq!(image_src_get_type(&sym("abc")), ImageSrcType::File);
+        assert_eq!(image_src_get_type(&path("\u{F00C}")), ImageSrcType::Symbol);
+        assert_eq!(image_src_get_type(&path(" ")), ImageSrcType::File);
+        assert_eq!(image_src_get_type(&path("\u{7F}")), ImageSrcType::File);
+        assert_eq!(image_src_get_type(&path("\u{1F}")), ImageSrcType::Unknown);
+        assert_eq!(image_src_get_type(&path("\u{19}")), ImageSrcType::Variable);
+    }
+
+    #[test]
+    fn src_get_type_magic_ranges() {
+        let with_magic = |m: u8| {
+            let mut d = IMG_ARGB.clone();
+            d.header.magic = m;
+            image_src_get_type(&ImageSrc::Shared(Rc::new(d)))
+        };
+        assert_eq!(with_magic(IMAGE_HEADER_MAGIC), ImageSrcType::Variable);
+        assert_eq!(with_magic(IMAGE_HEADER_LEGACY), ImageSrcType::Variable);
+        assert_eq!(with_magic(IMAGE_HEADER_DEADBEEF), ImageSrcType::Unknown);
+        assert_eq!(with_magic(0x41), ImageSrcType::File);
+        assert_eq!(with_magic(0x80), ImageSrcType::Symbol);
+    }
+
+    #[test]
+    fn header_and_open_follow_src_type() {
+        let mut ctx = DrawCtx::new();
+        let with_magic = |m: u8| {
+            let mut d = IMG_ARGB.clone();
+            d.header.magic = m;
+            ImageSrc::Shared(Rc::new(d))
+        };
+        /*Corrupted magic: "unknown src type" -> INVALID*/
+        let bad = with_magic(IMAGE_HEADER_DEADBEEF);
+        assert!(image_header_of(&bad).is_none());
+        assert!(image_decoder_open(&mut ctx, &bad).is_none());
+        /*Legacy magic (0) is still a variable*/
+        assert!(image_header_of(&with_magic(IMAGE_HEADER_LEGACY)).is_some());
+        /*A first byte >= 0x80 is treated as a symbol: 1x1 A8 info, cannot be opened*/
+        let s = with_magic(0x80);
+        let h = image_header_of(&s).unwrap();
+        assert_eq!((h.w, h.h, h.cf), (1, 1, ColorFormat::A8));
+        assert!(image_decoder_open(&mut ctx, &s).is_none());
+        /*A symbol string starting with ASCII is a file: no file system*/
+        assert!(image_header_of(&ImageSrc::Symbol(SharedRef::Static("abc"))).is_none());
+        /*A path starting with a symbol byte reports the symbol info*/
+        let h = image_header_of(&ImageSrc::Path(SharedRef::Static("\u{F00C}"))).unwrap();
+        assert_eq!((h.w, h.h, h.cf), (1, 1, ColorFormat::A8));
+    }
+
+    #[test]
+    fn draw_image_corrupted_magic_draws_nothing() {
+        let (mut ctx, layer) = ctx_with_layer(Area::new(0, 0, 99, 99));
+        let mut dsc = DrawImageDsc::new();
+        let mut d = IMG_ARGB.clone();
+        d.header.magic = IMAGE_HEADER_DEADBEEF;
+        dsc.src = ImageSrc::Shared(Rc::new(d));
         ctx.draw_image(layer, &dsc, &Area::new(0, 0, 1, 1));
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
     }
