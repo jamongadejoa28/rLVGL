@@ -7,7 +7,16 @@
 //!
 //! Observer binding (`lv_arc_bind_value()`, `arc_value_changed_event_cb()`,
 //! `arc_value_observer_cb()`; `LV_USE_OBSERVER=y` in the parity config) is
-//! declared in this crate's `observer.rs`.
+//! NOT ported by this module: `Arc::bind_value()` is declared in this crate's
+//! `observer.rs` and stays a `todo!()` skeleton until the core subject/observer
+//! API (`ferrovgl_core::core::observer`) is ported. When it is, port it 1:1:
+//! return `None` unless the subject is `INT` or `FLOAT`; add a
+//! `VALUE_CHANGED` event callback that stores `lv_arc_get_value()` with
+//! `lv_subject_set_int()` (or `lv_subject_set_float((float)value)` for a
+//! `FLOAT` subject); then `lv_subject_add_observer_obj()` an observer that
+//! calls `lv_arc_set_value(target, subject->value.num)` (or
+//! `(int32_t)subject->value.float_v`, truncating). None of `test_arc.c` uses
+//! it.
 //!
 //! `lv_value_precise_t` is `f32` with `LV_USE_FLOAT` (the parity config) and
 //! `i32` otherwise; [`Precise`] keeps the C conversions and arithmetic of both
