@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ferrovgl demo</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #e8e8e8; --fg: #222; --muted: #666; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1d1f21; --fg: #ddd; --muted: #999; } }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+           font: 14px/1.4 system-ui, sans-serif; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+    h1 { font-size: 16px; margin: 0; }
+    #hint, #status { color: var(--muted); }
+    #status.error { color: #d33; }
+    /* No border or padding: pointer mapping uses the canvas' bounding rect. */
+    canvas { display: block; border: 0; padding: 0;
+             box-shadow: 0 2px 12px rgb(0 0 0 / 25%); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ferrovgl</h1>
+    <select id="scene" hidden aria-label="Example"></select>
+    <span id="hint">Click, drag, type, Tab / Shift+Tab, wheel, middle-click.</span>
+    <span id="status">Loading…</span>
+  </header>
+  <canvas id="ferrovgl" width="800" height="480"></canvas>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

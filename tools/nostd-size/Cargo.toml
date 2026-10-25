@@ -1,0 +1,45 @@
+[package]
+name = "ferrovgl-nostd-size"
+description = "no_std Cortex-M size probe for ferrovgl (measured by `cargo xtask size-report`)"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+# Standalone package with its own lockfile (excluded from the root
+# workspace): it only builds for bare-metal ARM targets.
+[workspace]
+
+# Path dependencies only; no crates.io dependency is added here (the
+# ferrovgl crates bring `bitflags`, which is pinned by `Cargo.lock`).
+# The feature set is what a minimal "label + button" application enables;
+# changing it changes the measured size, so update `baseline.toml` with
+# `cargo xtask size-report --update-baseline` in the same commit.
+[dependencies]
+ferrovgl-core = { path = "../../crates/ferrovgl-core", default-features = false }
+ferrovgl-draw-sw = { path = "../../crates/ferrovgl-draw-sw", default-features = false, features = ["complex", "cf-rgb565"] }
+ferrovgl-fonts = { path = "../../crates/ferrovgl-fonts", default-features = false, features = ["montserrat-14"] }
+ferrovgl-widgets = { path = "../../crates/ferrovgl-widgets", default-features = false, features = ["label", "button"] }
+
+# The allocator, also built and tested on the host.
+[lib]
+name = "ferrovgl_nostd_size"
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "ferrovgl-nostd-size"
+test = false
+bench = false
+
+[profile.dev]
+panic = "abort"
+
+# A typical size-optimised firmware profile.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = 0
+incremental = false

@@ -14,6 +14,12 @@ categories.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Render with the same draw-sw, core and widget feature set the upstream
+# reference images use (the workspace dependencies have default features off).
+default = ["full-render"]
+full-render = ["ferrovgl-core/default", "ferrovgl-draw-sw/default", "ferrovgl-widgets/default"]
+
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["std"] }
 ferrovgl-draw-sw = { workspace = true, features = ["std"] }
@@ -31,3 +37,12 @@ web-sys = { workspace = true, features = [
 
 [lints]
 workspace = true
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-pack downloads (and caches) binaryen for this step; pass
+# `--no-opt` to skip it when offline.
+wasm-opt = ["-Os"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

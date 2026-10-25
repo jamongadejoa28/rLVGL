@@ -1,0 +1,4 @@
+# Link the bare-metal ARM probe with the bundled rust-lld (also the target
+# default; stated explicitly because the measured sizes depend on it).
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+linker = "rust-lld"

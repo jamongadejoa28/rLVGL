@@ -12,8 +12,13 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = []
+default = ["complex-gradients"]
 std = ["ferrovgl-core/std", "ferrovgl-widgets/std"]
+# Build the `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` branch of the gradient examples
+# (`lv_example_style_gradient_{buttons,conic,radial}`); without it they show
+# the upstream "is not enabled" label. Enable it together with the
+# `complex-gradients` feature of the `ferrovgl-draw-sw` that renders them.
+complex-gradients = []
 
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["float", "flex", "grid", "observer", "snapshot"] }
@@ -22,6 +27,11 @@ ferrovgl-fonts = { workspace = true, features = ["montserrat-14", "default-monts
 
 [dev-dependencies]
 ferrovgl-test = { workspace = true }
+
+# The table covers the reference configuration (complex gradients on).
+[[test]]
+name = "snapshots"
+required-features = ["complex-gradients"]
 
 [lints]
 workspace = true

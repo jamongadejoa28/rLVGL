@@ -1,0 +1,19 @@
+//! `examples/widgets/buttonmatrix` (`lv_example_buttonmatrix.h`). Every example is ported.
+
+mod lv_example_buttonmatrix_button_ctrl;
+mod lv_example_buttonmatrix_button_width;
+mod lv_example_buttonmatrix_event;
+mod lv_example_buttonmatrix_map;
+mod lv_example_buttonmatrix_one_checked;
+mod lv_example_buttonmatrix_popover;
+mod lv_example_buttonmatrix_recolor;
+mod lv_example_buttonmatrix_styling;
+
+pub use lv_example_buttonmatrix_button_ctrl::lv_example_buttonmatrix_button_ctrl;
+pub use lv_example_buttonmatrix_button_width::lv_example_buttonmatrix_button_width;
+pub use lv_example_buttonmatrix_event::lv_example_buttonmatrix_event;
+pub use lv_example_buttonmatrix_map::lv_example_buttonmatrix_map;
+pub use lv_example_buttonmatrix_one_checked::lv_example_buttonmatrix_one_checked;
+pub use lv_example_buttonmatrix_popover::lv_example_buttonmatrix_popover;
+pub use lv_example_buttonmatrix_recolor::lv_example_buttonmatrix_recolor;
+pub use lv_example_buttonmatrix_styling::lv_example_buttonmatrix_styling;

@@ -1,0 +1,16 @@
+# Section sizes in bytes of the no_std size probe (tools/nostd-size),
+# release profile. Written by `cargo xtask size-report --update-baseline`;
+# `cargo xtask size-report` fails if .text grows more than 5%.
+# Measured with rustc 1.99.1 (58cf8f9c3 2026-10-13)
+
+[thumbv7em-none-eabihf]
+text = 202328
+rodata = 17568
+data = 0
+bss = 80912
+
+[thumbv6m-none-eabi]
+text = 207384
+rodata = 17568
+data = 0
+bss = 80912
