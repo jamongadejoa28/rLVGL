@@ -5,6 +5,36 @@
 컴파일되지 않았지만, 아래 재개 작업으로 **M1 첫 픽셀 종료 조건을
 충족했다.** 과거 감사 수치와 최신 구현/검증 상태를 구분해서 읽어야 한다.
 
+## 10차 재개: 참조 이미지 범위 분류, 패리티 테스트 26개 파일, 0.1.0 릴리스 준비
+
+범위 분류기가 upstream `tests/ref_imgs` 976장을 v0.1 범위(472장)와
+범위 밖(504장, 이유 기록)으로 나눈 `crates/ferrovgl-test/parity_scope.toml`을
+만들고, 8개 패리티 트랙과 릴리스 트랙을 worktree에서 병렬로 진행했다.
+라이브러리 코드는 바뀌지 않았고 모든 트랙이 테스트·자산만 추가했다.
+
+- 패리티 포팅: `test_render_to_*.c` 8종(272장), flex(`test_align_flex`,
+  `test_flex_grow`, `test_margin_flex`), `test_obj_pos`/`test_margin_align`/
+  `test_obj_flags`, `test_display`/`test_clip_corner`/`test_draw_dropshadow`/
+  `test_draw_layer`/`test_layer_transform`/`test_bin_decoder`,
+  `test_draw_label`/`test_draw_letter`, `test_label`, `test_canvas`/
+  `test_draw_blend`/`test_draw_blur`, `test_grid`/`test_grid_fr`/`test_margin_grid`.
+- 릴리스: 크레이트별 README·LICENSE·NOTICE·TRADEMARK, ferrovgl-fonts 라이선스
+  (`(MIT OR Apache-2.0) AND OFL-1.1 AND Bitstream-Vera`), CHANGELOG,
+  CONTRIBUTING, release-plz 설정, deny.toml 예외.
+- 통합: `ferrovgl-test`의 draw-sw `cf-*`·fonts `montserrat-*` feature 충돌은
+  양쪽 합집합으로 해결. `cargo xtask parity-report`가 범위 표를 읽어 범위 내
+  커버리지(일치/범위 내)와 미일치 이미지·이유를 출력하고, 표의 `matched`가
+  `target/parity`와 다르면 알린다.
+
+### 10차 검증 결과
+
+| 검사 | 결과 |
+|---|---|
+| workspace all-features 테스트 | **1503 통과, 0 실패, 278 ignored** |
+| `ferrovgl-test --include-ignored` | **632 통과**; 새 실행에서 참조 PNG **474/474** byte-exact |
+| 범위 내 커버리지 | **472/472** (범위 밖 이미지 2장도 일치: `widgets/canvas_1`, `draw/draw_layer_bitmap_mask_not_masked`) |
+| clippy, nostd-check, mapping `--check`, rustdoc | 통과 |
+
 ## 9차 재개: 하네스 정합, core 보완, 브라우저 백엔드, 예제 132개, 매핑·Miri·크기
 
 공유 설정 커밋(`6dd3f7b`: `ferrovgl-examples` 크레이트, web-sys/js-sys,
