@@ -1294,8 +1294,9 @@ pub fn ap_strlen(txt: &str) -> usize {
     ap_strlen_bytes(txt.as_bytes())
 }
 
-/// [`ap_strlen`] on raw bytes.
-fn ap_strlen_bytes(txt: &[u8]) -> usize {
+/// `lv_text_ap_strlen()` on raw bytes ([`ap_strlen`] for text that is not
+/// valid UTF-8: an invalid byte counts as one byte).
+pub fn ap_strlen_bytes(txt: &[u8]) -> usize {
     let mut chars_cnt: u32 = 0;
 
     let txt_length = get_encoded_length(txt);

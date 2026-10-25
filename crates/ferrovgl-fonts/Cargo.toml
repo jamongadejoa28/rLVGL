@@ -39,8 +39,7 @@ montserrat-28-compressed = []
 default-montserrat-14 = ["montserrat-14"]
 unscii-8 = []
 unscii-16 = []
-# `lv_font_dejavu_16_persian_hebrew` (LV_FONT_DEJAVU_16_PERSIAN_HEBREW). No data yet:
-# `data/dejavu_16_persian_hebrew.lvfnt` is not generated, so the feature adds nothing.
+# `lv_font_dejavu_16_persian_hebrew` (LV_FONT_DEJAVU_16_PERSIAN_HEBREW).
 dejavu-16-persian-hebrew = []
 ttf = []
 

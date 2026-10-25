@@ -6,6 +6,8 @@
 //! font costs no RAM.
 //!
 //! Montserrat is licensed under the SIL Open Font License 1.1 (`OFL.txt`).
+//! DejaVu fonts are under the Bitstream Vera / DejaVu licence (see
+//! `data/SOURCE.md`).
 
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -75,13 +77,9 @@ builtin_font!(/// `lv_font_unscii_8` (1 bpp)
 builtin_font!(/// `lv_font_unscii_16` (1 bpp)
     "unscii-16", UNSCII_16, "unscii_16");
 
-// `lv_font_dejavu_16_persian_hebrew` (feature "dejavu-16-persian-hebrew"):
-// the static is left out until `cargo xtask fonts` has converted
-// `src/font/lv_font_dejavu_16_persian_hebrew.c` into
-// `data/dejavu_16_persian_hebrew.lvfnt`; `builtin_font!` would fail on the
-// missing file. Then add:
-// builtin_font!(/// `lv_font_dejavu_16_persian_hebrew`
-//     "dejavu-16-persian-hebrew", DEJAVU_16_PERSIAN_HEBREW, "dejavu_16_persian_hebrew");
+builtin_font!(/// `lv_font_dejavu_16_persian_hebrew` (DejaVu Sans 16 px, 4 bpp: ASCII,
+    /// Hebrew, Arabic and the Arabic presentation forms)
+    "dejavu-16-persian-hebrew", DEJAVU_16_PERSIAN_HEBREW, "dejavu_16_persian_hebrew");
 
 /// `LV_FONT_DEFAULT`: the font used when none is set.
 #[cfg(feature = "default-montserrat-14")]

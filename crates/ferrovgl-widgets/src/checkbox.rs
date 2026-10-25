@@ -5,9 +5,8 @@
 //!
 //! Like the label widget, the `lv_checkbox_set_text(obj, NULL)` form is
 //! [`Checkbox::refresh_text`]. The parity configuration enables
-//! `LV_USE_ARABIC_PERSIAN_CHARS`, but `lv_text_ap_proc()` is not ported in the
-//! core yet; the copy is therefore the identity conversion, which matches C for
-//! text without Arabic/Persian letters. `LV_USE_OBJ_PROPERTY` is disabled in the
+//! `LV_USE_ARABIC_PERSIAN_CHARS` (the `arabic-persian-chars` feature): the text
+//! is copied through `lv_text_ap_proc()`. `LV_USE_OBJ_PROPERTY` is disabled in the
 //! parity configuration, so the property table is not provided.
 
 use alloc::boxed::Box;
@@ -141,8 +140,13 @@ fn set_text_internal(ui: &mut Ui, obj: Obj, txt: Option<&str>) {
     };
 
     if let Some(txt) = txt {
-        // `lv_strlen` / `lv_strcpy` stop at the first NUL. `lv_text_ap_proc()`
-        // is the identity here (see the module documentation).
+        // `lv_text_ap_proc()` (`LV_USE_ARABIC_PERSIAN_CHARS`) / `lv_strcpy` stop at the
+        // first NUL.
+        #[cfg(feature = "arabic-persian-chars")]
+        let processed = ferrovgl_core::misc::text_ap::ap_proc(txt);
+        #[cfg(feature = "arabic-persian-chars")]
+        let txt: &str = &processed;
+        #[cfg(not(feature = "arabic-persian-chars"))]
         let txt = txt.split('\0').next().unwrap_or("");
         cb.txt = Some(SharedRef::Shared(Rc::from(txt)));
         cb.static_txt = false;

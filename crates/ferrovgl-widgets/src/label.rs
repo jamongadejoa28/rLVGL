@@ -5,9 +5,12 @@
 //! has owned or static storage, and draw tasks share an Rc text snapshot.
 //!
 //! Observer binding (`lv_label_bind_text()`) is declared in this crate's
-//! `observer.rs`; translation and Arabic shaping require core subsystems
-//! that are not implemented yet and are not exposed here. BiDi paragraph
-//! processing has the same identity fallback as the current core text renderer.
+//! `observer.rs`; translation requires a core subsystem that is not
+//! implemented yet and is not exposed here. `LV_USE_ARABIC_PERSIAN_CHARS`
+//! (the `arabic-persian-chars` feature) passes copied text through
+//! `lv_text_ap_proc()`, and `LV_USE_BIDI` (the `bidi` feature) reorders the
+//! lines in `lv_label_get_letter_pos()` / `lv_label_get_letter_on()` with
+//! the `custom_neutrals` of `ui.draw.bidi`.
 //!
 //! Inserting into dotted text intentionally restores the original text first.
 //! Upstream inserts into the visible byte buffer before restoring saved bytes;
@@ -26,6 +29,8 @@ use ferrovgl_core::draw::label::{DRAW_LABEL_NO_TXT_SEL, LabelDsc, LabelHint};
 use ferrovgl_core::font::{self, Font};
 use ferrovgl_core::misc::anim::{ANIM_REPEAT_INFINITE, Anim, AnimExec, AnimTarget};
 use ferrovgl_core::misc::event::{EventCallback, LvResult};
+#[cfg(feature = "bidi")]
+use ferrovgl_core::misc::text::BaseDir;
 use ferrovgl_core::misc::text::{
     self, LeadingTrim, TEXT_LEN_MAX, TextAlign, TextAttributes, TextCmdState, TextFlags,
 };
@@ -87,6 +92,18 @@ impl TextStorage {
         let mut bytes = text.as_bytes().to_vec();
         bytes.push(0);
         Self::Owned(bytes)
+    }
+    /// `copy_text_to_label()`: `lv_text_ap_proc()` with
+    /// `LV_USE_ARABIC_PERSIAN_CHARS`, else `lv_strcpy()`.
+    fn copied(text: &str) -> Self {
+        #[cfg(feature = "arabic-persian-chars")]
+        {
+            Self::owned(&ferrovgl_core::misc::text_ap::ap_proc(text))
+        }
+        #[cfg(not(feature = "arabic-persian-chars"))]
+        {
+            Self::owned(text)
+        }
     }
     fn is_static(&self) -> bool {
         matches!(self, Self::Static(_))
@@ -186,7 +203,7 @@ impl Label {
     pub fn set_text(self, ui: &mut Ui, text: &str) {
         revert_dots(ui, self.0);
         if let Some(label) = state_mut(ui, self.0) {
-            label.text = TextStorage::owned(text);
+            label.text = TextStorage::copied(text);
             label.update_draw_text();
         }
         mark_need_refr_text(ui, self.0);
@@ -199,7 +216,15 @@ impl Label {
         if let Some(label) = state_mut(ui, self.0)
             && label.text.is_static()
         {
-            label.text = TextStorage::owned(label.text.as_str());
+            label.text = TextStorage::copied(label.text.as_str());
+            label.update_draw_text();
+        }
+        /*`label->text == text && label->static_txt == 0`: `lv_text_ap_proc(label->text, label->text)`*/
+        #[cfg(feature = "arabic-persian-chars")]
+        if let Some(label) = state_mut(ui, self.0)
+            && let TextStorage::Owned(_) = label.text
+        {
+            label.text = TextStorage::copied(label.text.as_str());
             label.update_draw_text();
         }
         mark_need_refr_text(ui, self.0);
@@ -341,9 +366,10 @@ impl Label {
     pub fn letter_pos(self, ui: &Ui, character: u32) -> Point {
         letter_pos(ui, self.0, character)
     }
-    /// `lv_label_get_letter_on()`. BiDi uses the current core's identity fallback.
-    pub fn letter_on(self, ui: &Ui, position: Point, _bidi: bool) -> u32 {
-        letter_on(ui, self.0, position)
+    /// `lv_label_get_letter_on()`. `bidi` processes the line with BiDi
+    /// first (ignored without `LV_USE_BIDI`).
+    pub fn letter_on(self, ui: &Ui, position: Point, bidi: bool) -> u32 {
+        letter_on(ui, self.0, position, bidi)
     }
     /// `lv_label_is_char_under_pos()`.
     pub fn is_char_under_pos(self, ui: &Ui, position: Point) -> bool {
@@ -520,7 +546,18 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
     descriptor.flag = label_flags(ui, obj);
     descriptor.base.layer = Some(layer_id);
     ui.obj_init_draw_label_dsc(obj, Part::MAIN, &mut descriptor);
-    descriptor.align = ui.obj_calculate_style_text_align(obj, Part::MAIN, &descriptor.text);
+    /*lv_bidi_calculate_align_internal(&label_draw_dsc.align, &label_draw_dsc.bidi_dir, label->text)*/
+    #[cfg(feature = "bidi")]
+    {
+        let text = descriptor.text.clone();
+        ui.draw
+            .bidi
+            .calculate_align(&mut descriptor.align, &mut descriptor.bidi_dir, text.as_bytes());
+    }
+    #[cfg(not(feature = "bidi"))]
+    if descriptor.align == TextAlign::Auto {
+        descriptor.align = TextAlign::Left;
+    }
     if descriptor.sel_start != LABEL_TEXT_SELECTION_OFF && descriptor.sel_end != LABEL_TEXT_SELECTION_OFF {
         descriptor.sel_color = ui.obj_get_style_text_color_filtered(obj, Part::SELECTED);
         descriptor.sel_bg_color = ui.obj_get_style_bg_color(obj, Part::SELECTED);
@@ -532,7 +569,19 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         && matches!(descriptor.align, TextAlign::Center | TextAlign::Right)
         && text_size.x > coords.width()
     {
-        descriptor.align = TextAlign::Left;
+        #[cfg(feature = "bidi")]
+        {
+            let base_dir = ui.obj_get_style_base_dir(obj, Part::MAIN);
+            descriptor.align = if base_dir == BaseDir::Rtl {
+                TextAlign::Right
+            } else {
+                TextAlign::Left
+            };
+        }
+        #[cfg(not(feature = "bidi"))]
+        {
+            descriptor.align = TextAlign::Left;
+        }
     }
     let Some(layer) = ui.draw.layer(layer_id) else {
         return;
@@ -741,7 +790,7 @@ fn refresh_text(ui: &mut Ui, obj: Obj) {
                 pos.y = pos.y - overflow - attrs.line_space;
             }
         }
-        let char_id = letter_on(ui, obj, pos);
+        let char_id = letter_on(ui, obj, pos, false);
         let value = Label(obj).text(ui);
         let mut byte_id = text::encoded_get_byte_id(value.as_bytes(), char_id);
         while byte_id as usize + LABEL_DOT_NUM > value.len() && byte_id > 0 {
@@ -784,7 +833,10 @@ fn refresh_scroll(ui: &mut Ui, obj: Obj, mode: LabelLongMode, size: Point, coord
             }
             continue;
         }
-        let end = match (mode, vertical) {
+        #[cfg_attr(not(feature = "bidi"), allow(unused_mut))]
+        let mut start = 0;
+        #[cfg_attr(not(feature = "bidi"), allow(unused_mut))]
+        let mut end = match (mode, vertical) {
             (LabelLongMode::Scroll, false) => coords.width() - size.x,
             (LabelLongMode::Scroll, true) => coords.height() - size.y - font::get_line_height(font.as_font()),
             (_, false) => {
@@ -792,7 +844,21 @@ fn refresh_scroll(ui: &mut Ui, obj: Obj, mode: LabelLongMode, size: Point, coord
             }
             (_, true) => -size.y - font::get_line_height(font.as_font()),
         };
-        animation.set_values(0, end);
+        /*`LV_USE_BIDI`: a horizontal scroll of RTL text runs from the far end back to 0*/
+        #[cfg(feature = "bidi")]
+        if !vertical {
+            let mut base_dir = ui.obj_get_style_base_dir(obj, Part::MAIN);
+
+            if base_dir == BaseDir::Auto {
+                base_dir = ui.draw.bidi.detect_base_dir(Label(obj).text(ui).as_bytes());
+            }
+
+            if base_dir == BaseDir::Rtl {
+                start = end;
+                end = 0;
+            }
+        }
+        animation.set_values(start, end);
         animation.exec = exec.clone();
         let current = ui
             .anim_get(AnimTarget::Obj(obj), Some(&exec))
@@ -803,7 +869,7 @@ fn refresh_scroll(ui: &mut Ui, obj: Obj, mode: LabelLongMode, size: Point, coord
             let limit = if vertical {
                 animation.duration
             } else {
-                Ui::anim_resolve_speed(duration, 0, end) as i32
+                Ui::anim_resolve_speed(duration, start, end) as i32
             };
             act_time = act_time.min(limit);
             animation.act_time = act_time;
@@ -817,7 +883,7 @@ fn refresh_scroll(ui: &mut Ui, obj: Obj, mode: LabelLongMode, size: Point, coord
             }
         } else {
             animation.set_duration(duration);
-            if !vertical && act_time < Ui::anim_resolve_speed(duration, 0, end) as i32 {
+            if !vertical && act_time < Ui::anim_resolve_speed(duration, start, end) as i32 {
                 animation.act_time = act_time;
             }
             if let Some(template) = &template {
@@ -832,7 +898,8 @@ fn refresh_scroll(ui: &mut Ui, obj: Obj, mode: LabelLongMode, size: Point, coord
             && act_time < 0
             && let Some(label) = state_mut(ui, obj)
         {
-            label.offset.x = 0;
+            /*If a delay is happening, apply the start value manually*/
+            label.offset.x = start;
         }
     }
 }
@@ -842,6 +909,19 @@ fn tail(value: &str, index: u32) -> &str {
 }
 fn byte(value: &str, index: u32) -> u8 {
     value.as_bytes().get(index as usize).copied().unwrap_or(0)
+}
+
+/// A BiDi line buffer (C: `lv_malloc`ed, NUL terminated) as a string that
+/// ends at its first NUL. `lv_bidi_process_paragraph()` moves whole
+/// characters of valid UTF-8 text, so the buffer is valid UTF-8.
+#[cfg(feature = "bidi")]
+fn bidi_str(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    match core::str::from_utf8(&buf[..end]) {
+        Ok(s) => s,
+        /* Not reached (see above): keep the valid prefix */
+        Err(e) => core::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
+    }
 }
 
 fn align_x(
@@ -900,8 +980,51 @@ fn letter_pos(ui: &Ui, obj: Obj, character: u32) -> Point {
         y += height + attrs.line_space;
         start = byte_id;
     }
-    let line = tail(value, start);
-    let mut x = text::get_width(line, byte_id.saturating_sub(start), font.as_font(), &attrs);
+    #[cfg(feature = "bidi")]
+    let mut mutable_bidi_txt: Vec<u8> = Vec::new();
+    #[cfg(feature = "bidi")]
+    let (line, visual_byte_pos): (&str, u32) = {
+        let mut base_dir = ui.obj_get_style_base_dir(obj, Part::MAIN);
+        if base_dir == BaseDir::Auto {
+            base_dir = ui.draw.bidi.detect_base_dir(value.as_bytes());
+        }
+
+        /*Handle Bidi*/
+        if next == byte_id {
+            let visual_byte_pos = if base_dir == BaseDir::Rtl {
+                0
+            } else {
+                byte_id.wrapping_sub(start)
+            };
+            (tail(value, start), visual_byte_pos)
+        } else {
+            let line_txt = tail(value, start).as_bytes();
+            let line_char_id = text::encoded_get_char_id(line_txt, byte_id.wrapping_sub(start));
+
+            /*`bool is_rtl;` is not written when the position is not found*/
+            let mut is_rtl = false;
+            let mut visual_char_pos = u32::from(ui.draw.bidi.get_visual_pos(
+                line_txt,
+                Some(&mut mutable_bidi_txt),
+                next.wrapping_sub(start) as u16,
+                base_dir,
+                line_char_id,
+                Some(&mut is_rtl),
+            ));
+            let bidi_txt = bidi_str(&mutable_bidi_txt);
+            if is_rtl {
+                visual_char_pos += 1;
+            }
+
+            (
+                bidi_txt,
+                text::encoded_get_byte_id(bidi_txt.as_bytes(), visual_char_pos),
+            )
+        }
+    };
+    #[cfg(not(feature = "bidi"))]
+    let (line, visual_byte_pos): (&str, u32) = (tail(value, start), byte_id.saturating_sub(start));
+    let mut x = text::get_width(line, visual_byte_pos, font.as_font(), &attrs);
     if character != start {
         x += attrs.letter_space;
     }
@@ -921,7 +1044,7 @@ fn letter_pos(ui: &Ui, obj: Obj, character: u32) -> Point {
     Point::new(x, y)
 }
 
-fn letter_on(ui: &Ui, obj: Obj, position: Point) -> u32 {
+fn letter_on(ui: &Ui, obj: Obj, position: Point, bidi: bool) -> u32 {
     let Some(label) = state(ui, obj) else { return 0 };
     let Some(font) = ui.obj_get_style_text_font(obj, Part::MAIN) else {
         return 0;
@@ -956,7 +1079,34 @@ fn letter_on(ui: &Ui, obj: Obj, position: Point) -> u32 {
         y += height + attrs.line_space;
         start = next;
     }
-    let line = tail(value, start);
+    #[cfg(feature = "bidi")]
+    let mut bidi_buf: Vec<u8>;
+    #[cfg(feature = "bidi")]
+    let mut txt_len: u32 = 0;
+    #[cfg(feature = "bidi")]
+    let line: &str = if bidi {
+        bidi_buf = alloc::vec![0; next.wrapping_sub(start) as usize + 1];
+        txt_len = next.wrapping_sub(start);
+        if next > 0 && byte(value, next - 1) == 0 && txt_len > 0 {
+            txt_len -= 1;
+        }
+        ui.draw.bidi.process_paragraph(
+            tail(value, start).as_bytes(),
+            Some(&mut bidi_buf),
+            txt_len,
+            ui.obj_get_style_base_dir(obj, Part::MAIN),
+            None,
+            0,
+        );
+        bidi_str(&bidi_buf)
+    } else {
+        tail(value, start)
+    };
+    #[cfg(not(feature = "bidi"))]
+    let line: &str = {
+        let _ = bidi;
+        tail(value, start)
+    };
     let align = ui.obj_calculate_style_text_align(obj, Part::MAIN, value);
     let mut x = 0;
     align_x(
@@ -986,7 +1136,35 @@ fn letter_on(ui: &Ui, obj: Obj, position: Point) -> u32 {
         x += width + attrs.letter_space;
         active = index;
     }
-    text::encoded_get_char_id(line.as_bytes(), index) + text::encoded_get_char_id(value.as_bytes(), start)
+    let logical_pos: u32;
+    #[cfg(feature = "bidi")]
+    {
+        if bidi {
+            /*Handle Bidi*/
+            let cid = text::encoded_get_char_id(line.as_bytes(), index);
+            if byte(value, start + index) == 0 {
+                logical_pos = index;
+            } else {
+                let mut is_rtl = false;
+                logical_pos = u32::from(ui.draw.bidi.get_logical_pos(
+                    tail(value, start).as_bytes(),
+                    None,
+                    txt_len,
+                    ui.obj_get_style_base_dir(obj, Part::MAIN),
+                    cid,
+                    Some(&mut is_rtl),
+                )) + u32::from(is_rtl);
+            }
+        } else {
+            logical_pos = text::encoded_get_char_id(line.as_bytes(), index);
+        }
+    }
+    #[cfg(not(feature = "bidi"))]
+    {
+        logical_pos = text::encoded_get_char_id(line.as_bytes(), index);
+    }
+
+    logical_pos + text::encoded_get_char_id(value.as_bytes(), start)
 }
 
 fn char_under_pos(ui: &Ui, obj: Obj, pos: Point) -> bool {

@@ -25,8 +25,10 @@
 //!   `lv_font_get_glyph_bitmap(g, _draw_buf)`. The static-bitmap fast path
 //!   of `lv_draw_sw_letter.c` (`A8` glyph of a font with static bitmaps) is
 //!   left to the renderer and flagged as `glyph_data = StaticBitmap`.
-//! - BiDi (`LV_USE_BIDI`): the paragraph processing is stubbed (identity),
-//!   only the base direction / alignment resolution is kept.
+//! - BiDi (`LV_USE_BIDI`, the `bidi` feature): every line is reordered by
+//!   `lv_bidi_process_paragraph()` ([`crate::misc::bidi`]) into a
+//!   `line_end - line_start + 1` byte buffer, with the `custom_neutrals` of
+//!   [`DrawCtx::bidi`].
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -361,22 +363,18 @@ fn str_tail(txt: &str, i: u32) -> &str {
     txt.get(i as usize..).unwrap_or("")
 }
 
-/// The `LV_USE_BIDI` line copy of `lv_draw_label_iterate_characters()`:
-/// `txt[start..end]`, clamped to the text and cut back to a character
-/// boundary (`lv_bidi_process_paragraph()` drops a trailing partial
-/// character, zeroing its bytes).
+/// The `LV_USE_BIDI` line buffer of `lv_draw_label_iterate_characters()`
+/// as a string: it ends at its first NUL like every C reader of it. The
+/// buffer is valid UTF-8 because `lv_bidi_process_paragraph()` moves whole
+/// characters of a valid UTF-8 text (or mirrors single byte brackets).
 #[cfg(feature = "bidi")]
-#[inline]
-fn str_range(txt: &str, start: u32, end: u32) -> &str {
-    let tail = str_tail(txt, start);
-    let mut len = (end.wrapping_sub(start) as usize).min(tail.len());
-    if start > end {
-        len = 0;
+fn bidi_buf_str(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    match core::str::from_utf8(&buf[..end]) {
+        Ok(s) => s,
+        /* Not reached (see above): keep the valid prefix */
+        Err(e) => core::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
     }
-    while len > 0 && !tail.is_char_boundary(len) {
-        len -= 1;
-    }
-    &tail[..len]
 }
 
 /// `lv_strndup(txt, n)`: at most `n` bytes, stopping at a NUL, cut back to
@@ -408,30 +406,17 @@ fn resolved_font_ref(font: &FontRef, resolved: Option<&dyn Font>) -> Option<Font
 
 /// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 0`)
 #[cfg(not(feature = "bidi"))]
-fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
-    let _ = (txt, base_dir);
+fn bidi_calculate_align(ctx: &DrawCtx, align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
+    let _ = (ctx, txt, base_dir);
     if *align == TextAlign::Auto {
         *align = TextAlign::Left;
     }
 }
 
-/// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 1`). The BiDi
-/// algorithm is not ported: `lv_bidi_detect_base_dir()` is stubbed to
-/// `LV_BIDI_BASE_DIR_DEF` (LTR).
+/// `lv_bidi_calculate_align_internal()` (`LV_USE_BIDI == 1`)
 #[cfg(feature = "bidi")]
-fn bidi_calculate_align(align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
-    let _ = txt;
-    if *base_dir == BaseDir::Auto {
-        *base_dir = BaseDir::Ltr;
-    }
-
-    if *align == TextAlign::Auto {
-        if *base_dir == BaseDir::Rtl {
-            *align = TextAlign::Right;
-        } else {
-            *align = TextAlign::Left;
-        }
-    }
+fn bidi_calculate_align(ctx: &DrawCtx, align: &mut TextAlign, base_dir: &mut BaseDir, txt: &str) {
+    ctx.bidi.calculate_align(align, base_dir, txt.as_bytes());
 }
 
 /// `hex_char_to_num()`: convert a hexadecimal character to a number
@@ -635,7 +620,7 @@ fn label_iterate_characters_impl(
     let mut align = dsc.align;
     let mut base_dir = dsc.bidi_dir;
 
-    bidi_calculate_align(&mut align, &mut base_dir, txt);
+    bidi_calculate_align(ctx, &mut align, &mut base_dir, txt);
 
     if !dsc.flag.contains(TextFlags::EXPAND) {
         /*Normally use the label's width as width*/
@@ -806,12 +791,32 @@ fn label_iterate_characters_impl(
 
         /*Write all letter of a line*/
         let mut next_char_offset: u32 = 0;
-        /*`LV_USE_BIDI`: the line is copied into a buffer of `line_end - line_start + 1` bytes
-         *that `lv_bidi_process_paragraph()` zero-terminates at the line end, so the last
-         *letter of the line has no `letter_next` (no kerning). The reordering itself is
-         *stubbed to a copy, so the logical and visual orders are the same.*/
         #[cfg(feature = "bidi")]
-        let bidi_txt: &str = str_range(txt, line_start, line_end);
+        let bidi_buf: alloc::vec::Vec<u8> = {
+            let bidi_size = line_end.wrapping_sub(line_start);
+            let mut bidi_buf = alloc::vec![0u8; bidi_size as usize + 1];
+
+            /*
+             * has_bided = 1: already executed lv_bidi_process_paragraph.
+             * has_bided = 0: has not been executed lv_bidi_process_paragraph.*/
+            if dsc.has_bided {
+                for (k, b) in bidi_buf[..bidi_size as usize].iter_mut().enumerate() {
+                    *b = byte_at(bytes, line_start.wrapping_add(k as u32));
+                }
+            } else {
+                ctx.bidi.process_paragraph(
+                    str_tail(txt, line_start).as_bytes(),
+                    Some(&mut bidi_buf),
+                    bidi_size,
+                    base_dir,
+                    None,
+                    0,
+                );
+            }
+            bidi_buf
+        };
+        #[cfg(feature = "bidi")]
+        let bidi_txt: &str = bidi_buf_str(&bidi_buf);
         #[cfg(not(feature = "bidi"))]
         let bidi_txt: &str = str_tail(txt, line_start);
         let bidi_bytes = bidi_txt.as_bytes();
@@ -821,8 +826,30 @@ fn label_iterate_characters_impl(
 
             /* Check if the text selection is enabled */
             if sel_enabled {
-                logical_char_pos =
-                    text::encoded_get_char_id(bytes, line_start.wrapping_add(next_char_offset));
+                #[cfg(feature = "bidi")]
+                {
+                    if dsc.has_bided {
+                        logical_char_pos =
+                            text::encoded_get_char_id(bytes, line_start.wrapping_add(next_char_offset));
+                    } else {
+                        logical_char_pos = text::encoded_get_char_id(bytes, line_start);
+                        let c_idx = text::encoded_get_char_id(bidi_bytes, next_char_offset);
+                        logical_char_pos =
+                            logical_char_pos.wrapping_add(u32::from(ctx.bidi.get_logical_pos(
+                                bidi_bytes,
+                                None,
+                                line_end.wrapping_sub(line_start),
+                                base_dir,
+                                c_idx,
+                                None,
+                            )));
+                    }
+                }
+                #[cfg(not(feature = "bidi"))]
+                {
+                    logical_char_pos =
+                        text::encoded_get_char_id(bytes, line_start.wrapping_add(next_char_offset));
+                }
             }
 
             let mut letter: u32 = 0;

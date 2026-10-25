@@ -12,6 +12,14 @@ in each file's header, e.g. for `montserrat_14`:
 --format lvgl --force-fast-kern-format
 ```
 
+`dejavu_16_persian_hebrew.lvfnt` comes from
+`src/font/lv_font_dejavu_16_persian_hebrew.c` of the same commit, converted with
+the same `font_conv` encoder (its C file header records
+`--no-compress --no-prefilter --bpp 4 --size 16 --font DejaVuSans.ttf
+-r 0x20-0x7f,0x5d0-0x5ea,0x600-0x6FF,0xFB50-0xFDFF,0xFE70-0xFEFF` plus the
+Font Awesome symbol range). It is not yet listed in `font_conv::BUILTIN_FONTS`,
+so `cargo xtask fonts` only (re)generates it once that list names it.
+
 `cargo xtask fonts --check` fails when a blob no longer matches the upstream
 source, so the files are reproducible from the pinned upstream commit.
 
@@ -19,4 +27,7 @@ Licences:
 
 - Montserrat: SIL Open Font License 1.1 (`../OFL.txt`).
 - Font Awesome 5 Free (symbol glyphs): SIL Open Font License 1.1.
+- DejaVu Sans: Bitstream Vera Fonts licence with the DejaVu changes in the
+  public domain (<https://dejavu-fonts.github.io/License.html>), as shipped by
+  LVGL.
 - UNSCII: public domain (the author's dedication), as shipped by LVGL.
