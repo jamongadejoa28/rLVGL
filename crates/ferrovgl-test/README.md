@@ -131,10 +131,20 @@ and offscreen buffers. Line, arc and canvas widget APIs remain unported.
 The non-ignored nested-shadow regression also requires draw queues to drain,
 checks actual shadow pixels and verifies child-layer reclamation.
 
-The harness enables RGB565, RGB888, L8 and A8 alongside the display formats so
-standalone parity runs exercise every offscreen format used by these scenes.
+The harness enables every `LV_DRAW_SW_SUPPORT_*` format of the upstream
+configuration (RGB565, RGB565 swapped, RGB888, XRGB8888, ARGB8888,
+premultiplied ARGB8888, L8, AL88, A8 and I1), so standalone parity runs
+exercise every offscreen and display format used by these scenes.
 Arc source-image bytes come from the pinned C asset, with provenance and hash
 in the test; expected PNGs are never used to generate actual frames.
+
+`parity_render_to_formats` ports the eight `draw/test_render_to_<format>.c`
+files: every `demos/render/lv_demo_render.c` scene (the `_3` image scenes are
+skipped as upstream does with `LV_BIN_DECODER_RAM_LOAD == 0`) at opacity 255
+and 128, rendered after `lv_display_set_color_format(<format>)`. The logo
+images are byte-exact extractions of the C arrays in `demos/render/assets/`.
+The `blend_mode` scene's canvas is reproduced with a `DrawBuf`, a draw layer
+on it and an Image widget, because the canvas widget is not ported.
 
 ## Object snapshots
 
