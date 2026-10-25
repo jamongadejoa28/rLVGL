@@ -19,7 +19,7 @@
 //! The `#if LV_USE_FLOAT` branches use the cfg-free bridges of the core
 //! (`USE_FLOAT`, `float_v_as_f64()`, ...), so they follow
 //! `ferrovgl-core/float` even when a dependent turns that on without this
-//! crate's `float` feature (as `ferrovgl-test` does).
+//! crate's `float` feature.
 
 #[cfg(any(feature = "label", feature = "image"))]
 use alloc::rc::Rc;
