@@ -235,6 +235,36 @@ fn resolve_point_coord(coord: ValuePrecise, max: i32) -> ValuePrecise {
     }
 }
 
+/// `+` and `-` of `lv_value_precise_t` as C evaluates them in
+/// `lv_line_event()`. With an `int32_t` `lv_value_precise_t` the C
+/// arithmetic wraps in practice (formally undefined behaviour), so the `i32`
+/// implementation wraps instead of panicking on overflow like
+/// [`resolve_point_coord`]; the `f32` one is plain float arithmetic.
+trait PreciseArith: Copy {
+    /// `a + b`
+    fn add(self, rhs: Self) -> Self;
+    /// `a - b`
+    fn sub(self, rhs: Self) -> Self;
+}
+
+impl PreciseArith for i32 {
+    fn add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
+impl PreciseArith for f32 {
+    fn add(self, rhs: Self) -> Self {
+        self + rhs
+    }
+    fn sub(self, rhs: Self) -> Self {
+        self - rhs
+    }
+}
+
 /// `LV_MAX(v, i)` of an `lv_value_precise_t` and an `int32_t`, cast back to
 /// `int32_t`: the comparison and the result use `lv_value_precise_t`.
 #[allow(clippy::unnecessary_cast)] // `ValuePrecise` is `i32` without the `float` feature
@@ -347,18 +377,18 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         let w = ui.obj_get_width(obj);
         let h = ui.obj_get_height(obj);
 
-        line_dsc.p1.x = resolve_point_coord(a.x, w) + x_ofs as ValuePrecise;
+        line_dsc.p1.x = resolve_point_coord(a.x, w).add(x_ofs as ValuePrecise);
         line_dsc.p1.y = resolve_point_coord(a.y, h);
 
-        line_dsc.p2.x = resolve_point_coord(b.x, w) + x_ofs as ValuePrecise;
+        line_dsc.p2.x = resolve_point_coord(b.x, w).add(x_ofs as ValuePrecise);
         line_dsc.p2.y = resolve_point_coord(b.y, h);
 
         if !y_inv {
-            line_dsc.p1.y += y_ofs as ValuePrecise;
-            line_dsc.p2.y += y_ofs as ValuePrecise;
+            line_dsc.p1.y = line_dsc.p1.y.add(y_ofs as ValuePrecise);
+            line_dsc.p2.y = line_dsc.p2.y.add(y_ofs as ValuePrecise);
         } else {
-            line_dsc.p1.y = h as ValuePrecise - line_dsc.p1.y + y_ofs as ValuePrecise;
-            line_dsc.p2.y = h as ValuePrecise - line_dsc.p2.y + y_ofs as ValuePrecise;
+            line_dsc.p1.y = (h as ValuePrecise).sub(line_dsc.p1.y).add(y_ofs as ValuePrecise);
+            line_dsc.p2.y = (h as ValuePrecise).sub(line_dsc.p2.y).add(y_ofs as ValuePrecise);
         }
 
         ui.draw_line(layer, &line_dsc);
@@ -419,6 +449,62 @@ mod tests {
         assert_eq!(ui.obj_get_self_width(line.obj()), 9);
         assert_eq!(ui.obj_get_self_height(line.obj()), 4);
         ui.refr_now(None);
+    }
+
+    /// C evaluates the offsets of `LV_EVENT_DRAW_MAIN` in `int32_t` when
+    /// `lv_value_precise_t` is an integer, which wraps instead of trapping.
+    #[test]
+    fn precise_arith_wraps_integers() {
+        assert_eq!(PreciseArith::add(i32::MAX, 10), i32::MIN + 9);
+        assert_eq!(PreciseArith::sub(5, i32::MIN), i32::MIN + 5);
+        assert_eq!(PreciseArith::add(1.5f32, 2.0), 3.5);
+        assert_eq!(PreciseArith::sub(1.5f32, 2.0), -0.5);
+    }
+
+    /// A non-percentage point at the edge of the `int32_t` range, drawn by a
+    /// moved line, must not overflow while the offsets are added.
+    #[test]
+    #[allow(clippy::unnecessary_cast)] // `ValuePrecise` is `i32` without the `float` feature
+    fn draw_main_with_extreme_points_does_not_panic() {
+        struct Headless;
+        impl ferrovgl_core::DisplayDriver for Headless {
+            fn flush(
+                &mut self,
+                _disp: ferrovgl_core::DisplayId,
+                _area: &ferrovgl_core::Area,
+                _px_map: &mut [u8],
+            ) -> ferrovgl_core::display::FlushResult {
+                ferrovgl_core::display::FlushResult::Done
+            }
+        }
+        let mut ui = Ui::new(UiConfig::default());
+        let display = ui.display_create(64, 64);
+        let buf = ferrovgl_core::draw::draw_buf::DrawBuf::create(
+            64,
+            64,
+            ferrovgl_core::ColorFormat::Xrgb8888,
+            ferrovgl_core::draw::draw_buf::STRIDE_AUTO,
+        )
+        .unwrap();
+        ui.display_set_color_format(display, ferrovgl_core::ColorFormat::Xrgb8888);
+        ui.display_set_draw_buffers(display, Some(buf), None);
+        ui.display_set_render_mode(display, ferrovgl_core::RenderMode::Direct);
+        ui.display_set_driver(display, Some(Box::new(Headless)));
+        let screen = ui.display_get_screen_active(Some(display)).unwrap();
+        for y_inv in [false, true] {
+            let line = Line::create(&mut ui, screen);
+            ui.obj_set_pos(line.obj(), 10, 10);
+            /* A fixed size keeps the self size of the points out of the layout */
+            ui.obj_set_size(line.obj(), 50, 50);
+            line.set_y_invert(&mut ui, y_inv);
+            /* (int32_t)0x7FFFFFFF has the type bits 3 << 29: not a percentage */
+            let points: Rc<[PointPrecise]> = Rc::from(alloc::vec![
+                PointPrecise::new(i32::MAX as ValuePrecise, i32::MIN as ValuePrecise),
+                PointPrecise::new(0 as ValuePrecise, i32::MAX as ValuePrecise),
+            ]);
+            line.set_points(&mut ui, Some(SharedRef::Shared(points)), 2);
+            ui.refr_now(None);
+        }
     }
 
     /// The percentages are multiples of 64 so that they survive a `float`
