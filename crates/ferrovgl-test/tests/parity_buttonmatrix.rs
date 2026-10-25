@@ -5,9 +5,14 @@
 //! a fresh default-theme display with the upstream pointer/keypad/encoder test
 //! devices; `tearDown`'s `lv_obj_clean` is the display drop. No test of this
 //! file changes the screen itself (styles, flags, scroll), so a fresh screen
-//! is the same as the cleaned shared screen upstream. Direct reads and writes
-//! of `lv_buttonmatrix_t` fields go through the matching [`Buttonmatrix`]
-//! accessors.
+//! is the same as the cleaned shared screen upstream. The upstream test input
+//! devices are shared by every test of the file, though, so the pointer keeps
+//! its last point across tests; a test that depends on that inherited indev
+//! state reproduces it explicitly (see
+//! `button_matrix_pressing_event_works`). Direct reads and writes of
+//! `lv_buttonmatrix_t` fields go through the matching [`Buttonmatrix`]
+//! accessors. The tests after the upstream ones are regression tests of
+//! upstream behaviour that no upstream test covers.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -15,7 +20,7 @@ use std::rc::Rc;
 use ferrovgl_core::draw::DrawDsc;
 use ferrovgl_core::group::{KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
 use ferrovgl_core::misc::style::{SharedRef, SharedStr};
-use ferrovgl_core::{Area, EventCode, EventParam, Obj, Part, StyleSelector};
+use ferrovgl_core::{Area, ColorFormat, EventCode, EventParam, Obj, Part, StyleSelector};
 use ferrovgl_test::{TestDisplay, TestInputs};
 use ferrovgl_widgets::{BUTTONMATRIX_BUTTON_NONE, Buttonmatrix, ButtonmatrixCtrl, ButtonmatrixMap};
 
@@ -35,8 +40,15 @@ struct Fixture {
 
 /// `setUp()`
 fn set_up() -> Fixture {
+    set_up_with(|_, _| {})
+}
+
+/// `setUp()` after `inherit` recreated input device state that upstream
+/// carries over from an earlier test of the file (the indevs are shared).
+fn set_up_with(inherit: impl FnOnce(&mut TestDisplay, &TestInputs)) -> Fixture {
     let mut display = TestDisplay::with_default_theme().unwrap();
     let inputs = display.create_inputs();
+    inherit(&mut display, &inputs);
     let active_screen = display.screen().unwrap();
     let btnm = Buttonmatrix::create(&mut display.ui, active_screen);
     assert!(display.ui.obj_is_valid(btnm.obj()));
@@ -464,7 +476,13 @@ fn button_matrix_key_event_works() {
 
 #[test]
 fn button_matrix_pressing_event_works() {
-    let mut f = set_up();
+    // The shared upstream mouse indev still has its point at (65, 35) from
+    // the last `lv_test_mouse_click_at(65, 35)` of
+    // `test_button_matrix_release_event_works` (`test_button_matrix_key_event_works`
+    // in between does not read it). That click is replayed before `setUp()`
+    // creates the button matrix, so it only reaches the (cleaned) screen,
+    // like upstream where its target was deleted by `tearDown()`.
+    let mut f = set_up_with(|display, inputs| inputs.mouse_click_at(display, 65, 35));
     let btnm_obj = f.btnm;
     f.btnm.set_map(&mut f.display.ui, abcd_map());
     f.btnm
@@ -481,6 +499,12 @@ fn button_matrix_pressing_event_works() {
         .ui
         .obj_send_event(f.btnm.obj(), EventCode::PRESSING, EventParam::Indev(indev));
     assert!(f.event_triggered.get());
+    // (65, 35) is not on button 3, so the selection was dropped.
+    assert_eq!(
+        f.display.ui.indev_get_point(indev),
+        ferrovgl_core::Point::new(65, 35)
+    );
+    assert_eq!(BUTTONMATRIX_BUTTON_NONE, f.btnm.selected_button(&f.display.ui));
 }
 
 #[test]
@@ -688,4 +712,96 @@ fn button_matrix_draw_task_culling() {
         "No button far below the clip area, adjust the test geometry"
     );
     assert!(drawn_cnt > 0);
+}
+
+/// Draw `btnm` with `on_fill_0` run (once) from `LV_EVENT_DRAW_TASK_ADDED`
+/// for the `LV_PART_ITEMS` fill task of button 0, and return the label draw
+/// tasks of the items as `(id1, text, area)`. The draw is an
+/// `lv_snapshot_take()`: during a display refresh the widget setters would hit
+/// the "Invalidate area is not allowed during rendering" assertion (in C too).
+fn draw_items_with_fill_0_hook(
+    f: &mut Fixture,
+    on_fill_0: impl Fn(&mut ferrovgl_core::Ui, Buttonmatrix) + 'static,
+) -> Vec<(u32, String, Area)> {
+    let ui = &mut f.display.ui;
+    let btnm = f.btnm;
+    ui.obj_set_send_draw_task_events(btnm.obj(), true);
+    let labels = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let labels_cb = labels.clone();
+    let done = Rc::new(Cell::new(false));
+    ui.obj_add_event_cb(
+        btnm.obj(),
+        Rc::new(move |ui, e| {
+            let Some(task) = e.draw_task().and_then(|t| ui.draw.task(t)) else {
+                return;
+            };
+            let Some(base_dsc) = task.dsc.base() else {
+                return;
+            };
+            if base_dsc.part != Part::ITEMS {
+                return;
+            }
+            let id1 = base_dsc.id1;
+            match &task.dsc {
+                DrawDsc::Fill(_) if id1 == 0 && !done.get() => {
+                    done.set(true);
+                    on_fill_0(ui, btnm);
+                }
+                DrawDsc::Label(dsc) => {
+                    labels_cb
+                        .borrow_mut()
+                        .push((id1, String::from(&*dsc.text), task.area));
+                }
+                _ => {}
+            }
+        }),
+        EventCode::DRAW_TASK_ADDED,
+        None,
+    );
+    ui.obj_update_layout(f.active_screen);
+    assert!(ui.snapshot_take(btnm.obj(), ColorFormat::Argb8888).is_some());
+    labels.take()
+}
+
+#[test]
+fn button_matrix_text_read_after_draw_rect() {
+    // `draw_main()` reads `btnm->map_p[txt_i]` after `lv_draw_rect()`, so a
+    // map set by a `LV_EVENT_DRAW_TASK_ADDED` callback during the button's
+    // background is used for its label.
+    let mut f = set_up();
+    f.btnm.set_map(&mut f.display.ui, abcd_map());
+    let new_map = map(&["X", "Y", ""]);
+    let labels = draw_items_with_fill_0_hook(&mut f, move |ui, btnm| {
+        btnm.set_map(ui, new_map.clone());
+    });
+    let first = labels.iter().find(|(id1, ..)| *id1 == 0).unwrap();
+    assert_eq!(first.1, "X");
+}
+
+#[test]
+fn button_matrix_popover_read_after_draw_rect() {
+    // The second `LV_BUTTONMATRIX_CTRL_POPOVER` test of `draw_main()` (the
+    // text push-up) reads `btnm->ctrl_bits[btn_i]` after `lv_draw_rect()`.
+    let label_area_0 = |clear_in_callback: bool| {
+        let mut f = set_up();
+        f.btnm.set_map(&mut f.display.ui, abcd_map());
+        f.btnm
+            .set_button_ctrl(&mut f.display.ui, 0, ButtonmatrixCtrl::POPOVER);
+        f.btnm.set_btn_id_sel(&mut f.display.ui, 0);
+        f.display
+            .ui
+            .obj_add_state(f.btnm.obj(), ferrovgl_core::State::PRESSED);
+        let labels = draw_items_with_fill_0_hook(&mut f, move |ui, btnm| {
+            if clear_in_callback {
+                btnm.clear_button_ctrl(ui, 0, ButtonmatrixCtrl::POPOVER);
+            }
+        });
+        let btn_height = f.btnm.button_areas(&f.display.ui)[0].height();
+        let first = labels.iter().find(|(id1, ..)| *id1 == 0).unwrap();
+        (first.2, btn_height)
+    };
+    let (pushed, btn_height) = label_area_0(false);
+    let (not_pushed, _) = label_area_0(true);
+    assert_eq!(not_pushed.y1 - pushed.y1, btn_height / 2);
+    assert_eq!(not_pushed.y2 - pushed.y2, btn_height / 2);
 }

@@ -11,7 +11,11 @@
 //! `LV_USE_OBJ_PROPERTY` is disabled in the parity configuration, so the
 //! property table is not provided. Reads of `ctrl_bits`/`button_areas` that
 //! would be out of bounds in C (undefined behaviour, e.g. a `ctrl_map` shorter
-//! than the button count) read zero here instead of panicking.
+//! than the button count) read zero here instead of panicking. The exception
+//! is a map without buttons: `lv_malloc(0)` returns the global
+//! `memory_zero` word, whose `ZERO_MEM_SENTINEL` halves are real, defined
+//! `ctrl_bits[0]`/`ctrl_bits[1]` values in C, so they are kept here (per
+//! object; C shares that one word).
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -34,6 +38,15 @@ pub const BUTTONMATRIX_BUTTON_NONE: u32 = 0xFFFF;
 const BTN_EXTRA_CLICK_AREA_MAX: i32 = DPI_DEF / 10;
 /// `LV_BUTTONMATRIX_WIDTH_MASK` (private define in `lv_buttonmatrix.c`).
 const BUTTONMATRIX_WIDTH_MASK: u16 = 0x000F;
+/// `ZERO_MEM_SENTINEL` (`src/core/lv_global.h`): the value of
+/// `LV_GLOBAL_DEFAULT()->memory_zero` that `lv_malloc(0)` points at.
+const ZERO_MEM_SENTINEL: u32 = 0xa1b2_c3d4;
+/// `ctrl_bits` of a zero-button map: the `uint16_t` halves of
+/// [`ZERO_MEM_SENTINEL`] in little-endian order.
+const ZERO_MEM_CTRL_BITS: [ButtonmatrixCtrl; 2] = [
+    ButtonmatrixCtrl(ZERO_MEM_SENTINEL as u16),
+    ButtonmatrixCtrl((ZERO_MEM_SENTINEL >> 16) as u16),
+];
 
 /// `lv_buttonmatrix_ctrl_t`: button control flags (disabled, hidden, ...).
 /// The least significant 4 bits store the relative button width (1..15), so
@@ -1037,6 +1050,7 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
             txt_i += 1;
         }
 
+        // Only for the reads C makes before `lv_draw_rect()`.
         let ctrl_bits = ctrl_at(btnm, cur);
 
         /*Skip hidden buttons*/
@@ -1151,6 +1165,15 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         if !ui.obj_is_valid(obj) {
             return;
         }
+        // `lv_draw_rect()` can run a user `LV_EVENT_DRAW_TASK_ADDED` callback,
+        // so `btnm->map_p[txt_i]` and `btnm->ctrl_bits[btn_i]` are read again
+        // below, like C does.
+        let Some(btnm) = state(ui, obj) else {
+            return;
+        };
+        let map = btnm.map_p.clone();
+        let map: &[SharedStr] = map.as_deref().unwrap_or(&[]);
+        let popover_now = ctrl_at(btnm, cur).intersects(ButtonmatrixCtrl::POPOVER);
 
         /*Calculate the size of the text*/
         let Some(font) = draw_label_dsc_act.font.clone() else {
@@ -1188,7 +1211,7 @@ fn draw_main(ui: &mut Ui, obj: Obj, event: &Event<'_>) {
         btn_area.x2 = btn_area.x1 + txt_size.x;
         btn_area.y2 = btn_area.y1 + txt_size.y;
 
-        if btn_state.intersects(State::PRESSED) && ctrl_bits.intersects(ButtonmatrixCtrl::POPOVER) {
+        if btn_state.intersects(State::PRESSED) && popover_now {
             /*Push up the button text into the popover*/
             btn_area.y1 -= btn_height / 2;
             btn_area.y2 -= btn_height / 2;
@@ -1234,7 +1257,16 @@ fn allocate_button_areas_and_controls(btnm: &mut ButtonmatrixState, map: &[Share
     // `lv_malloc` leaves the areas uninitialized; `update_map()` sets every
     // one of them before use. The control bytes are zeroed.
     btnm.button_areas = vec![Area::default(); btn_cnt as usize];
-    btnm.ctrl_bits = vec![ButtonmatrixCtrl::NONE; btn_cnt as usize];
+    if btn_cnt == 0 {
+        // `lv_malloc(0)` returns `&LV_GLOBAL_DEFAULT()->memory_zero` (a
+        // `uint32_t` holding `ZERO_MEM_SENTINEL`) and `lv_memzero(.., 0)`
+        // writes nothing, so `ctrl_bits[0]`/`ctrl_bits[1]` read the low/high
+        // half of the sentinel (little-endian). E.g. the KEY handler then
+        // sees button 0 as hidden and disabled.
+        btnm.ctrl_bits = ZERO_MEM_CTRL_BITS.to_vec();
+    } else {
+        btnm.ctrl_bits = vec![ButtonmatrixCtrl::NONE; btn_cnt as usize];
+    }
 
     btnm.btn_cnt = btn_cnt;
 }
@@ -1621,6 +1653,36 @@ mod tests {
         btnm.set_button_ctrl_all(&mut ui, ButtonmatrixCtrl::DISABLED);
         key(&mut ui, ferrovgl_core::group::KEY_LEFT);
         assert_eq!(btnm.selected_button(&ui), BUTTONMATRIX_BUTTON_NONE);
+    }
+
+    #[test]
+    fn empty_map_reads_zero_mem_sentinel() {
+        // `set_map({""})` after the 5-button default map: `lv_malloc(0)`
+        // gives `ctrl_bits` = `&memory_zero` (`ZERO_MEM_SENTINEL`), so button
+        // 0 reads as hidden and disabled and the keys select nothing.
+        let (mut ui, screen) = setup();
+        let btnm = Buttonmatrix::create(&mut ui, screen);
+        btnm.set_map(&mut ui, map(&[""]));
+        assert_eq!(btnm.btn_cnt(&ui), 0);
+        assert_eq!(
+            state(&ui, btnm.obj()).unwrap().ctrl_bits,
+            [ButtonmatrixCtrl(0xc3d4), ButtonmatrixCtrl(0xa1b2)]
+        );
+        let key = |ui: &mut Ui, k| {
+            ui.obj_send_event(btnm.obj(), EventCode::KEY, EventParam::Key(k));
+        };
+        key(&mut ui, ferrovgl_core::group::KEY_RIGHT);
+        assert_eq!(btnm.selected_button(&ui), BUTTONMATRIX_BUTTON_NONE);
+        key(&mut ui, ferrovgl_core::group::KEY_DOWN);
+        assert_eq!(btnm.selected_button(&ui), BUTTONMATRIX_BUTTON_NONE);
+        key(&mut ui, ferrovgl_core::group::KEY_UP);
+        assert_eq!(btnm.selected_button(&ui), BUTTONMATRIX_BUTTON_NONE);
+        // A non-empty map with a new count allocates zeroed bits again.
+        btnm.set_map(&mut ui, map(&["A", ""]));
+        assert_eq!(
+            state(&ui, btnm.obj()).unwrap().ctrl_bits,
+            [ButtonmatrixCtrl::NONE]
+        );
     }
 
     #[test]
