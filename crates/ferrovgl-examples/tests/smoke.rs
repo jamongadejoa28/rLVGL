@@ -35,8 +35,25 @@ macro_rules! smoke {
     };
 }
 
+/// The examples with an `#if LV_USE_DRAW_SW_COMPLEX_GRADIENTS` / `#else` pair.
+const COMPLEX_GRADIENT_EXAMPLES: &[&str] = &[
+    "lv_example_style_gradient_buttons",
+    "lv_example_style_gradient_conic",
+    "lv_example_style_gradient_radial",
+];
+
 /// Build `name`, render the frames and compare the scene.
 fn check(name: &str, classes: &[(&str, u32)], texts: &[&str]) {
+    // Without `complex-gradients` the `#else` branch builds a single label.
+    let (classes, texts): (&[(&str, u32)], &[&str]) =
+        if !cfg!(feature = "complex-gradients") && COMPLEX_GRADIENT_EXAMPLES.contains(&name) {
+            (
+                &[("lv_label", 1)],
+                &["LV_USE_DRAW_SW_COMPLEX_GRADIENTS is not enabled"],
+            )
+        } else {
+            (classes, texts)
+        };
     let example = ferrovgl_examples::find(name).expect("example in EXAMPLES");
     assert_eq!(example.name, name);
     let mut display = common::build(example);
@@ -187,4 +204,25 @@ smoke! {
     lv_example_textarea_buttonmatrix => [lv_buttonmatrix: 1, lv_label: 1, lv_textarea: 1], ["ta:"];
     lv_example_textarea_cursor => [lv_label: 2, lv_textarea: 2], ["ta:Block", "Block", "ta:Bar", "Bar"];
     lv_example_textarea_placeholder => [lv_label: 2, lv_textarea: 2], ["ta:", "ta:Hello world!", "Hello world!"];
+}
+
+/// `lv_example_style_modal` differs from `lv_example_style_multiple` only on
+/// `lv_layer_top()`: a slider over a 50% black background.
+#[test]
+fn style_modal_builds_the_modal_on_layer_top() {
+    use ferrovgl_core::misc::color::OPA_50;
+    use ferrovgl_core::{Color, Part};
+
+    let example = ferrovgl_examples::find("lv_example_style_modal").expect("example");
+    let mut display = common::build(example);
+    common::render_frames(&mut display);
+    let layer_top = display.ui.layer_top().expect("lv_layer_top()");
+    let tree = Tree::of(&display.ui, layer_top);
+    let actual: Vec<(&str, u32)> = tree.classes.iter().map(|(k, v)| (*k, *v)).collect();
+    assert_eq!(actual, [("lv_slider", 1)]);
+    assert_eq!(display.ui.obj_get_style_bg_opa(layer_top, Part::MAIN), OPA_50);
+    assert_eq!(
+        display.ui.obj_get_style_bg_color(layer_top, Part::MAIN),
+        Color::black()
+    );
 }

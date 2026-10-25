@@ -9,6 +9,14 @@
 //! The window is the upstream 800x480 test configuration (130 DPI,
 //! Montserrat 14, default theme). For headless execution set
 //! `SDL_VIDEODRIVER=dummy` and bound the loop with `--frames N`.
+//!
+//! `lv_example_style_gradient_{buttons,conic,radial}` follow
+//! `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` through the `complex-gradients` feature
+//! of `ferrovgl-examples`. This crate enables it neither there nor on its
+//! `ferrovgl-draw-sw`, so a `cargo run -p ferrovgl-sdl` build shows the
+//! upstream `#else` label "LV_USE_DRAW_SW_COMPLEX_GRADIENTS is not enabled";
+//! a build that unifies both features (e.g. a `--workspace` build, which also
+//! compiles `ferrovgl-test`) renders the gradients.
 
 use std::time::Duration;
 

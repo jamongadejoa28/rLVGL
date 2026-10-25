@@ -43,70 +43,149 @@ fn read_table() -> BTreeMap<String, (u32, u64)> {
         .collect()
 }
 
+/// Header of `tests/snapshots.txt`.
+const HEADER: &str = "# Rust-side snapshots of the ported LVGL examples: `name objects fnv1a64`.\n\
+     # objects = descendants of the active screen after the example ran and\n\
+     # 10 frames of 33 ms were rendered with the default theme; the hash covers\n\
+     # the RGB bytes of the final 800x480 frame. Regenerate with\n\
+     # UPDATE_SNAPSHOTS=1 cargo test -p ferrovgl-examples --test snapshots --locked\n";
+
+/// The run of every example compared with the table.
+#[derive(Debug, Default)]
+struct Outcome {
+    /// Broken examples (panics, empty scenes): failures in update mode too.
+    errors: Vec<String>,
+    /// Differences from the table: what `UPDATE_SNAPSHOTS=1` accepts.
+    mismatches: Vec<String>,
+    /// The table to write in update mode.
+    new_table: String,
+}
+
+/// Compare `results` (`name -> (objects, hash)`, `None` when the example
+/// panicked), in `EXAMPLES` order, with `table`.
+fn tabulate(results: &[(&str, Option<(u32, u64)>)], table: &BTreeMap<String, (u32, u64)>) -> Outcome {
+    let mut out = Outcome {
+        new_table: String::from(HEADER),
+        ..Outcome::default()
+    };
+    for &(name, result) in results {
+        let Some((objects, hash)) = result else {
+            out.errors.push(format!("{name}: panicked"));
+            // Keep the previous row so an update does not drop the example.
+            if let Some(&(exp_objects, exp_hash)) = table.get(name) {
+                writeln!(out.new_table, "{name} {exp_objects} {exp_hash:016x}").unwrap();
+            }
+            continue;
+        };
+        if objects == 0 {
+            out.errors.push(format!("{name}: created no objects"));
+        }
+        writeln!(out.new_table, "{name} {objects} {hash:016x}").unwrap();
+        match table.get(name) {
+            Some(&(exp_objects, exp_hash)) => {
+                if exp_objects != objects {
+                    out.mismatches.push(format!(
+                        "{name}: {objects} objects, the table expects {exp_objects}"
+                    ));
+                }
+                if exp_hash != hash {
+                    out.mismatches.push(format!(
+                        "{name}: frame hash {hash:016x}, the table expects {exp_hash:016x}"
+                    ));
+                }
+            }
+            None => out
+                .mismatches
+                .push(format!("{name}: missing from tests/snapshots.txt")),
+        }
+    }
+    for name in table.keys() {
+        if !results.iter().any(|&(n, _)| n == name) {
+            out.mismatches
+                .push(format!("{name}: in tests/snapshots.txt but not in EXAMPLES"));
+        }
+    }
+    out
+}
+
 #[test]
 fn every_example_renders_and_matches_the_snapshot_table() {
     let update = std::env::var_os("UPDATE_SNAPSHOTS").is_some();
     let table = read_table();
-    let mut failures = Vec::new();
-    let mut new_table = String::from(
-        "# Rust-side snapshots of the ported LVGL examples: `name objects fnv1a64`.\n\
-         # objects = descendants of the active screen after the example ran and\n\
-         # 10 frames of 33 ms were rendered with the default theme; the hash covers\n\
-         # the RGB bytes of the final 800x480 frame. Regenerate with\n\
-         # UPDATE_SNAPSHOTS=1 cargo test -p ferrovgl-examples --test snapshots --locked\n",
-    );
-
-    for example in EXAMPLES {
-        let result = catch_unwind(AssertUnwindSafe(|| {
-            let mut display = common::build(example);
-            common::render_frames(&mut display);
-            let screen = display.screen().expect("active screen");
-            let objects = common::descendants(&display.ui, screen);
-            let hash = common::frame_hash(&mut display);
-            (objects, hash)
-        }));
-        let Ok((objects, hash)) = result else {
-            failures.push(format!("{}: panicked", example.name));
-            continue;
-        };
-        if objects == 0 {
-            failures.push(format!("{}: created no objects", example.name));
-        }
-        writeln!(new_table, "{} {objects} {hash:016x}", example.name).unwrap();
-        match table.get(example.name) {
-            Some(&(exp_objects, exp_hash)) => {
-                if exp_objects != objects {
-                    failures.push(format!(
-                        "{}: {objects} objects, the table expects {exp_objects}",
-                        example.name
-                    ));
-                }
-                if exp_hash != hash {
-                    failures.push(format!(
-                        "{}: frame hash {hash:016x}, the table expects {exp_hash:016x}",
-                        example.name
-                    ));
-                }
-            }
-            None => failures.push(format!("{}: missing from tests/snapshots.txt", example.name)),
-        }
-    }
-
-    for name in table.keys() {
-        if !EXAMPLES.iter().any(|e| e.name == name) {
-            failures.push(format!("{name}: in tests/snapshots.txt but not in EXAMPLES"));
-        }
-    }
+    let results: Vec<(&str, Option<(u32, u64)>)> = EXAMPLES
+        .iter()
+        .map(|example| {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let mut display = common::build(example);
+                common::render_frames(&mut display);
+                let screen = display.screen().expect("active screen");
+                let objects = common::descendants(&display.ui, screen);
+                let hash = common::frame_hash(&mut display);
+                (objects, hash)
+            }));
+            (example.name, result.ok())
+        })
+        .collect();
+    let Outcome {
+        mut errors,
+        mismatches,
+        new_table,
+    } = tabulate(&results, &table);
 
     if update {
         std::fs::write(table_path(), new_table).expect("write tests/snapshots.txt");
+        assert!(
+            errors.is_empty(),
+            "tests/snapshots.txt was written, but {} examples are broken (previous rows kept):\n{}",
+            errors.len(),
+            errors.join("\n")
+        );
         return;
     }
+    errors.extend(mismatches);
     assert!(
-        failures.is_empty(),
+        errors.is_empty(),
         "{} snapshot mismatches (rerun with UPDATE_SNAPSHOTS=1 after an intended change):\n{}",
-        failures.len(),
-        failures.join("\n")
+        errors.len(),
+        errors.join("\n")
+    );
+}
+
+#[test]
+fn a_broken_example_fails_the_update_and_keeps_its_row() {
+    let table: BTreeMap<String, (u32, u64)> = [
+        ("lv_example_a".to_owned(), (3, 0xa)),
+        ("lv_example_b".to_owned(), (4, 0xb)),
+        ("lv_example_gone".to_owned(), (1, 0xc)),
+    ]
+    .into_iter()
+    .collect();
+    let results = [
+        ("lv_example_a", None),
+        ("lv_example_b", Some((4, 0xbb))),
+        ("lv_example_c", Some((0, 0xc))),
+    ];
+    let out = tabulate(&results, &table);
+    assert_eq!(
+        out.errors,
+        ["lv_example_a: panicked", "lv_example_c: created no objects"]
+    );
+    assert_eq!(
+        out.mismatches,
+        [
+            "lv_example_b: frame hash 00000000000000bb, the table expects 000000000000000b",
+            "lv_example_c: missing from tests/snapshots.txt",
+            "lv_example_gone: in tests/snapshots.txt but not in EXAMPLES",
+        ]
+    );
+    let rows: Vec<&str> = out.new_table.lines().filter(|l| !l.starts_with('#')).collect();
+    assert_eq!(
+        rows,
+        [
+            "lv_example_a 3 000000000000000a",
+            "lv_example_b 4 00000000000000bb",
+            "lv_example_c 0 000000000000000c",
+        ]
     );
 }
 

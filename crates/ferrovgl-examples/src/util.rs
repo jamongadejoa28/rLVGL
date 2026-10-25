@@ -108,6 +108,21 @@ pub(crate) fn styles_reinit<M: 'static, const N: usize>(
     ids
 }
 
+/// The `#else` branch of the `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` examples
+/// (`lv_example_style_gradient_{buttons,conic,radial}`): a circularly
+/// scrolling label reporting the missing feature.
+#[cfg(not(feature = "complex-gradients"))]
+pub(crate) fn complex_gradients_not_enabled(ui: &mut Ui) {
+    use ferrovgl_core::misc::types::coord;
+    use ferrovgl_widgets::{Label, LabelLongMode};
+
+    let label = Label::create(ui, screen_active(ui));
+    ui.obj_set_width(label.obj(), coord::pct(80));
+    label.set_text(ui, "LV_USE_DRAW_SW_COMPLEX_GRADIENTS is not enabled");
+    label.set_long_mode(ui, LabelLongMode::ScrollCircular);
+    ui.obj_center(label.obj());
+}
+
 /// `LV_SYMBOL_*` strings (`include/lvgl/font/lv_symbol_def.h`) used by the examples.
 #[allow(dead_code)]
 pub(crate) mod symbol {

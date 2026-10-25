@@ -1,44 +1,61 @@
-//! Port of `examples/styles/lv_example_style_gradient_radial.c`
-//! (the `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` branch).
+//! Port of `examples/styles/lv_example_style_gradient_radial.c`.
+//!
+//! Both sides of `#if LV_USE_DRAW_SW_COMPLEX_GRADIENTS` are ported; the
+//! `complex-gradients` feature of this crate selects the first one
+//! (the upstream test build, `full.defconfig`, enables it).
 
-use alloc::rc::Rc;
+#[cfg(feature = "complex-gradients")]
+pub use complex::lv_example_style_gradient_radial;
 
-use ferrovgl_core::draw::grad::{GradDsc, GradExtend};
-use ferrovgl_core::misc::style::{GRAD_BOTTOM, GRAD_CENTER, GRAD_RIGHT, SharedRef};
-use ferrovgl_core::{Color, Style, StyleSelector, Ui};
+/// The `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` branch.
+#[cfg(feature = "complex-gradients")]
+mod complex {
+    use alloc::rc::Rc;
 
-use crate::util::{screen_active, styles_reinit};
+    use ferrovgl_core::draw::grad::{GradDsc, GradExtend};
+    use ferrovgl_core::misc::style::{GRAD_BOTTOM, GRAD_CENTER, GRAD_RIGHT, SharedRef};
+    use ferrovgl_core::{Color, Style, StyleSelector, Ui};
 
-/// `static const lv_color_t grad_colors[2]`
-const GRAD_COLORS: [Color; 2] = [Color::make(0x9B, 0x18, 0x42), Color::make(0x00, 0x00, 0x00)];
+    use crate::util::{screen_active, styles_reinit};
 
-/// `static lv_style_t style;`
-struct StyleRadial;
+    /// `static const lv_color_t grad_colors[2]`
+    const GRAD_COLORS: [Color; 2] = [Color::make(0x9B, 0x18, 0x42), Color::make(0x00, 0x00, 0x00)];
 
-/// `lv_example_style_gradient_radial()`: a radial gradient filling the display.
-pub fn lv_example_style_gradient_radial(ui: &mut Ui) {
-    let display = ui.display_get_default();
-    let width = ui.display_get_horizontal_resolution(display);
-    let height = ui.display_get_vertical_resolution(display);
+    /// `static lv_style_t style;`
+    struct StyleRadial;
 
-    let [style] = styles_reinit::<StyleRadial, 1>(ui, || {
-        let mut style = Style::new();
+    /// `lv_example_style_gradient_radial()`: a radial gradient filling the display.
+    pub fn lv_example_style_gradient_radial(ui: &mut Ui) {
+        let display = ui.display_get_default();
+        let width = ui.display_get_horizontal_resolution(display);
+        let height = ui.display_get_vertical_resolution(display);
 
-        /*First define a color gradient. In this example we use a purple to black color map.*/
-        let mut grad = GradDsc::new();
-        grad.init_stops(&GRAD_COLORS, None, None, GRAD_COLORS.len());
+        let [style] = styles_reinit::<StyleRadial, 1>(ui, || {
+            let mut style = Style::new();
 
-        /*Make a radial gradient with the center in the middle of the object, extending to the farthest corner*/
-        grad.radial_init(GRAD_CENTER, GRAD_CENTER, GRAD_RIGHT, GRAD_BOTTOM, GradExtend::Pad);
+            /*First define a color gradient. In this example we use a purple to black color map.*/
+            let mut grad = GradDsc::new();
+            grad.init_stops(&GRAD_COLORS, None, None, GRAD_COLORS.len());
 
-        /*Set gradient as background*/
-        style.set_bg_grad(SharedRef::Shared(Rc::new(grad)));
-        [style]
-    });
+            /*Make a radial gradient with the center in the middle of the object, extending to the farthest corner*/
+            grad.radial_init(GRAD_CENTER, GRAD_CENTER, GRAD_RIGHT, GRAD_BOTTOM, GradExtend::Pad);
 
-    /*Create an object with the new style*/
-    let obj = ui.obj_create(Some(screen_active(ui)));
-    ui.obj_add_style(obj, style, StyleSelector::DEFAULT);
-    ui.obj_set_size(obj, width, height);
-    ui.obj_center(obj);
+            /*Set gradient as background*/
+            style.set_bg_grad(SharedRef::Shared(Rc::new(grad)));
+            [style]
+        });
+
+        /*Create an object with the new style*/
+        let obj = ui.obj_create(Some(screen_active(ui)));
+        ui.obj_add_style(obj, style, StyleSelector::DEFAULT);
+        ui.obj_set_size(obj, width, height);
+        ui.obj_center(obj);
+    }
+}
+
+/// `lv_example_style_gradient_radial()` without `LV_USE_DRAW_SW_COMPLEX_GRADIENTS` (the `#else`
+/// branch): a label reporting the missing feature.
+#[cfg(not(feature = "complex-gradients"))]
+pub fn lv_example_style_gradient_radial(ui: &mut ferrovgl_core::Ui) {
+    crate::util::complex_gradients_not_enabled(ui);
 }
