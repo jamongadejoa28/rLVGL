@@ -1,10 +1,11 @@
 //! Scene ports from LVGL v9.6.0 `tests/src/test_cases/widgets/test_obj_pos.c`
 //! and `tests/src/test_cases/widgets/test_obj_flags.c`.
 //!
-//! `test_style_min_size` lives in `parity_button_theme.rs` and
-//! `test_margin_align.c::test_align` in `parity_style.rs`;
+//! `test_margin_align.c::test_align` lives in `parity_style.rs`;
 //! `test_chaining_invalidation_layout` needs the Dropdown widget, which is not
-//! ported. Both upstream files' `tearDown()` only cleans the active screen and
+//! ported. `test_style_min_size` is ported here with all of its assertions
+//! ([`style_min_size`]); `parity_button_theme.rs` keeps an older partial port
+//! of the same scene. Both upstream files' `tearDown()` only cleans the active screen and
 //! none of the remaining tests depends on input or tick state inherited from an
 //! earlier test of the same file, so each test starts on a fresh
 //! [`TestDisplay`]. The one exception, the pointer position left behind by
@@ -71,6 +72,58 @@ fn content_parent_pct_child_pos_1() {
     ui.obj_update_layout(child2);
     assert_eq!(ui.obj_get_x(child2), 0);
     assert_eq!(ui.obj_get_y(child2), 0);
+}
+
+/// `test_obj_pos.c:53..84` (`test_style_min_size`): a `100%` button inside a
+/// content-sized parent evaluates to 0 and is then held at its fixed or
+/// content minimum size.
+#[test]
+#[ignore = "requires pinned LVGL reference PNGs; cargo xtask refimgs sync"]
+fn style_min_size() {
+    let mut display = TestDisplay::with_default_theme().unwrap();
+    let screen = display.screen();
+    let parent = display.ui.obj_create(screen);
+    display
+        .ui
+        .obj_set_size(parent, coord::SIZE_CONTENT, coord::SIZE_CONTENT);
+    // lv_obj_set_style_pad_all(parent, 10, 0);
+
+    let child = Button::create(&mut display.ui, parent).obj();
+    let label = Label::create(&mut display.ui, child);
+    label.set_text(&mut display.ui, "Button");
+    display.ui.obj_set_size(child, coord::pct(100), coord::pct(100)); // will evaluate to 0
+    display
+        .ui
+        .obj_set_size(label.obj(), coord::SIZE_CONTENT, coord::SIZE_CONTENT);
+    display
+        .screenshot_compare("widgets/obj_pos_no_min_size.png")
+        .unwrap();
+    assert!(display.ui.obj_is_width_min(child));
+    assert!(display.ui.obj_is_height_min(child));
+    assert_eq!(display.ui.obj_get_style_clamped_width(child), 0);
+    assert_eq!(display.ui.obj_get_style_clamped_height(child), 0);
+
+    display.ui.obj_set_style_min_width(child, 200, DEFAULT);
+    display.ui.obj_set_style_min_height(child, 300, DEFAULT);
+    display
+        .screenshot_compare("widgets/obj_pos_fixed_min_size.png")
+        .unwrap();
+    assert_eq!(display.ui.obj_get_width(child), 200);
+    assert_eq!(display.ui.obj_get_height(child), 300);
+    assert!(display.ui.obj_is_width_min(child));
+    assert!(display.ui.obj_is_height_min(child));
+    assert_eq!(display.ui.obj_get_style_clamped_width(child), 200);
+    assert_eq!(display.ui.obj_get_style_clamped_height(child), 300);
+
+    display
+        .ui
+        .obj_set_style_min_width(child, coord::SIZE_CONTENT, DEFAULT);
+    display
+        .ui
+        .obj_set_style_min_height(child, coord::SIZE_CONTENT, DEFAULT);
+    display
+        .screenshot_compare("widgets/obj_pos_content_min_size.png")
+        .unwrap();
 }
 
 /// Shared part of `test_circular_height_dependency` and
