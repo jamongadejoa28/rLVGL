@@ -5,9 +5,15 @@
 //!
 //! The parity configuration (`tests/configs/full.defconfig`) leaves
 //! `LV_DRAW_TRANSFORM_USE_MATRIX` off, so only the style transform branch of
-//! `transform_point_array()` / `invalidate_area_core()` is ported and
+//! `transform_point_array()` / `invalidate_area_core()` is ported, and
 //! `lv_obj_set_transform()` / `lv_obj_reset_transform()` /
-//! `lv_obj_get_transform()` (no-ops in that configuration) are not.
+//! `lv_obj_get_transform()` are ported as their `#else` (no-op) branches.
+//!
+//! Cross-file contract: `lv_obj_invalidate_expand_blur()` is defined in
+//! `lv_obj_pos.c`, so its body is ported here as
+//! [`Ui::obj_pos_invalidate_expand_blur`]. The skeleton entry point
+//! `Ui::obj_invalidate_expand_blur` in `refr.rs` must delegate to it
+//! (`self.obj_pos_invalidate_expand_blur(disp)`) rather than port it again.
 
 use alloc::boxed::Box;
 
@@ -19,6 +25,17 @@ use crate::misc::event::{EventCode, EventParam, HitTestInfo, LvResult};
 use crate::misc::style::{Part, SCALE_NONE, StyleProp, StyleSelector, StyleValue};
 use crate::misc::text::BaseDir;
 use crate::misc::types::coord;
+
+/// `lv_matrix_t` (`include/lvgl/core/lv_matrix.h`): a 3x3 float matrix.
+///
+/// Declared here only because `lv_obj_set_transform()` /
+/// `lv_obj_get_transform()` take it and `lv_matrix.c` is not ported yet; move
+/// it to a `matrix` module when that file is ported.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Matrix {
+    /// `m`
+    pub m: [[f32; 3]; 3],
+}
 
 /// `LV_OBJ_LAYOUT_UPDATE_MAX_PASSES`
 pub const OBJ_LAYOUT_UPDATE_MAX_PASSES: u32 = 100;
@@ -771,6 +788,35 @@ impl Ui {
         self.obj_align(obj, Align::Center, 0, 0);
     }
 
+    /// `lv_obj_set_transform()`: the `LV_DRAW_TRANSFORM_USE_MATRIX == 0`
+    /// branch, which only logs a warning.
+    pub fn obj_set_transform(&mut self, obj: Obj, matrix: Option<&Matrix>) {
+        if !self.obj_is_valid(obj) {
+            return;
+        }
+
+        let _ = matrix;
+        #[cfg(feature = "log")]
+        log::warn!("Transform matrix is not used because LV_DRAW_TRANSFORM_USE_MATRIX is disabled");
+    }
+
+    /// `lv_obj_reset_transform()`: the `LV_DRAW_TRANSFORM_USE_MATRIX == 0`
+    /// branch, which does nothing.
+    pub fn obj_reset_transform(&mut self, obj: Obj) {
+        // `LV_CHECK_OBJ(obj, MY_CLASS, return)` followed by an empty body:
+        // nothing observable happens whether or not `obj` is valid.
+        let _ = obj;
+    }
+
+    /// `lv_obj_get_transform()`: the `LV_DRAW_TRANSFORM_USE_MATRIX == 0`
+    /// branch, which always returns `NULL`.
+    pub fn obj_get_transform(&self, obj: Obj) -> Option<&Matrix> {
+        if !self.obj_is_valid(obj) {
+            return None;
+        }
+        None
+    }
+
     /// `lv_obj_get_coords()`
     pub fn obj_get_coords(&self, obj: Obj) -> Area {
         self.pos_coords(obj)
@@ -1397,9 +1443,10 @@ impl Ui {
         ObjTreeWalkRes::Next
     }
 
-    /// `lv_obj_invalidate_expand_blur()`: the body lives here because it uses
-    /// the private helpers of `lv_obj_pos.c`; `refr.rs`'s
-    /// `obj_invalidate_expand_blur` should delegate to it.
+    /// `lv_obj_invalidate_expand_blur()`: defined in `lv_obj_pos.c`, so the
+    /// body lives here next to the private helpers it uses. The skeleton
+    /// entry point `Ui::obj_invalidate_expand_blur` (`refr.rs`) must delegate
+    /// to this function; it must not be ported a second time.
     pub fn obj_pos_invalidate_expand_blur(&mut self, disp: DisplayId) {
         let Some(d) = self.displays.get(disp.0) else {
             return;
@@ -2245,6 +2292,28 @@ mod tests {
         ui.obj_update_layout(scr);
         assert!(ui.layout_update_mutex);
         assert!(ui.obj(scr).unwrap().scr_layout_inv);
+    }
+
+    #[test]
+    fn transform_matrix_api_is_noop_without_use_matrix() {
+        // LV_DRAW_TRANSFORM_USE_MATRIX == 0: set/reset do nothing (no spec_attr
+        // allocation, no invalidation) and get always returns NULL.
+        let mut ui = ui();
+        let scr = new_obj(&mut ui, None, Area::new(0, 0, 99, 99));
+        let a = new_obj(&mut ui, Some(scr), Area::new(10, 10, 19, 19));
+        let had_spec = ui.obj(a).unwrap().spec.is_some();
+        let coords = ui.obj(a).unwrap().coords;
+        let m = Matrix {
+            m: [[2.0, 0.0, 5.0], [0.0, 2.0, 5.0], [0.0, 0.0, 1.0]],
+        };
+        ui.obj_set_transform(a, Some(&m));
+        assert!(ui.obj_get_transform(a).is_none());
+        assert_eq!(ui.obj(a).unwrap().spec.is_some(), had_spec);
+        assert_eq!(ui.obj(a).unwrap().coords, coords);
+        ui.obj_set_transform(a, None);
+        ui.obj_reset_transform(a);
+        assert!(ui.obj_get_transform(a).is_none());
+        assert_eq!(ui.obj(a).unwrap().spec.is_some(), had_spec);
     }
 
     #[test]
