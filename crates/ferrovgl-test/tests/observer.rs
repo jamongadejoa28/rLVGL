@@ -12,14 +12,16 @@
 //! `captured_*`, ...) are thread-locals because each Rust test runs on its own
 //! thread.
 //!
-//! Skipped (the binding is not ported in this worktree):
-//! `test_observer_label_text_normal`, `test_observer_label_text_formatted`
-//! (`lv_label_bind_text()`), `test_observer_arc_value` (`lv_arc_bind_value()`,
-//! the arc widget is a skeleton), `test_observer_roller_value`,
-//! `test_observer_dropdown_value`, `test_observer_scale_line_needle_value`,
+//! Skipped (the widget is not ported in this worktree):
+//! `test_observer_arc_value` (`lv_arc_bind_value()`, the arc widget is a
+//! skeleton), `test_observer_roller_value`, `test_observer_dropdown_value`,
+//! `test_observer_scale_line_needle_value`,
 //! `test_observer_scale_image_needle_value` (no roller / dropdown / scale
-//! widget), and `test_observer_args_set_string_to_pointer_subject_is_ignored`
-//! (`lv_label_bind_text()`).
+//! widget).
+//!
+//! The C string literals passed to `lv_subject_set_pointer()` are
+//! `Rc<&'static str>` payloads, the `const char *` that
+//! `lv_label_bind_text()` shows.
 //!
 //! `TEST_ASSERT_MEM_LEAK_LESS_THAN` / `lv_test_get_free_mem()` have no
 //! allocator to inspect here; they are replaced by `Rc` strong counts (for
@@ -33,9 +35,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use ferrovgl_core::core::observer::{ObjSetBoolCb, ObserverId, SubjectId, SubjectType};
+use ferrovgl_core::misc::style::{ImageSrc, SharedRef};
 use ferrovgl_core::{Color, EventCode, Obj, ObjFlags, State, Ui};
 use ferrovgl_test::{TestDisplay, TestInputs};
-use ferrovgl_widgets::{Bar, Button, Slider};
+use ferrovgl_widgets::{Bar, Button, Image, Label, Slider};
 
 const ANIM_OFF: bool = false;
 
@@ -254,6 +257,25 @@ fn test_obj_remove_from_subject_removes_delete_event() {
         let delete_event = get_event_delete_from_obj(f.ui(), obj);
         assert!(delete_event.is_none());
     }
+    tear_down(f);
+}
+
+/// Not upstream: `LV_CHECK_ARG(obj != NULL, return)` of
+/// `lv_obj_remove_from_subject()` (a deleted object stands for `NULL`).
+#[test]
+fn obj_remove_from_subject_checks_obj() {
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = f.ui().obj_create(Some(screen));
+    let subject = subject_create(&mut f, SubjectType::Int);
+    f.ui().obj_delete(obj);
+
+    let ui = &mut f.display.ui;
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ui.obj_remove_from_subject(obj, Some(subject));
+    }));
+    /*The check fails (and asserts under LV_CHECK_ARG_ASSERT_ON_FAIL) before anything is touched*/
+    assert_eq!(check_arg_asserts(), res.is_err());
     tear_down(f);
 }
 
@@ -1106,6 +1128,132 @@ fn test_observer_button_checked() {
 }
 
 #[test]
+fn test_observer_label_text_normal() {
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = Label::create(f.ui(), screen);
+
+    /*Cannot bind color*/
+    let subject_color = subject_create(&mut f, SubjectType::Color);
+    let observer = obj.bind_text(f.ui(), subject_color, None);
+    assert!(observer.is_none());
+
+    /*Bind it with "%d" if NULL is passed*/
+    let subject_int = subject_create(&mut f, SubjectType::Int);
+    f.ui().subject_set_int(subject_int, 10);
+    let observer = obj.bind_text(f.ui(), subject_int, None);
+    assert!(observer.is_some());
+    assert_eq!("10", obj.text(f.ui()));
+
+    /*Bind it with "%0.1f" if NULL is passed*/
+    let subject_float = subject_create(&mut f, SubjectType::Float);
+    f.ui().subject_set_float(subject_float, 10.5);
+    let observer = obj.bind_text(f.ui(), subject_float, None);
+    assert!(observer.is_some());
+    assert_eq!("10.5", obj.text(f.ui()));
+
+    /*An explicit format string is used as-is*/
+    f.ui().subject_set_float(subject_float, 81.5);
+    let observer = obj.bind_text(f.ui(), subject_float, Some("Value: %0.2f"));
+    assert!(observer.is_some());
+    assert_eq!("Value: 81.50", obj.text(f.ui()));
+
+    /*Bind to string*/
+    /* static char buf[32]; */
+    let subject_string = subject_create(&mut f, SubjectType::String);
+    f.ui().subject_set_string_buffer_static(subject_string, 32, false);
+    f.ui().subject_set_string(subject_string, "hello");
+    obj.bind_text(f.ui(), subject_string, None);
+    assert_eq!("hello", obj.text(f.ui()));
+
+    f.ui().subject_set_string(subject_string, "world");
+    assert_eq!("world", obj.text(f.ui()));
+
+    /*Remove the label from the subject*/
+    f.ui().obj_remove_from_subject(obj.obj(), Some(subject_string));
+    f.ui().subject_set_string(subject_string, "nothing");
+    assert_eq!("world", obj.text(f.ui()));
+
+    /*Bind to pointer*/
+    let subject_pointer = subject_create(&mut f, SubjectType::Pointer);
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("HELLO")));
+    obj.bind_text(f.ui(), subject_pointer, None);
+    assert_eq!("HELLO", obj.text(f.ui()));
+
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("WORLD")));
+    assert_eq!("WORLD", obj.text(f.ui()));
+
+    /*Remove the label from the subject*/
+    f.ui().obj_remove_from_subject(obj.obj(), Some(subject_pointer));
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("NOTHING")));
+    assert_eq!("WORLD", obj.text(f.ui()));
+    tear_down(f);
+}
+
+#[test]
+fn test_observer_label_text_formatted() {
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = Label::create(f.ui(), screen);
+
+    /*Cannot bind color*/
+    let subject_color = subject_create(&mut f, SubjectType::Color);
+    let observer = obj.bind_text(f.ui(), subject_color, None);
+    assert!(observer.is_none());
+
+    /*Bind to int*/
+    let subject_int = subject_create(&mut f, SubjectType::Int);
+    f.ui().subject_set_int(subject_int, 10);
+    obj.bind_text(f.ui(), subject_int, Some("value: %d"));
+    assert_eq!("value: 10", obj.text(f.ui()));
+
+    f.ui().subject_set_int(subject_int, -20);
+    assert_eq!("value: -20", obj.text(f.ui()));
+
+    /*Remove the label from the subject*/
+    f.ui().obj_remove_from_subject(obj.obj(), Some(subject_int));
+    f.ui().subject_set_int(subject_int, 100);
+    assert_eq!("value: -20", obj.text(f.ui()));
+
+    /*Bind to string*/
+    /* static char buf[32]; */
+    let subject_string = subject_create(&mut f, SubjectType::String);
+    f.ui().subject_set_string_buffer_static(subject_string, 32, false);
+    f.ui().subject_set_string(subject_string, "hello");
+    obj.bind_text(f.ui(), subject_string, Some("text: %s"));
+    assert_eq!("text: hello", obj.text(f.ui()));
+
+    f.ui().subject_set_string(subject_string, "world");
+    assert_eq!("text: world", obj.text(f.ui()));
+
+    /*Remove the label from the subject*/
+    f.ui().obj_remove_from_subject(obj.obj(), Some(subject_string));
+    f.ui().subject_set_string(subject_string, "nothing");
+    assert_eq!("text: world", obj.text(f.ui()));
+
+    /*Bind to pointer*/
+    let subject_pointer = subject_create(&mut f, SubjectType::Pointer);
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("HELLO")));
+    obj.bind_text(f.ui(), subject_pointer, Some("pointer: %s"));
+    assert_eq!("pointer: HELLO", obj.text(f.ui()));
+
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("WORLD")));
+    assert_eq!("pointer: WORLD", obj.text(f.ui()));
+
+    /*Remove the label from the subject*/
+    f.ui().obj_remove_from_subject(obj.obj(), Some(subject_pointer));
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("pointer: NOTHING")));
+    assert_eq!("pointer: WORLD", obj.text(f.ui()));
+    tear_down(f);
+}
+
+#[test]
 fn test_observer_slider_value() {
     let mut f = set_up();
     let screen = f.screen();
@@ -1135,6 +1283,34 @@ fn test_observer_slider_value() {
 
     assert_eq!(29, obj.value(f.ui()));
     assert_eq!(29, f.ui().subject_get_int(subject));
+    tear_down(f);
+}
+
+/// Not upstream (no `test_observer.c` case): `lv_image_bind_src()` sets the
+/// pointer subject's value as the source and rejects other subject types.
+#[test]
+fn image_bind_src() {
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = Image::create(f.ui(), screen);
+
+    let src_a = ImageSrc::Symbol(SharedRef::Static("\u{f03e}"));
+    let src_b = ImageSrc::Symbol(SharedRef::Static("\u{f00c}"));
+    let subject = subject_create(&mut f, SubjectType::Pointer);
+    f.ui().subject_set_pointer(subject, Some(Rc::new(src_a.clone())));
+    assert!(obj.bind_src(f.ui(), subject).is_some());
+    assert!(obj.src(f.ui()) == src_a);
+
+    f.ui().subject_set_pointer(subject, Some(Rc::new(src_b.clone())));
+    assert!(obj.src(f.ui()) == src_b);
+
+    f.ui().subject_set_pointer(subject, None);
+    assert!(obj.src(f.ui()) == ImageSrc::None);
+
+    if !check_arg_asserts() {
+        let subject_int = subject_create(&mut f, SubjectType::Int);
+        assert!(obj.bind_src(f.ui(), subject_int).is_none());
+    }
     tear_down(f);
 }
 
@@ -1496,6 +1672,26 @@ fn test_observer_args_bind_checked_to_non_int_subject() {
 
     let subject_wrong = subject_create(&mut f, SubjectType::Pointer);
     assert!(f.ui().obj_bind_checked(obj, subject_wrong).is_none());
+    tear_down(f);
+}
+
+/*A string setter on a pointer subject changes nothing, so a bound label stays put*/
+#[test]
+fn test_observer_args_set_string_to_pointer_subject_is_ignored() {
+    if check_arg_asserts() {
+        return;
+    }
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = Label::create(f.ui(), screen);
+    let subject_pointer = subject_create(&mut f, SubjectType::Pointer);
+    f.ui()
+        .subject_set_pointer(subject_pointer, Some(Rc::new("HELLO")));
+    obj.bind_text(f.ui(), subject_pointer, None);
+    assert_eq!("HELLO", obj.text(f.ui()));
+
+    f.ui().subject_set_string(subject_pointer, "NOTHING");
+    assert_eq!("HELLO", obj.text(f.ui()));
     tear_down(f);
 }
 

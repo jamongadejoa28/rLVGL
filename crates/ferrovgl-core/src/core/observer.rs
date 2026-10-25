@@ -172,6 +172,19 @@ impl SubjectValue {
         }
     }
 
+    /// `(double)value.float_v`: the default argument promotion of
+    /// `lv_label_set_text_fmt(obj, fmt, subject->value.float_v)` in
+    /// `label_text_observer_cb()`, usable from crates that do not see the
+    /// `float` feature. 0 for the zeroed union, another member or without
+    /// `LV_USE_FLOAT`.
+    pub fn float_v_as_f64(&self) -> f64 {
+        match self {
+            #[cfg(feature = "float")]
+            SubjectValue::Float(v) => *v as f64,
+            _ => 0.0,
+        }
+    }
+
     /// `value.color` (black for the zeroed union or another member).
     pub fn color(&self) -> Color {
         match self {
@@ -470,9 +483,14 @@ fn opt_ptr_eq(a: Option<&Rc<dyn Any>>, b: Option<&Rc<dyn Any>>) -> bool {
     }
 }
 
-/// `LV_LOG_WARN`
+/// `LV_USE_FLOAT`: whether float subjects (and the `#if LV_USE_FLOAT`
+/// branches of the widget bindings) are compiled in, for crates that do not
+/// see the `float` feature.
+pub const USE_FLOAT: bool = cfg!(feature = "float");
+
+/// `LV_LOG_WARN`, shared with the widget bindings.
 #[inline]
-fn log_warn(msg: &str) {
+pub fn log_warn(msg: &str) {
     #[cfg(feature = "log")]
     log::warn!("{msg}");
     #[cfg(not(feature = "log"))]
@@ -1201,6 +1219,10 @@ impl Ui {
     /// `lv_obj_remove_from_subject()`: remove the observers of `obj` from
     /// `subject`, or from all subjects when `None`.
     pub fn obj_remove_from_subject(&mut self, obj: Obj, subject: Option<SubjectId>) {
+        if !self.obj_is_valid(obj) {
+            check_arg_failed("lv_obj_remove_from_subject: obj != NULL");
+            return;
+        }
         /* subject == NULL is documented as valid: remove from ALL subjects */
 
         /*
