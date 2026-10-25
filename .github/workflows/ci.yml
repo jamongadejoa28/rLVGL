@@ -41,7 +41,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
-      - run: cargo test --workspace --all-features --exclude ferrovgl-sdl --exclude ferrovgl-wasm
+      # The umbrella crate's `sdl` feature links SDL2, which only the Linux runner installs.
+      - if: runner.os == 'Linux'
+        run: cargo test --workspace --all-features --exclude ferrovgl-sdl --exclude ferrovgl-wasm
+      - if: runner.os != 'Linux'
+        run: cargo test --workspace --all-features --exclude ferrovgl-sdl --exclude ferrovgl-wasm --exclude ferrovgl
       - if: runner.os == 'Linux'
         run: cargo test -p ferrovgl-sdl
       - if: runner.os == 'Linux'
@@ -122,7 +126,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
-      - run: cargo doc --workspace --no-deps --all-features
+      # rust-toolchain.toml pins stable; docsrs needs nightly for doc_cfg.
+      - run: cargo +nightly doc --workspace --no-deps --all-features
 
   deny:
     runs-on: ubuntu-latest

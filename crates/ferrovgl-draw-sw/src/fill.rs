@@ -126,7 +126,7 @@ enum MaskSel {
 }
 
 /// The per-draw state of a complex gradient (`dsc->grad.state`).
-#[cfg(feature = "complex-gradients")]
+#[cfg(all(feature = "complex", feature = "complex-gradients"))]
 enum ComplexState {
     Linear(grad::GradLinearState),
     Radial(grad::GradRadialState),
@@ -134,7 +134,7 @@ enum ComplexState {
 }
 
 /// `lv_draw_sw_grad_*_get_line()` for the gradient type of `state`.
-#[cfg(feature = "complex-gradients")]
+#[cfg(all(feature = "complex", feature = "complex-gradients"))]
 fn complex_get_line(
     dsc: &FillDsc,
     state: &Option<ComplexState>,
@@ -222,11 +222,11 @@ fn fill_complex(
         }
     }
 
-    #[cfg(feature = "complex-gradients")]
+    #[cfg(all(feature = "complex", feature = "complex-gradients"))]
     let mut complex_state: Option<ComplexState> = None;
 
     /*Prepare complex gradient*/
-    #[cfg(feature = "complex-gradients")]
+    #[cfg(all(feature = "complex", feature = "complex-gradients"))]
     if grad_dir as u8 >= GradDir::Linear as u8 {
         complex_state = Some(match grad_dir {
             GradDir::Linear => ComplexState::Linear(grad::linear_setup(&dsc.grad, coords)),
@@ -244,7 +244,7 @@ fn fill_complex(
         b_src_ofs = Some(0);
         grad_opa_ofs = Some(0);
     }
-    #[cfg(not(feature = "complex-gradients"))]
+    #[cfg(not(all(feature = "complex", feature = "complex-gradients")))]
     let _ = coords;
 
     /* `src_buf` bytes: the colour map as RGB888 */
@@ -278,7 +278,7 @@ fn fill_complex(
 
     /* Refresh `src_bytes` after a `get_line` (only the first `clipped_w`
      * entries are read by the blender). */
-    #[cfg(feature = "complex-gradients")]
+    #[cfg(all(feature = "complex", feature = "complex-gradients"))]
     macro_rules! refresh_src {
         () => {{
             let n = (clipped_w as usize).min(grad.color_map.len());
@@ -339,7 +339,7 @@ fn fill_complex(
                     hor_grad_processed = true;
                     preblend = grad_opa_ofs.is_some();
                 }
-                #[cfg(feature = "complex-gradients")]
+                #[cfg(all(feature = "complex", feature = "complex-gradients"))]
                 GradDir::Linear | GradDir::Radial | GradDir::Conical => {
                     complex_get_line(
                         dsc,
@@ -374,7 +374,7 @@ fn fill_complex(
                 GradDir::Hor => {
                     preblend = !hor_grad_processed && grad_opa_ofs.is_some();
                 }
-                #[cfg(feature = "complex-gradients")]
+                #[cfg(all(feature = "complex", feature = "complex-gradients"))]
                 GradDir::Linear | GradDir::Radial | GradDir::Conical => {
                     complex_get_line(
                         dsc,
@@ -459,7 +459,7 @@ fn fill_complex(
                         b_opa = opa_mix2(grad.opa_map[(h - bg_coords.y1) as usize], opa);
                     }
                 }
-                #[cfg(feature = "complex-gradients")]
+                #[cfg(all(feature = "complex", feature = "complex-gradients"))]
                 GradDir::Linear | GradDir::Radial | GradDir::Conical => {
                     complex_get_line(
                         dsc,
@@ -485,7 +485,7 @@ fn fill_complex(
     if has_grad {
         grad::cleanup(grad);
     }
-    #[cfg(feature = "complex-gradients")]
+    #[cfg(all(feature = "complex", feature = "complex-gradients"))]
     match complex_state {
         Some(ComplexState::Linear(s)) => grad::linear_cleanup(s),
         Some(ComplexState::Radial(s)) => grad::radial_cleanup(s),
@@ -713,7 +713,7 @@ pub(crate) mod tests {
         assert!(px(&ctx, layer, 25, 5)[0] > 0x40 && px(&ctx, layer, 25, 5)[0] < 0xc0);
     }
 
-    #[cfg(feature = "complex-gradients")]
+    #[cfg(all(feature = "complex", feature = "complex-gradients"))]
     #[test]
     fn linear_gradient_matches_horizontal_direction() {
         use ferrovgl_core::draw::grad::GradParams;
