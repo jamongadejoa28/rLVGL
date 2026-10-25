@@ -152,7 +152,9 @@ impl Ui {
             return;
         };
 
-        // LV_USE_EXT_DATA: `ObjData` has no `ext_data` yet (shared type request).
+        // Known deviation (LV_USE_EXT_DATA=y): `ObjData` has no `ext_data`
+        // field yet (shared-type request), so `ext_data.free_cb(ext_data.data)`
+        // cannot run here and `lv_obj_set_external_data()` is not provided.
 
         if let Some(destructor) = class.destructor {
             destructor(class, self, obj);
@@ -221,7 +223,8 @@ impl Ui {
             return;
         };
 
-        // LV_USE_EXT_DATA: `ext_data` would be cleared here (not in `ObjData`).
+        // Known deviation (LV_USE_EXT_DATA=y): `ext_data.free_cb` and
+        // `ext_data.data` would be cleared here; `ObjData` has no `ext_data`.
 
         if let Some(base) = cur.base {
             let original_class_p = cur;

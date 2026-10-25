@@ -565,10 +565,20 @@ impl Ui {
         String::from_utf8_lossy(&buf).into_owned()
     }
 
+    /// `lv_obj_find_by_name(NULL, name)`: the `parent == NULL` branch of
+    /// `lv_obj_find_by_name()`, which searches below
+    /// `lv_display_get_screen_active(lv_display_get_default())`.
+    pub fn obj_find_by_name_on_active_screen(&self, name: &str) -> Option<Obj> {
+        let parent = self.display_get_screen_active(self.display_get_default())?;
+
+        self.obj_find_by_name(parent, name)
+    }
+
     /// `lv_obj_find_by_name()`: recursive search below `parent` (direct
     /// children first, then depth first).
     pub fn obj_find_by_name(&self, parent: Obj, name: &str) -> Option<Obj> {
-        // `parent == NULL` (search the active screen) has no equivalent: `parent` is required.
+        // `parent == NULL` is `obj_find_by_name_on_active_screen()`. C does not
+        // validate a non-NULL `parent`; a stale handle simply finds nothing.
         if !self.obj_is_valid(parent) {
             return None;
         }
@@ -1009,10 +1019,14 @@ impl Ui {
         }
         #[cfg(feature = "log")]
         {
-            // LV_USE_OBJ_ID has no `ObjData` field yet: use the non-ID branch.
+            // Known deviation: LV_USE_OBJ_ID=y in the parity config, but
+            // `ObjData` has no `id` field and `lv_obj_stringify_id()` is not
+            // ported, so this is the `lv_obj_stringify_id() == NULL` fallback.
             let id = "obj0";
             // id of `obj0` is an invalid id for builtin id
-            log::info!(
+            // LV_LOG_USER: the highest LVGL level, printed whenever logging is
+            // on, so it maps to the least filtered `log` level.
+            log::error!(
                 "{:width$}obj:{:?}, id:{};",
                 "",
                 obj.id(),
