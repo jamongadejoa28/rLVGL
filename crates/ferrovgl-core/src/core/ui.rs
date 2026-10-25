@@ -1,12 +1,23 @@
-//! Ported from lvgl v9.6.0: `src/core/lv_global.h`, `src/core/lv_global.c`, `src/lv_init.c`
+//! Ported from lvgl v9.6.0: `src/lv_init.c`, `src/misc/lv_async.c`, `src/core/lv_global.h`
 //! (and the numeric options of `lv_conf_template.h`).
 //!
 //! [`Ui`] is the single context that owns every object, display, input
 //! device, group, timer, animation, style and event callback (PLAN.md 4.1).
 //! It replaces `lv_global_t` and all static state; there is no global
 //! mutable state anywhere in the crate.
-
-#![allow(unused_variables)] // skeleton: bodies are todo!()
+//!
+//! `lv_init()` is [`Ui::new`] and `lv_deinit()` is [`Ui::deinit`]; both run
+//! the subsystems in upstream order. Subsystems that do not exist in the
+//! Rust port (OS layer, file systems, image decoders, profiler, sysmon,
+//! observer, span stack, platform drivers) are skipped at their upstream
+//! position. The software renderer lives in `ferrovgl-draw-sw`, so
+//! `lv_draw_sw_init()` is called by the application right after `Ui::new`
+//! (`ferrovgl_draw_sw::init(&mut ui)`).
+//!
+//! `lv_async_call()` is ported 1:1: every call creates its own one-shot
+//! timer (period 0, `repeat_count` 1, inserted at the timer list head)
+//! whose user data carries the job, so async jobs interleave with the other
+//! timers exactly like upstream.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -23,11 +34,11 @@ use crate::indev::{IndevData, IndevId};
 use crate::layouts::LayoutDsc;
 use crate::misc::anim::AnimState;
 use crate::misc::arena::Arena;
-use crate::misc::event::{EventCode, EventDsc, EventFrame};
+use crate::misc::event::{EventCode, EventDsc, EventFrame, LvResult};
 use crate::misc::math::Rand;
 use crate::misc::style::{Style, StyleProp};
 use crate::misc::tick::TickState;
-use crate::misc::timer::TimerState;
+use crate::misc::timer::{TimerId, TimerState};
 use crate::theme::Theme;
 
 /// `LV_DEF_REFR_PERIOD`
@@ -123,12 +134,36 @@ impl Default for UiConfig {
 }
 
 /// Work deferred to the next `timer_handler()` (`lv_async_call`,
-/// `lv_obj_delete_async`).
+/// `lv_obj_delete_async`): the `cb` + `user_data` pair of `lv_async_info_t`.
+///
+/// Scheduled with [`Ui::async_call_job`] / [`Ui::async_call`] and cancelled
+/// with [`Ui::async_call_job_cancel`] / [`Ui::async_call_cancel`].
+#[derive(Clone)]
 pub enum AsyncJob {
-    /// `lv_obj_delete_async()`
+    /// `lv_obj_delete_async()`: `lv_async_call(lv_obj_delete_async_cb, obj)`.
     DeleteObj(Obj),
     /// `lv_async_call()`
     Call(Rc<dyn Fn(&mut Ui)>),
+}
+
+impl AsyncJob {
+    /// The `info->cb == async_xcb && info->user_data == user_data` match of
+    /// `lv_async_call_cancel()`: a closure is its own `cb` + `user_data`,
+    /// so callbacks match by `Rc` identity; object deletions match by object.
+    fn matches(&self, other: &AsyncJob) -> bool {
+        match (self, other) {
+            (AsyncJob::DeleteObj(a), AsyncJob::DeleteObj(b)) => a == b,
+            (AsyncJob::Call(a), AsyncJob::Call(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+/// `lv_async_info_t`: stored as the async timer's user data. Its type is
+/// private, so a timer whose user data downcasts to it is an async timer
+/// (upstream: `timer->timer_cb == lv_async_timer_cb`).
+struct AsyncInfo {
+    job: AsyncJob,
 }
 
 /// `lv_global_t`: the LVGL context.
@@ -205,8 +240,6 @@ pub struct Ui {
     pub draw_units: Vec<Box<dyn DrawUnit>>,
     /// `math_rand_seed`
     pub rand: Rand,
-    /// Pending async jobs.
-    pub async_queue: Vec<AsyncJob>,
     /// Application state reachable from callbacks (`lv_global_t::user_data`).
     pub app: Option<Box<dyn Any>>,
     /// `inited`
@@ -218,7 +251,12 @@ pub struct Ui {
 impl Ui {
     /// `lv_init()`: build an empty context. Displays, input devices and the
     /// software draw unit are added by the caller / the renderer crate.
+    ///
+    /// The struct literal is `lv_global_init()` (zeroed state, `style_refresh`,
+    /// the register id counters, `lv_rand_set_seed(0x1234ABCD)`); the
+    /// subsystem initialisers then run in `lv_init()` order.
     pub fn new(config: UiConfig) -> Self {
+        /*Initialize members of static variable lv_global */
         let mut ui = Self {
             objs: Arena::new(),
             displays: Arena::new(),
@@ -251,14 +289,33 @@ impl Ui {
             draw: DrawCtx::new(),
             draw_units: Vec::new(),
             rand: Rand::default(),
-            async_queue: Vec::new(),
             app: None,
-            inited: true,
+            inited: false,
             deinit_in_progress: false,
             config,
         };
         ui.style_custom_prop_flags
             .resize(ui.config.style_custom_table_size as usize, 0);
+
+        /*lv_mem_init(), lv_draw_buf_init_handlers(), lv_os_init(): nothing to do*/
+
+        // lv_timer_core_init(): the list is empty (TimerState::new);
+        // initially enable the lv_timer handling.
+        ui.timer_enable(true);
+
+        /*lv_fs_init(): no file systems. lv_layout_init(): `layouts` holds the
+         *built-in flex and grid layouts (lv_flex_init / lv_grid_init)*/
+
+        ui.anim_core_init();
+
+        // lv_group_init(): `groups` / `group_order` start empty.
+        // lv_draw_init(): `draw` (DrawCtx::new) and `draw_units` start empty;
+        // lv_draw_sw_init() is run by the renderer crate.
+        // lv_obj_style_init(): `style_trans` / `style_trans_order` start empty.
+        // lv_refr_init(): empty upstream.
+        // lv_image_decoder_init() / lv_bin_decoder_init(): no decoder registry.
+
+        ui.inited = true;
         ui
     }
 
@@ -275,8 +332,94 @@ impl Ui {
     }
 
     /// `lv_deinit()`: delete every display, object, timer and animation.
+    ///
+    /// Runs the upstream teardown order: default display reset, input
+    /// devices then displays (`lv_cleanup_devices`), themes, style
+    /// transitions and the custom property table (`lv_obj_style_deinit`),
+    /// draw units (`lv_draw_deinit`), groups, animations, layouts and
+    /// finally the timers.
     pub fn deinit(&mut self) {
-        todo!()
+        /*Do nothing if already deinit*/
+        if !self.inited {
+            return; /*"lv_deinit: already deinit!"*/
+        }
+
+        if self.deinit_in_progress {
+            return;
+        }
+
+        self.deinit_in_progress = true;
+
+        // lv_display_set_default(NULL)
+        self.disp_default = None;
+
+        self.cleanup_devices();
+
+        // lv_theme_default_deinit() / lv_theme_simple_deinit() /
+        // lv_theme_mono_deinit(): free the themes.
+        self.themes.clear();
+
+        /*lv_image_decoder_deinit(): no decoder registry. lv_refr_deinit(): empty upstream.*/
+
+        self.obj_style_deinit();
+
+        /*lv_draw_sw_deinit() (mask cache) is owned by the renderer crate;
+         *its units are deleted by lv_draw_deinit() below*/
+        self.draw_deinit();
+
+        // lv_group_deinit(): lv_ll_clear(group_ll_p)
+        self.groups.clear();
+        self.group_order.clear();
+
+        self.anim_core_deinit();
+
+        // lv_layout_deinit(): lv_free(layout_list_def)
+        self.layouts = Vec::new();
+
+        self.timer_core_deinit();
+
+        /*lv_fs_deinit(), lv_mem_deinit(): nothing to do*/
+
+        self.inited = false;
+    }
+
+    /// `lv_cleanup_devices()`: `lv_ll_clear_custom()` of `indev_ll` with
+    /// `lv_indev_delete` and of `disp_ll` with `lv_display_delete`, walking
+    /// from the head and reading the next node before the cleanup call.
+    fn cleanup_devices(&mut self) {
+        /* cleanup indev and display */
+        let mut i = self.indev_order.first().copied();
+        while let Some(indev) = i {
+            let i_next = next_in_order(&self.indev_order, indev);
+            self.indev_delete(indev);
+            i = i_next;
+        }
+
+        let mut i = self.display_order.first().copied();
+        while let Some(disp) = i {
+            let i_next = next_in_order(&self.display_order, disp);
+            self.display_delete(disp);
+            i = i_next;
+        }
+    }
+
+    /// `lv_obj_style_deinit()`: clear `style_trans_ll` and free the custom
+    /// property flag table (an empty table is the C `NULL`).
+    fn obj_style_deinit(&mut self) {
+        self.style_trans.clear();
+        self.style_trans_order.clear();
+        if !self.style_custom_prop_flags.is_empty() {
+            self.style_custom_prop_flags = Vec::new();
+        }
+    }
+
+    /// `lv_draw_deinit()`: call every unit's `delete_cb` from `unit_head`
+    /// on, then forget the units. Like upstream `unit_cnt` is left as is.
+    fn draw_deinit(&mut self) {
+        for cur_unit in self.draw_units.iter_mut() {
+            cur_unit.delete();
+        }
+        self.draw_units = Vec::new();
     }
 
     /// Store application state (`lv_global_t::user_data`).
@@ -295,8 +438,83 @@ impl Ui {
     }
 
     /// `lv_async_call()`: run `f` from the next `timer_handler()`.
+    ///
+    /// The upstream allocation failures (`LV_RESULT_INVALID`) cannot happen,
+    /// so nothing is returned.
     pub fn async_call(&mut self, f: Rc<dyn Fn(&mut Ui)>) {
-        todo!()
+        self.async_call_job(AsyncJob::Call(f));
+    }
+
+    /// `lv_async_call()` for any [`AsyncJob`]: create a one-shot timer with
+    /// period 0 that runs `job` (`lv_obj_delete_async()` passes
+    /// [`AsyncJob::DeleteObj`]). Returns the timer.
+    pub fn async_call_job(&mut self, job: AsyncJob) -> TimerId {
+        /*Allocate an info structure*/
+        let info: Rc<dyn Any> = Rc::new(AsyncInfo { job });
+
+        /*Create a new timer*/
+        let timer = self.timer_create(Rc::new(Ui::async_timer_cb), 0, Some(info));
+
+        self.timer_set_repeat_count(timer, 1);
+        timer
+    }
+
+    /// `lv_async_call_cancel()`: delete every pending async call of `f`.
+    /// `LvResult::Ok` if at least one was cancelled.
+    pub fn async_call_cancel(&mut self, f: &Rc<dyn Fn(&mut Ui)>) -> LvResult {
+        self.async_call_job_cancel(&AsyncJob::Call(f.clone()))
+    }
+
+    /// `lv_async_call_cancel()` for any [`AsyncJob`] (callbacks match by
+    /// `Rc` identity, deletions by object).
+    pub fn async_call_job_cancel(&mut self, job: &AsyncJob) -> LvResult {
+        let mut timer = self.timer_get_next(None);
+        let mut res = LvResult::Invalid;
+
+        while let Some(t) = timer {
+            /*Find the next timer node*/
+            let timer_next = self.timer_get_next(Some(t));
+
+            /*Find async timer callback*/
+            if let Some(info) = self.async_info(t) {
+                /*Match user function callback and user data*/
+                if info.job.matches(job) {
+                    self.timer_delete(t);
+                    res = LvResult::Ok;
+                }
+            }
+
+            timer = timer_next;
+        }
+
+        res
+    }
+
+    /// The `lv_async_info_t` of `timer`, if it is an async timer.
+    fn async_info(&self, timer: TimerId) -> Option<Rc<AsyncInfo>> {
+        self.timer_get_user_data(timer)?.downcast::<AsyncInfo>().ok()
+    }
+
+    /// `lv_async_timer_cb()`
+    fn async_timer_cb(&mut self, timer: TimerId) {
+        /*Save the info because an lv_async_call_cancel might delete it in the callback*/
+        let Some(info) = self.async_info(timer) else {
+            return;
+        };
+        let info_save = info.job.clone();
+        drop(info);
+        self.timer_delete(timer);
+
+        match info_save {
+            AsyncJob::Call(cb) => cb(self),
+            // lv_obj_delete_async_cb(): lv_obj_delete(obj). A handle that
+            // went stale in the meantime is ignored (LV_ASSERT_OBJ upstream).
+            AsyncJob::DeleteObj(obj) => {
+                if self.resolve(obj.id()).is_some() {
+                    self.obj_delete(obj);
+                }
+            }
+        }
     }
 
     /// `lv_rand()`
@@ -314,31 +532,42 @@ impl Ui {
     /// `lv_style_register_prop()`: register a custom property and return its
     /// id (`>= StyleProp::NUM_BUILT_IN`), or `StyleProp::INV` on failure.
     pub fn style_register_prop(&mut self, flag: u8) -> StyleProp {
-        todo!()
+        crate::misc::style::register_prop(
+            &mut self.style_custom_prop_flags,
+            &mut self.style_last_custom_prop_id,
+            flag,
+        )
     }
 
     /// `lv_style_get_num_custom_props()`
     pub fn style_get_num_custom_props(&self) -> u32 {
-        todo!()
+        crate::misc::style::get_num_custom_props(self.style_last_custom_prop_id)
     }
 
     /// `lv_style_prop_lookup_flags()` including custom properties: the same
     /// `ANY` / `INV` early returns as [`crate::misc::style::lookup_flags`],
     /// then the built-in table, then `style_custom_prop_flags`.
     pub fn style_prop_lookup_flags(&self, prop: StyleProp) -> u8 {
-        todo!()
+        crate::misc::style::lookup_flags_with_custom(prop, &self.style_custom_prop_flags)
     }
 
-    /// `lv_draw_create_unit()`: register a draw unit, returning its index
+    /// `lv_draw_create_unit()`: register a draw unit, returning its `idx`
     /// (the `draw_unit_id` tasks refer to).
+    ///
+    /// Like upstream the unit becomes the new `unit_head` (it is inserted at
+    /// the front of [`Ui::draw_units`]) and `idx` is `unit_cnt` *after* the
+    /// increment, so the first unit is 1.
     pub fn draw_create_unit(&mut self, unit: Box<dyn DrawUnit>) -> u8 {
-        todo!()
+        self.draw_units.insert(0, unit);
+        self.draw.unit_cnt = self.draw.unit_cnt.wrapping_add(1);
+
+        self.draw.unit_cnt as u8
     }
 
-    /// `lv_draw_get_unit_count()`
+    /// `lv_draw_get_unit_count()`: `unit_cnt`.
     #[inline]
     pub fn draw_unit_count(&self) -> u32 {
-        self.draw_units.len() as u32
+        self.draw.unit_cnt
     }
 
     /// Resolve an object id to a live handle (`None` if deleted).
@@ -352,9 +581,17 @@ impl Ui {
     }
 }
 
+/// `lv_ll_get_next()` over an `*_order` list.
+fn next_in_order<T: Copy + PartialEq>(order: &[T], cur: T) -> Option<T> {
+    let pos = order.iter().position(|&x| x == cur)?;
+    order.get(pos + 1).copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+    use core::cell::RefCell;
 
     #[test]
     fn config_defaults_match_lv_conf() {
@@ -399,5 +636,307 @@ mod tests {
         assert!(ui.event_stack.is_empty());
         assert!(ui.style_trans.is_empty());
         assert_eq!(ui.draw_unit_count(), 0);
+    }
+
+    /// Records the async callbacks in the order they ran.
+    type Log = Rc<RefCell<Vec<u32>>>;
+
+    fn logger(log: &Log, v: u32) -> Rc<dyn Fn(&mut Ui)> {
+        let log = log.clone();
+        Rc::new(move |_ui: &mut Ui| log.borrow_mut().push(v))
+    }
+
+    /// A `Ui` whose tick is past the "lv_tick_inc() is not called" value.
+    fn ui() -> Ui {
+        let mut ui = Ui::new(UiConfig::default());
+        ui.tick_inc(1);
+        ui
+    }
+
+    #[test]
+    fn lv_init_creates_the_paused_animation_timer() {
+        // lv_timer_core_init() enables the handler, then lv_anim_core_init()
+        // creates the (paused, the list is empty) animation timer.
+        let ui = Ui::new(UiConfig::default());
+        assert!(ui.timers.run);
+        let anim_timer = ui.anims.timer.expect("lv_anim_core_init creates the timer");
+        assert_eq!(ui.timers.order, vec![anim_timer]);
+        let t = ui.timer(anim_timer).unwrap();
+        assert_eq!(t.period, DEF_REFR_PERIOD);
+        assert!(t.paused);
+        assert!(!ui.anims.list_changed);
+        assert!(!ui.anims.run_round);
+        assert!(ui.style_refresh);
+        assert!(!ui.deinit_in_progress);
+        assert!(ui.disp_default.is_none());
+    }
+
+    /// Port of `test_async.c: test_async_call_basic_functionality`.
+    #[test]
+    fn async_call_basic_functionality() {
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        ui.async_call(logger(&log, 1));
+        assert!(log.borrow().is_empty(), "runs from the timer handler only");
+        ui.timer_handler();
+        assert_eq!(*log.borrow(), vec![1]);
+        /*The one-shot timer deleted itself*/
+        assert_eq!(ui.timers.order, vec![ui.anims.timer.unwrap()]);
+        ui.timer_handler();
+        assert_eq!(*log.borrow(), vec![1]);
+    }
+
+    #[test]
+    fn async_call_is_a_period_0_one_shot_timer_at_the_head() {
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        let t = ui.async_call_job(AsyncJob::Call(logger(&log, 1)));
+        assert_eq!(ui.timer_get_next(None), Some(t));
+        let d = ui.timer(t).unwrap();
+        assert_eq!(d.period, 0);
+        assert_eq!(d.repeat_count, 1);
+        assert!(d.auto_delete);
+    }
+
+    #[test]
+    fn async_calls_run_head_first_like_the_timer_list() {
+        // lv_timer_create() inserts at the head, so the newest call runs first.
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        ui.async_call(logger(&log, 1));
+        ui.async_call(logger(&log, 2));
+        ui.async_call(logger(&log, 3));
+        ui.timer_handler();
+        assert_eq!(*log.borrow(), vec![3, 2, 1]);
+    }
+
+    /// Port of `test_async.c: test_async_call_cancel_match`.
+    #[test]
+    fn async_call_cancel_match() {
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        let cb = logger(&log, 1);
+        let other = logger(&log, 2);
+        ui.async_call(cb.clone());
+        ui.async_call(other.clone());
+        ui.async_call(cb.clone());
+        assert_eq!(ui.async_call_cancel(&cb), LvResult::Ok);
+        assert_eq!(ui.async_call_cancel(&cb), LvResult::Invalid);
+        ui.timer_handler();
+        assert_eq!(*log.borrow(), vec![2]);
+        assert_eq!(ui.async_call_cancel(&other), LvResult::Invalid);
+    }
+
+    #[test]
+    fn async_call_cancel_does_not_touch_other_timers() {
+        let mut ui = ui();
+        let plain = ui.timer_create_basic();
+        let n = ui.timers.order.len();
+        let log: Log = Rc::default();
+        assert_eq!(ui.async_call_cancel(&logger(&log, 1)), LvResult::Invalid);
+        assert_eq!(
+            ui.async_call_job_cancel(&AsyncJob::DeleteObj(Obj(ObjId(Arena::<()>::new().insert(()))))),
+            LvResult::Invalid
+        );
+        assert_eq!(ui.timers.order.len(), n);
+        assert!(ui.timer(plain).is_some());
+    }
+
+    #[test]
+    fn async_callback_can_cancel_and_schedule_others() {
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        let victim = logger(&log, 2);
+        let v = victim.clone();
+        let l = log.clone();
+        let l2 = log.clone();
+        // Runs first (newest); cancels the older call and schedules a new one.
+        ui.async_call(victim);
+        ui.async_call(Rc::new(move |ui: &mut Ui| {
+            l.borrow_mut().push(1);
+            assert_eq!(ui.async_call_cancel(&v), LvResult::Ok);
+            let l3 = l2.clone();
+            ui.async_call(Rc::new(move |_ui: &mut Ui| l3.borrow_mut().push(3)));
+        }));
+        ui.timer_handler();
+        /*The call created inside the handler is due at once (period 0)*/
+        assert_eq!(*log.borrow(), vec![1, 3]);
+    }
+
+    #[test]
+    fn delete_obj_job_ignores_a_stale_object() {
+        // lv_obj_delete_async() on an object deleted in the meantime.
+        let mut ui = ui();
+        let stale = Obj(ObjId(Arena::<()>::new().insert(())));
+        let t = ui.async_call_job(AsyncJob::DeleteObj(stale));
+        ui.timer_handler();
+        assert!(ui.timer(t).is_none());
+        let t = ui.async_call_job(AsyncJob::DeleteObj(stale));
+        assert_eq!(
+            ui.async_call_job_cancel(&AsyncJob::DeleteObj(stale)),
+            LvResult::Ok
+        );
+        assert!(ui.timer(t).is_none());
+    }
+
+    /// Port of `test_style.c: test_custom_prop_ids`.
+    #[test]
+    fn custom_prop_ids() {
+        let mut ui = Ui::new(UiConfig::default());
+        let mut fake_flag: u8 = 0;
+        let initial_custom_props = ui.style_get_num_custom_props();
+        let max_props_to_register = 64;
+        for i in 0..max_props_to_register {
+            let prop = ui.style_register_prop(fake_flag);
+            /* Should have a higher index than the last built-in prop */
+            assert!(prop.0 > StyleProp::LAST_BUILT_IN.0);
+            if i == 0 {
+                /* Should be equal to the first expected index of a custom prop */
+                assert_eq!(
+                    prop.0 as u32,
+                    StyleProp::NUM_BUILT_IN as u32 + initial_custom_props
+                );
+            }
+            /*We should find our flags*/
+            assert_eq!(fake_flag, ui.style_prop_lookup_flags(prop));
+            if fake_flag == 0xff {
+                fake_flag = 0;
+            } else {
+                fake_flag += 1;
+            }
+        }
+        assert_eq!(
+            initial_custom_props + max_props_to_register,
+            ui.style_get_num_custom_props()
+        );
+        assert_eq!(ui.style_custom_prop_flags.len(), 64);
+    }
+
+    #[test]
+    fn style_prop_lookup_flags_early_returns_and_built_ins() {
+        let ui = Ui::new(UiConfig::default());
+        assert_eq!(
+            ui.style_prop_lookup_flags(StyleProp::ANY),
+            crate::misc::style::STYLE_PROP_FLAG_ALL
+        );
+        assert_eq!(ui.style_prop_lookup_flags(StyleProp::INV), 0);
+        for p in 0..StyleProp::NUM_BUILT_IN {
+            assert_eq!(
+                ui.style_prop_lookup_flags(StyleProp(p)),
+                crate::misc::style::lookup_flags(StyleProp(p))
+            );
+        }
+        /*Not registered yet*/
+        assert_eq!(ui.style_prop_lookup_flags(StyleProp(StyleProp::NUM_BUILT_IN)), 0);
+    }
+
+    /// A draw unit that records its `delete_cb` calls.
+    struct DeleteLog {
+        name: &'static str,
+        log: Rc<RefCell<Vec<&'static str>>>,
+    }
+
+    impl DrawUnit for DeleteLog {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn evaluate(&mut self, _task: &mut crate::draw::DrawTask) -> i32 {
+            0
+        }
+        fn dispatch(&mut self, _ctx: &mut DrawCtx, _layer: crate::draw::LayerId) -> i32 {
+            crate::draw::DRAW_UNIT_IDLE
+        }
+        fn delete(&mut self) {
+            self.log.borrow_mut().push(self.name);
+        }
+    }
+
+    #[test]
+    fn draw_create_unit_prepends_and_counts_from_one() {
+        let mut ui = Ui::new(UiConfig::default());
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let a = ui.draw_create_unit(Box::new(DeleteLog {
+            name: "A",
+            log: log.clone(),
+        }));
+        let b = ui.draw_create_unit(Box::new(DeleteLog {
+            name: "B",
+            log: log.clone(),
+        }));
+        // new_unit->idx = ++unit_cnt
+        assert_eq!((a, b), (1, 2));
+        assert_eq!(ui.draw_unit_count(), 2);
+        assert_eq!(ui.draw.unit_cnt, 2);
+        /*new_unit->next = unit_head; unit_head = new_unit*/
+        let names: Vec<_> = ui.draw_units.iter().map(|u| u.name()).collect();
+        assert_eq!(names, vec!["B", "A"]);
+
+        // lv_draw_deinit() calls delete_cb from the head on.
+        ui.deinit();
+        assert_eq!(*log.borrow(), vec!["B", "A"]);
+        assert!(ui.draw_units.is_empty());
+    }
+
+    #[test]
+    fn deinit_tears_everything_down_once() {
+        let mut ui = ui();
+        let log: Log = Rc::default();
+        ui.async_call(logger(&log, 1));
+        ui.style_register_prop(0x5);
+        ui.theme_create_for_test();
+        ui.deinit();
+        assert!(!ui.is_initialized());
+        assert!(ui.deinit_in_progress);
+        assert!(ui.timers.timers.is_empty());
+        assert!(ui.timers.order.is_empty());
+        assert!(!ui.timers.run, "lv_timer_core_deinit disables the handler");
+        assert!(ui.anims.anims.is_empty());
+        assert!(ui.groups.is_empty());
+        assert!(ui.themes.is_empty());
+        assert!(ui.layouts.is_empty());
+        assert!(ui.style_custom_prop_flags.is_empty());
+        assert!(ui.style_trans.is_empty());
+        /*Pending async calls are dropped with the timers*/
+        assert_eq!(ui.timer_handler(), 1);
+        assert!(log.borrow().is_empty());
+
+        /*Do nothing if already deinit*/
+        ui.deinit();
+        assert!(!ui.is_initialized());
+    }
+
+    impl Ui {
+        /// Insert a theme without `lv_theme_create()` (ported elsewhere).
+        fn theme_create_for_test(&mut self) {
+            self.themes.insert(Theme::new());
+        }
+    }
+
+    #[test]
+    fn layer_go_to_xy_is_range_checked() {
+        use crate::misc::area::Area;
+        use crate::misc::color::ColorFormat;
+        let mut ui = Ui::new(UiConfig::default());
+        let layer = ui
+            .draw
+            .layer_create(None, ColorFormat::Argb8888, &Area::new(0, 0, 9, 4));
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 0, 0), None, "no buffer yet");
+        assert!(ui.draw.layer_alloc_buf(layer));
+        let stride = ui
+            .draw
+            .layer(layer)
+            .unwrap()
+            .draw_buf
+            .as_ref()
+            .unwrap()
+            .header
+            .stride as usize;
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 0, 0), Some(0));
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 3, 2), Some(2 * stride + 12));
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 9, 4), Some(4 * stride + 36));
+        /*lv_draw_buf_goto_xy(): "coordinates out of range"*/
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 10, 0), None);
+        assert_eq!(ui.draw.layer_go_to_xy(layer, 0, 5), None);
+        assert_eq!(ui.draw.layer_go_to_xy(layer, -1, 0), None);
     }
 }
