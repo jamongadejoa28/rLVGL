@@ -1,8 +1,9 @@
 name: Release
 
+# Manual only until the 0.1.0 publish is approved: release-plz publishes to
+# crates.io (irreversible) and needs the CARGO_REGISTRY_TOKEN secret.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   pull-requests: write

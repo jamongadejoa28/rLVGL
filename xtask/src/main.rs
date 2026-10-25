@@ -26,6 +26,7 @@ const SPARSE_PATHS: &[&str] = &[
     "tests/configs",
     "docs/src/details/main-modules",
     "examples",
+    "demos/render",
 ];
 
 fn main() -> ExitCode {
