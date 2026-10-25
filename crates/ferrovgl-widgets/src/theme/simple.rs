@@ -7,8 +7,9 @@
 //! own styles, as in C. Branches that need classes which are not ported yet
 //! (tabview, win, buttonmatrix, ...) are omitted.
 //!
-//! Theme state is owned per display, replacing C's global singleton. The
-//! styles keep their IDs across reinitialization; copied and shared themes
+//! Each `Ui` owns one simple theme, like C's global `theme_def`
+//! (`LV_GLOBAL_DEFAULT()->theme_simple`). The styles keep their IDs across
+//! reinitialization; copied and shared themes
 //! retain their resources until their users are detached. This theme uses
 //! fixed pixel sizes, so resolution and DPI changes need no style rebuild or
 //! resolution callback.
@@ -48,8 +49,8 @@ theme_styles! {
 
 #[derive(Clone)]
 struct SimpleThemeData {
+    /// The original theme (`theme_def`); a shallow `lv_theme_copy` keeps it.
     owner: ThemeId,
-    display: DisplayId,
     styles: Styles<StyleId>,
 }
 
@@ -57,18 +58,55 @@ fn data(ui: &Ui, theme: ThemeId) -> Option<&SimpleThemeData> {
     ui.theme(theme)?.extension.as_ref()?.downcast_ref()
 }
 
-/// `lv_theme_simple_init()`. Reuse this display's simple theme, using the
-/// configured default font in its three font fields. Install the returned
-/// theme with `Ui::display_set_theme`, or use this as a display creation hook.
-pub fn init(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
-    ui.display(display)?;
-    let existing = ui.themes.iter().find_map(|(key, theme)| {
+/// `theme_def`: the single simple theme of this `Ui`
+/// (`LV_GLOBAL_DEFAULT()->theme_simple`), or `None` before the first [`init`]
+/// / after [`deinit`].
+fn theme_def(ui: &Ui) -> Option<ThemeId> {
+    ui.themes.iter().find_map(|(key, theme)| {
         let state = theme.extension.as_ref()?.downcast_ref::<SimpleThemeData>()?;
-        (state.display == display && state.owner == ThemeId(key)).then_some(ThemeId(key))
-    });
-    let theme = existing.unwrap_or_else(|| ui.theme_create());
-    // style_init_reset(): reset the existing shared styles in place.
-    let styles = if let Some(old) = data(ui, theme).map(|data| data.styles) {
+        (state.owner == ThemeId(key)).then_some(ThemeId(key))
+    })
+}
+
+/// `lv_theme_simple_is_inited()`: whether this `Ui`'s simple theme exists.
+pub fn is_inited(ui: &Ui) -> bool {
+    theme_def(ui).is_some()
+}
+
+/// `lv_theme_simple_get()`: this `Ui`'s simple theme, or `None` if it is not
+/// initialized.
+pub fn get(ui: &Ui) -> Option<ThemeId> {
+    if !is_inited(ui) {
+        return None;
+    }
+    theme_def(ui)
+}
+
+/// `lv_theme_simple_init()`. There is one simple theme per `Ui`, like C's
+/// global `theme_def`: every call re-initializes and returns it, with
+/// `base.disp` set to `display` (which may be `None`) and the configured
+/// default font in its three font fields. Install the returned theme with
+/// `Ui::display_set_theme`, or use [`init_display`] as a display creation hook.
+/// Returns `None` only for a deleted display.
+pub fn init(ui: &mut Ui, display: impl Into<Option<DisplayId>>) -> Option<ThemeId> {
+    let disp = display.into();
+    if let Some(disp) = disp {
+        ui.display(disp)?;
+    }
+    // if(!lv_theme_simple_is_inited()) theme_def = lv_malloc_zeroed(...)
+    let theme = theme_def(ui).unwrap_or_else(|| ui.theme_create());
+    let old = data(ui, theme).map(|data| data.styles);
+
+    let font = ui.config().font_default.clone();
+    let base = ui.theme_mut(theme)?;
+    base.disp = disp;
+    base.font_small = font.clone();
+    base.font_normal = font.clone();
+    base.font_large = font;
+    base.apply = Some(theme_apply);
+
+    // style_init(): style_init_reset() resets the existing shared styles in place.
+    let styles = if let Some(old) = old {
         old.zip(style_init()).map(|(id, style)| {
             if let Some(target) = ui.style_mut(id) {
                 *target = style;
@@ -80,27 +118,23 @@ pub fn init(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
     } else {
         style_init().map(|style| ui.style_create(style))
     };
-    let font = ui.config().font_default.clone();
-    let base = ui.theme_mut(theme)?;
-    base.disp = Some(display);
-    base.font_small = font.clone();
-    base.font_normal = font.clone();
-    base.font_large = font;
-    base.apply = Some(theme_apply);
-    base.extension = Some(Rc::new(SimpleThemeData {
-        owner: theme,
-        display,
-        styles,
-    }));
-    if ui.display_get_theme(Some(display)) == Some(theme) {
+    ui.theme_mut(theme)?.extension = Some(Rc::new(SimpleThemeData { owner: theme, styles }));
+
+    if disp.is_none() || ui.display_get_theme(disp) == Some(theme) {
         ui.obj_report_style_change(None);
     }
+
+    // theme->inited = true;
     Some(theme)
 }
 
-/// Alias of `lv_theme_simple_init()` suitable for the same display-creation
-/// hook as `default::init_display`.
+/// The `LV_USE_THEME_SIMPLE` block of `lv_display_create()`
+/// (`lv_display.c:141..146`): [`get`] if the simple theme is inited, otherwise
+/// [`init`] it for `display`. Suitable for `Ui::display_create_ex`'s hook.
 pub fn init_display(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
+    if is_inited(ui) {
+        return get(ui);
+    }
     init(ui, display)
 }
 
@@ -284,6 +318,52 @@ mod tests {
             font_default: Some(FontRef::Static(&ferrovgl_fonts::MONTSERRAT_14)),
             ..UiConfig::default()
         })
+    }
+
+    /// `lv_theme_simple_init(NULL)` (upstream `test_theme.c:236`): `base.disp`
+    /// stays NULL and the style change is reported even though no display
+    /// uses the theme yet.
+    #[test]
+    fn null_display_init_always_reports_style_change() {
+        let mut ui = ui();
+        let display = ui.display_create(800, 480);
+        let screen = ui.display_get_screen_active(Some(display)).unwrap();
+        // lv_obj_report_style_change(NULL) refreshes objects having any style.
+        let style = ui.style_create(Style::new());
+        ui.obj_add_style(screen, style, StyleSelector::DEFAULT);
+        let changes = Rc::new(core::cell::Cell::new(0u32));
+        let counter = changes.clone();
+        ui.obj_add_event_cb(
+            screen,
+            Rc::new(move |_, _| counter.set(counter.get() + 1)),
+            ferrovgl_core::EventCode::STYLE_CHANGED,
+            None,
+        );
+        assert!(!is_inited(&ui));
+        assert_eq!(get(&ui), None);
+        let theme = init(&mut ui, display).unwrap();
+        assert_eq!(changes.get(), 0);
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(display));
+        assert!(is_inited(&ui));
+        assert_eq!(init(&mut ui, None), Some(theme));
+        assert!(changes.get() > 0);
+        assert_eq!(ui.theme(theme).unwrap().disp, None);
+        assert_eq!(get(&ui), Some(theme));
+    }
+
+    /// `lv_display.c:141..146`: later displays get the inited global theme.
+    #[test]
+    fn later_displays_share_the_inited_theme() {
+        let mut ui = ui();
+        let a = ui.display_create_ex(800, 480, Some(init_display)).unwrap();
+        let theme = ui.display_get_theme(Some(a)).unwrap();
+        let ids = data(&ui, theme).unwrap().styles;
+        let b = ui.display_create_ex(320, 240, Some(init_display)).unwrap();
+        assert_eq!(ui.display_get_theme(Some(b)), Some(theme));
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(a));
+        assert_eq!(init(&mut ui, b), Some(theme));
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(b));
+        assert_eq!(data(&ui, theme).unwrap().styles, ids);
     }
 
     #[test]

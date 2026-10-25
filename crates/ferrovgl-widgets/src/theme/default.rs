@@ -10,13 +10,14 @@
 //! `theme_apply()` covers screens, base objects (cards), buttons, bars,
 //! sliders, switches and checkboxes. Labels and images receive no own styles,
 //! as upstream. Branches that need classes which are not ported yet (tabview,
-//! win, calendar, menu, ...) are omitted. Style state is owned per display by
-//! `Ui`, instead of C's global default-theme pointer. Resolution changes
-//! rebuild the same shared styles, preserving references held by existing
-//! objects. Theme resources live until `Ui::deinit` or an explicit [`deinit`]
-//! call after their displays have been deleted/detached. They remain available
-//! throughout display/object deletion callbacks and can be shared by another
-//! display.
+//! win, calendar, menu, ...) are omitted. Each `Ui` owns one default theme,
+//! like C's global `theme_def` (`LV_GLOBAL_DEFAULT()->theme_default`): every
+//! display created with [`init_display`] after the first one shares it, and
+//! [`init`] re-initializes that single instance for the display it is given.
+//! Resolution changes rebuild the same shared styles, preserving references
+//! held by existing objects. Theme resources live until `Ui::deinit` or an
+//! explicit [`deinit`] call after their displays have been deleted/detached.
+//! They remain available throughout display/object deletion callbacks.
 
 use alloc::rc::Rc;
 use core::any::Any;
@@ -26,6 +27,7 @@ use ferrovgl_core::core::obj_style::StyleId;
 use ferrovgl_core::display::dpx_calc;
 use ferrovgl_core::draw::rect::RADIUS_CIRCLE;
 use ferrovgl_core::misc::anim::AnimPath;
+use ferrovgl_core::misc::check_arg_failed;
 use ferrovgl_core::misc::color::{OPA_10, OPA_20, OPA_40, OPA_50, OPA_COVER, OPA_TRANSP};
 use ferrovgl_core::misc::event::{EventCallback, EventTarget};
 use ferrovgl_core::misc::palette::{self, Palette};
@@ -188,14 +190,16 @@ theme_styles! {
 
 #[derive(Clone)]
 struct DefaultThemeData {
+    /// The original theme (`theme_def`); a shallow `lv_theme_copy` keeps it.
     owner: ThemeId,
-    display: DisplayId,
     /// `disp_dpi`
     dpi: i32,
     /// `disp_size`
     size: DisplaySize,
     styles: Styles<StyleId>,
+    /// `resolution_change_event_cb`
     resolution_cb: EventCallback,
+    /// The callback's user data (the `theme` pointer in C).
     event_data: Rc<dyn Any>,
 }
 
@@ -203,13 +207,40 @@ fn data(ui: &Ui, theme: ThemeId) -> Option<&DefaultThemeData> {
     ui.theme(theme)?.extension.as_ref()?.downcast_ref()
 }
 
-/// Initialize the light default theme with blue/red accent colours and the
-/// configured default font, like `lv_theme_default_init(disp,
-/// lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED), false,
-/// LV_FONT_DEFAULT)` in `lv_display_create()`. Suitable for
-/// `Ui::display_create_ex`'s hook. Returns `None` if the display is invalid or
-/// no default font is configured.
+/// `theme_def`: the single default theme of this `Ui`
+/// (`LV_GLOBAL_DEFAULT()->theme_default`), or `None` before the first
+/// [`init`] / after [`deinit`].
+fn theme_def(ui: &Ui) -> Option<ThemeId> {
+    ui.themes.iter().find_map(|(key, theme)| {
+        let state = theme.extension.as_ref()?.downcast_ref::<DefaultThemeData>()?;
+        (state.owner == ThemeId(key)).then_some(ThemeId(key))
+    })
+}
+
+/// `lv_theme_default_is_inited()`: whether this `Ui`'s default theme exists.
+pub fn is_inited(ui: &Ui) -> bool {
+    theme_def(ui).is_some()
+}
+
+/// `lv_theme_default_get()`: this `Ui`'s default theme, or `None` if it is not
+/// initialized.
+pub fn get(ui: &Ui) -> Option<ThemeId> {
+    if !is_inited(ui) {
+        return None;
+    }
+    theme_def(ui)
+}
+
+/// The `LV_USE_THEME_DEFAULT` block of `lv_display_create()`
+/// (`lv_display.c:133..139`): if the default theme is inited, return it
+/// unchanged ([`get`]); otherwise [`init`] it for `display` with blue/red accent
+/// colours, light mode (`LV_THEME_DEFAULT_DARK` 0) and `LV_FONT_DEFAULT`.
+/// Suitable for `Ui::display_create_ex`'s hook. Returns `None` if the display
+/// is invalid or no default font is configured.
 pub fn init_display(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
+    if is_inited(ui) {
+        return get(ui);
+    }
     let font = ui.config().font_default.clone()?;
     init(
         ui,
@@ -222,54 +253,116 @@ pub fn init_display(ui: &mut Ui, display: DisplayId) -> Option<ThemeId> {
 }
 
 /// `lv_theme_default_init()`, for the widget subset documented above.
-/// Repeated calls reuse this display's theme and shared style IDs. The caller
+///
+/// There is one default theme per `Ui`, like C's global `theme_def`: every
+/// call returns it and, unless nothing changed, rebuilds its shared styles in
+/// place for `display` (`None` falls back to `lv_display_get_default()`). The
+/// resolution callback is added to the display of this call only. The caller
 /// installs the returned theme with `Ui::display_set_theme` unless using the
 /// display-creation hook.
 pub fn init(
     ui: &mut Ui,
-    display: DisplayId,
+    display: impl Into<Option<DisplayId>>,
     primary: Color,
     secondary: Color,
     dark: bool,
     font: FontRef,
 ) -> Option<ThemeId> {
-    ui.display(display)?;
-    let dpi = ui.display_get_dpi(Some(display));
-    let greater_res = ui
-        .display_get_horizontal_resolution(Some(display))
-        .max(ui.display_get_vertical_resolution(Some(display)));
-    let size = if greater_res <= 320 {
+    // LV_CHECK_ARG(font != NULL): a `FontRef` is never NULL.
+    // if(!disp) disp = lv_display_get_default();
+    let Some(disp) = display.into().or_else(|| ui.display_get_default()) else {
+        check_arg_failed("lv_theme_default_init: disp != NULL");
+        return None;
+    };
+    ui.display(disp)?;
+
+    // if(!lv_theme_default_is_inited()) theme_def = lv_malloc_zeroed(...)
+    let theme = theme_def(ui).unwrap_or_else(|| ui.theme_create());
+    let old = data(ui, theme).cloned();
+
+    let new_disp = disp;
+    let new_dpi = ui.display_get_dpi(Some(new_disp));
+    let hor_res = ui.display_get_horizontal_resolution(Some(new_disp));
+    let ver_res = ui.display_get_vertical_resolution(Some(new_disp));
+    let greater_res = hor_res.max(ver_res);
+    let new_size = if greater_res <= 320 {
         DisplaySize::Small
     } else if greater_res < 720 {
         DisplaySize::Medium
     } else {
         DisplaySize::Large
     };
-    let existing = ui.themes.iter().find_map(|(key, theme)| {
-        let state = theme.extension.as_ref()?.downcast_ref::<DefaultThemeData>()?;
-        (state.display == display && state.owner == ThemeId(key)).then_some(ThemeId(key))
-    });
-    let theme = existing.unwrap_or_else(|| ui.theme_create());
-    let old = data(ui, theme).cloned();
+
+    /* check theme information whether will change or not*/
     if let Some(old) = &old {
         let base = ui.theme(theme)?;
-        if old.dpi == dpi
-            && old.size == size
+        if old.dpi == new_dpi
+            && old.size == new_size
             && base.color_primary == primary
             && base.color_secondary == secondary
-            && base.flags == u32::from(dark)
+            && base.flags == if dark { MODE_DARK } else { 0 }
             && base.font_small.as_ref() == Some(&font)
         {
             return Some(theme);
         }
-        ui.display_remove_event_cb_with_user_data(display, &old.resolution_cb, &old.event_data);
     }
 
+    let resolution_cb: EventCallback =
+        old.as_ref()
+            .map(|old| old.resolution_cb.clone())
+            .unwrap_or_else(|| {
+                // resolution_change_event_cb()
+                Rc::new(|ui, event| {
+                    let EventTarget::Display(disp) = event.target() else {
+                        return;
+                    };
+                    let Some(theme) = event
+                        .user_data()
+                        .and_then(|data| data.downcast_ref::<ThemeId>())
+                        .copied()
+                    else {
+                        return;
+                    };
+                    let Some(base) = ui.theme(theme).cloned() else {
+                        return;
+                    };
+                    if let Some(font) = base.font_normal {
+                        init(
+                            ui,
+                            disp,
+                            base.color_primary,
+                            base.color_secondary,
+                            base.flags & MODE_DARK != 0,
+                            font,
+                        );
+                    }
+                })
+            });
+    let event_data = old
+        .as_ref()
+        .map(|old| old.event_data.clone())
+        .unwrap_or_else(|| Rc::new(theme));
+
+    let base = ui.theme_mut(theme)?;
+    base.disp = Some(new_disp);
+    base.color_primary = primary;
+    base.color_secondary = secondary;
+    base.font_small = Some(font.clone());
+    base.font_normal = Some(font.clone());
+    base.font_large = Some(font.clone());
+    base.apply = Some(theme_apply);
+    base.flags = if dark { MODE_DARK } else { 0 };
+
+    /*Remove the callback before triggering style refresh to prevent
+     *resolution_change_event_cb from re-entering lv_theme_default_init
+     *during lv_obj_report_style_change. Re-added below.*/
+    ui.display_remove_event_cb_with_user_data(new_disp, &resolution_cb, &event_data);
+
     let built = style_init(&StyleParams {
-        dpi,
-        size,
+        dpi: new_dpi,
+        size: new_size,
         dark,
-        font: font.clone(),
+        font,
         primary,
         secondary,
         dpi_def: ui.config().dpi_def,
@@ -287,62 +380,23 @@ pub fn init(
     } else {
         built.map(|style| ui.style_create(style))
     };
-    let resolution_cb: EventCallback =
-        old.as_ref()
-            .map(|old| old.resolution_cb.clone())
-            .unwrap_or_else(|| {
-                // resolution_change_event_cb()
-                Rc::new(|ui, event| {
-                    let EventTarget::Display(display) = event.target() else {
-                        return;
-                    };
-                    let Some(theme) = event
-                        .user_data()
-                        .and_then(|data| data.downcast_ref::<ThemeId>())
-                        .copied()
-                    else {
-                        return;
-                    };
-                    let Some(base) = ui.theme(theme).cloned() else {
-                        return;
-                    };
-                    if let Some(font) = base.font_normal {
-                        init(
-                            ui,
-                            display,
-                            base.color_primary,
-                            base.color_secondary,
-                            base.flags & MODE_DARK != 0,
-                            font,
-                        );
-                    }
-                })
-            });
-    let event_data = old.map(|old| old.event_data).unwrap_or_else(|| Rc::new(theme));
-    let base = ui.theme_mut(theme)?;
-    base.disp = Some(display);
-    base.color_primary = primary;
-    base.color_secondary = secondary;
-    base.font_small = Some(font.clone());
-    base.font_normal = Some(font.clone());
-    base.font_large = Some(font);
-    base.apply = Some(theme_apply);
-    base.flags = u32::from(dark);
-    base.extension = Some(Rc::new(DefaultThemeData {
+    // theme->inited = true;
+    ui.theme_mut(theme)?.extension = Some(Rc::new(DefaultThemeData {
         owner: theme,
-        display,
-        dpi,
-        size,
+        dpi: new_dpi,
+        size: new_size,
         styles,
         resolution_cb: resolution_cb.clone(),
         event_data: event_data.clone(),
     }));
-    if ui.display_get_theme(Some(display)) == Some(theme) {
+
+    if ui.display_get_theme(Some(disp)) == Some(theme) {
         ui.obj_report_style_change(None);
     }
-    if ui.display(display).is_some() {
+
+    if ui.display(new_disp).is_some() {
         ui.display_add_event_cb(
-            display,
+            new_disp,
             resolution_cb,
             EventCode::RESOLUTION_CHANGED,
             Some(event_data),
@@ -357,6 +411,7 @@ pub fn init(
 /// child theme or shallow theme copy still references it. Delete/detach those
 /// users first. This keeps display/object deletion callbacks able to read their
 /// styles; deleting a display does not implicitly invalidate a shared theme.
+/// The resolution callback is removed from every display that still has it.
 /// `Ui::deinit` releases all themes/styles without needing this call.
 pub fn deinit(ui: &mut Ui, theme: ThemeId) -> bool {
     let Some(state) = data(ui, theme).filter(|state| state.owner == theme).cloned() else {
@@ -378,8 +433,10 @@ pub fn deinit(ui: &mut Ui, theme: ThemeId) -> bool {
     {
         return false;
     }
-    if ui.display(state.display).is_some() {
-        ui.display_remove_event_cb_with_user_data(state.display, &state.resolution_cb, &state.event_data);
+    let mut disp = ui.display_get_next(None);
+    while let Some(d) = disp {
+        ui.display_remove_event_cb_with_user_data(d, &state.resolution_cb, &state.event_data);
+        disp = ui.display_get_next(Some(d));
     }
     ui.theme_delete(theme);
     state.styles.map(|style| ui.style_delete(style));
@@ -1249,13 +1306,12 @@ mod tests {
     }
 
     #[test]
-    fn resolution_change_updates_existing_card_and_isolates_displays() {
+    fn resolution_change_updates_existing_card_of_the_shared_theme() {
         let mut ui = ui();
         let a = ui.display_create_ex(800, 480, Some(init_display)).unwrap();
         let b = ui.display_create_ex(320, 240, Some(init_display)).unwrap();
         let ta = ui.display_get_theme(Some(a)).unwrap();
-        let tb = ui.display_get_theme(Some(b)).unwrap();
-        assert_ne!(ta, tb);
+        assert_eq!(ui.display_get_theme(Some(b)), Some(ta));
         let screen = ui.display_get_screen_active(Some(a)).unwrap();
         let card = ui.obj_create(Some(screen));
         let before = data(&ui, ta).unwrap().styles;
@@ -1263,7 +1319,88 @@ mod tests {
         assert_eq!(data(&ui, ta).unwrap().styles, before);
         assert_eq!(ui.obj_get_style_radius(card, Part::MAIN), 8);
         assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 16);
-        assert_eq!(data(&ui, tb).unwrap().dpi, 160);
+        assert_eq!(data(&ui, ta).unwrap().dpi, 160);
+    }
+
+    /// `lv_display.c:133..139`: a later display gets the already inited global
+    /// theme unchanged (first display's size, no resolution callback of its
+    /// own), as in upstream `test_screen_load.c` / `test_display.c`.
+    #[test]
+    fn later_displays_get_the_inited_theme_unchanged() {
+        let mut ui = ui();
+        assert!(!is_inited(&ui));
+        assert_eq!(get(&ui), None);
+        let plain = ui.display_create(100, 100);
+        let plain_events = ui.display_get_event_count(plain);
+        let a = ui.display_create_ex(800, 480, Some(init_display)).unwrap();
+        let theme = ui.display_get_theme(Some(a)).unwrap();
+        assert!(is_inited(&ui));
+        assert_eq!(get(&ui), Some(theme));
+        assert_eq!(ui.display_get_event_count(a), plain_events + 1);
+
+        let b = ui.display_create_ex(100, 100, Some(init_display)).unwrap();
+        assert_eq!(ui.display_get_theme(Some(b)), Some(theme));
+        assert_eq!(ui.display_get_event_count(b), plain_events);
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(a));
+        let screen = ui.display_get_screen_active(Some(b)).unwrap();
+        assert_eq!(ui.obj_get_style_pad_row(screen, Part::MAIN), 14);
+        let card = ui.obj_create(Some(screen));
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 24);
+        assert_eq!(ui.obj_get_style_radius(card, Part::MAIN), 12);
+        #[cfg(feature = "button")]
+        {
+            let button = crate::Button::create(&mut ui, screen).obj();
+            assert_eq!(ui.obj_get_style_radius(button, Part::MAIN), 16);
+        }
+        // No callback on `b`: its resolution change does not rebuild styles.
+        ui.display_set_resolution(b, 320, 240);
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 24);
+        let medium = ui.display_create_ex(480, 320, Some(init_display)).unwrap();
+        let screen = ui.display_get_screen_active(Some(medium)).unwrap();
+        let card = ui.obj_create(Some(screen));
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 24);
+    }
+
+    /// `lv_theme_default_init()` re-initializes the one global theme for any
+    /// display: same identity, objects of every display restyled, and the
+    /// resolution callback added to the given display only.
+    #[test]
+    fn init_on_another_display_reinitializes_the_single_theme() {
+        let mut ui = ui();
+        let plain = ui.display_create(100, 100);
+        let plain_events = ui.display_get_event_count(plain);
+        let a = ui.display_create_ex(800, 480, Some(init_display)).unwrap();
+        let theme = ui.display_get_theme(Some(a)).unwrap();
+        let styles = data(&ui, theme).unwrap().styles;
+        let card = ui.obj_create(ui.display_get_screen_active(Some(a)));
+        let b = ui.display_create(320, 240);
+        let font = ui.config().font_default.clone().unwrap();
+        let blue = palette::main(Palette::Blue);
+        let red = palette::main(Palette::Red);
+        assert_eq!(init(&mut ui, b, blue, red, false, font.clone()), Some(theme));
+        assert_eq!(data(&ui, theme).unwrap().styles, styles);
+        assert_eq!(data(&ui, theme).unwrap().size, DisplaySize::Small);
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(b));
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 16);
+        assert_eq!(ui.display_get_event_count(b), plain_events + 1);
+        assert_eq!(ui.display_get_event_count(a), plain_events + 1);
+        // Unchanged parameters: early return, no second callback on `b`.
+        assert_eq!(init(&mut ui, b, blue, red, false, font.clone()), Some(theme));
+        assert_eq!(ui.display_get_event_count(b), plain_events + 1);
+        // `a` keeps its callback: its resolution change rebuilds for `a`.
+        ui.display_set_resolution(a, 800, 600);
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 24);
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(a));
+        // NULL display falls back to `lv_display_get_default()`.
+        ui.display_set_default(b);
+        assert_eq!(init(&mut ui, None, blue, red, false, font), Some(theme));
+        assert_eq!(ui.theme(theme).unwrap().disp, Some(b));
+        assert_eq!(ui.obj_get_style_pad_left(card, Part::MAIN), 16);
+        ui.display_set_theme(a, None);
+        assert!(deinit(&mut ui, theme));
+        assert_eq!(ui.display_get_event_count(a), plain_events);
+        assert_eq!(ui.display_get_event_count(b), plain_events);
+        assert!(!is_inited(&ui));
     }
 
     #[test]
