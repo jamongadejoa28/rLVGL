@@ -4,9 +4,18 @@
 //! The configuration follows the parity build (`tests/configs/full.defconfig`
 //! with `depth_32`): `LV_COLOR_DEPTH 32` (`LV_COLOR_FORMAT_DEFAULT` = XRGB8888),
 //! `LV_DRAW_SW_DRAW_UNIT_CNT 1`, `LV_DRAW_TRANSFORM_USE_MATRIX 0`,
-//! `LV_USE_OBJ_NAME 1`, `LV_USE_THEME_DEFAULT 1`. The sysmon overlays
-//! (`LV_USE_PERF_MONITOR` / `LV_USE_MEM_MONITOR`, hidden by the upstream test
-//! runner anyway) and `LV_USE_EXT_DATA` are not part of the core crate.
+//! `LV_USE_OBJ_NAME 1`, `LV_USE_THEME_DEFAULT 1`, `LV_USE_EXT_DATA 1`. The
+//! sysmon overlays (`LV_USE_PERF_MONITOR` / `LV_USE_MEM_MONITOR`, hidden by the
+//! upstream test runner anyway) are not part of the core crate.
+//!
+//! `lv_theme_default_init()` / `lv_theme_default_get()` live in the widgets
+//! crate, so `lv_display_create()`'s `LV_USE_THEME_DEFAULT` block is a hook
+//! ([`DisplayThemeInit`]) passed to [`Ui::display_create_ex`]; plain
+//! [`Ui::display_create`] behaves like a build without a default theme.
+//!
+//! `lv_display_set_draw_buf_handlers()` is intentionally not ported:
+//! [`DrawBuf`] has no `handlers` (`lv_draw_buf_handlers_t` is omitted, see
+//! `draw/draw_buf.rs`), so there is nothing to assign.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -59,6 +68,32 @@ const ANIM_TAG_OPA_SCALE: u32 = 0x4C56_444F;
 /// Handle of a display (`lv_display_t *`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DisplayId(pub Key);
+
+/// The `LV_USE_THEME_DEFAULT` block of `lv_display_create()`:
+///
+/// ```c
+/// if(lv_theme_default_is_inited() == false)
+///     disp->theme = lv_theme_default_init(disp, lv_palette_main(LV_PALETTE_BLUE),
+///                       lv_palette_main(LV_PALETTE_RED), LV_THEME_DEFAULT_DARK, LV_FONT_DEFAULT);
+/// else
+///     disp->theme = lv_theme_default_get();
+/// ```
+///
+/// Called by [`Ui::display_create_ex`] with the new display (already the
+/// temporary default display) before its screens are created; the returned
+/// theme becomes `disp->theme`.
+pub type DisplayThemeInit = fn(&mut Ui, DisplayId) -> Option<ThemeId>;
+
+/// `void (* free_cb)(void * data)` of `lv_ext_data_t`.
+pub type ExtDataFreeCb = fn(Option<Box<dyn Any>>);
+
+/// `lv_ext_data_t` (`LV_USE_EXT_DATA`)
+pub struct ExtData {
+    /// `data`
+    pub data: Option<Box<dyn Any>>,
+    /// `free_cb`: called with `data` by `lv_display_delete()`.
+    pub free_cb: Option<ExtDataFreeCb>,
+}
 
 /// `lv_display_rotation_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -265,6 +300,8 @@ pub struct DisplayData {
     pub refreshed_area: Area,
     /// `vsync_count`
     pub vsync_count: u32,
+    /// `ext_data` (`LV_USE_EXT_DATA`)
+    pub ext_data: ExtData,
 }
 
 impl DisplayData {
@@ -321,6 +358,10 @@ impl DisplayData {
             last_activity_time: 0,
             refreshed_area: Area::default(),
             vsync_count: 0,
+            ext_data: ExtData {
+                free_cb: None,
+                data: None,
+            },
         }
     }
 
@@ -371,11 +412,13 @@ fn user_data_eq(a: Option<&Rc<dyn Any>>, b: Option<&Rc<dyn Any>>) -> bool {
 }
 
 impl Ui {
-    /// `lv_display_create()`
+    /// `lv_display_create()` without a default theme (as if
+    /// `LV_USE_THEME_DEFAULT` were 0: `disp->theme` stays `NULL`).
     ///
-    /// Upstream returns `NULL` for a non-positive resolution; the handle
-    /// returned here cannot be `None`, so after the failed argument check
-    /// the resolution is clamped to 1.
+    /// Signature deviation: upstream returns `NULL` for a non-positive
+    /// resolution, but this handle cannot be `None`, so after the failed
+    /// argument check the resolution is clamped to 1 and a display is
+    /// created. [`Ui::display_create_ex`] is the 1:1 port that returns `None`.
     pub fn display_create(&mut self, hor_res: i32, ver_res: i32) -> DisplayId {
         let mut hor_res = hor_res;
         let mut ver_res = ver_res;
@@ -387,7 +430,39 @@ impl Ui {
             check_arg_failed("display_create: ver_res > 0");
             ver_res = 1;
         }
+        self.display_create_checked(hor_res, ver_res, None)
+    }
 
+    /// `lv_display_create()`: returns `None` (and creates nothing) for a
+    /// non-positive resolution. `theme_init` is the `LV_USE_THEME_DEFAULT`
+    /// block (the widgets crate's default-theme init-or-get); it runs right
+    /// after the refresh timer is created and before the four screens are,
+    /// so the active screen gets the theme's styles at creation. `None`
+    /// leaves `disp->theme` `NULL`.
+    pub fn display_create_ex(
+        &mut self,
+        hor_res: i32,
+        ver_res: i32,
+        theme_init: Option<DisplayThemeInit>,
+    ) -> Option<DisplayId> {
+        if hor_res <= 0 {
+            check_arg_failed("display_create: hor_res > 0");
+            return None;
+        }
+        if ver_res <= 0 {
+            check_arg_failed("display_create: ver_res > 0");
+            return None;
+        }
+        Some(self.display_create_checked(hor_res, ver_res, theme_init))
+    }
+
+    /// The body of `lv_display_create()` after `LV_CHECK_ARG`.
+    fn display_create_checked(
+        &mut self,
+        hor_res: i32,
+        ver_res: i32,
+        theme_init: Option<DisplayThemeInit>,
+    ) -> DisplayId {
         let dpi_def = self.config().dpi_def;
         let inv_buf_size = self.config().inv_buf_size;
         let data = DisplayData::new(hor_res, ver_res, dpi_def, inv_buf_size);
@@ -426,13 +501,14 @@ impl Ui {
             d.refr_timer = Some(timer);
         }
 
-        /* LV_USE_THEME_DEFAULT: `lv_theme_default_init()` lives in the widgets
-         * crate, so the core can only reuse an already initialised default
-         * theme (`lv_theme_default_get()`): the one of the previous default
-         * display. */
-        let theme = disp_def_tmp.and_then(|d| self.display(d)).and_then(|d| d.theme);
-        if let Some(d) = self.display_mut(disp) {
-            d.theme = theme;
+        /* LV_USE_THEME_DEFAULT: `lv_theme_default_is_inited()` ?
+         * `lv_theme_default_get()` : `lv_theme_default_init(disp, ...)`,
+         * provided by the widgets crate through `theme_init`. */
+        if let Some(init) = theme_init {
+            let theme = init(self, disp);
+            if let Some(d) = self.display_mut(disp) {
+                d.theme = theme;
+            }
         }
 
         /*Create bottom layer on the display*/
@@ -579,6 +655,9 @@ impl Ui {
         if let Some(l) = layer_head {
             self.draw_layer_delete(l);
         }
+
+        /* LV_USE_EXT_DATA */
+        self.display_ext_data_free(disp);
 
         self.displays.remove(disp.0);
 
@@ -1975,6 +2054,22 @@ impl Ui {
         dpx_calc(self.display_get_dpi(disp), n)
     }
 
+    /// `lv_display_set_external_data()` (`LV_USE_EXT_DATA`): `free_cb` is
+    /// called with `data` when the display is deleted.
+    pub fn display_set_external_data(
+        &mut self,
+        disp: DisplayId,
+        data: Option<Box<dyn Any>>,
+        free_cb: Option<ExtDataFreeCb>,
+    ) {
+        let Some(d) = self.disp_checked_mut(Some(disp), "display_set_external_data: disp != NULL") else {
+            return;
+        };
+
+        d.ext_data.data = data;
+        d.ext_data.free_cb = free_cb;
+    }
+
     /// Borrow a display.
     #[inline]
     pub fn display(&self, disp: DisplayId) -> Option<&DisplayData> {
@@ -2008,6 +2103,17 @@ impl Ui {
             return None;
         };
         self.displays.get_mut(id.0)
+    }
+
+    /// The `LV_USE_EXT_DATA` block of `lv_display_delete()`:
+    /// `if(free_cb) { free_cb(data); data = NULL; }`.
+    fn display_ext_data_free(&mut self, disp: DisplayId) {
+        if let Some(d) = self.display_mut(disp)
+            && let Some(free_cb) = d.ext_data.free_cb
+        {
+            let data = d.ext_data.data.take();
+            free_cb(data);
+        }
     }
 
     /// Run `f` on the live event list of `disp` (moved out of the display for
@@ -2853,6 +2959,64 @@ mod tests {
         let layer = d.layer_head.unwrap();
         assert_eq!(ui.draw.layer(layer).unwrap().color_format, ColorFormat::Rgb565);
         assert_eq!(&*log.borrow(), "c");
+    }
+
+    #[test]
+    #[cfg(not(feature = "check-arg-panic"))]
+    fn create_ex_rejects_non_positive_resolution() {
+        // LV_CHECK_ARG(hor_res > 0, return NULL): nothing is created and the
+        // default display is unchanged (no object is created, so this does
+        // not reach `obj_create`).
+        let mut ui = new_ui();
+        assert_eq!(ui.display_create_ex(0, 480, None), None);
+        assert_eq!(ui.display_create_ex(800, -1, None), None);
+        assert_eq!(ui.display_get_next(None), None);
+        assert_eq!(ui.display_get_default(), None);
+        assert!(ui.displays.is_empty());
+
+        let d1 = add_display(&mut ui, 10, 10);
+        assert_eq!(ui.display_create_ex(-5, 10, None), None);
+        assert_eq!(ui.display_get_next(None), Some(d1));
+        assert_eq!(ui.display_get_next(Some(d1)), None);
+        assert_eq!(ui.display_get_default(), Some(d1));
+    }
+
+    #[test]
+    #[cfg(feature = "check-arg-panic")]
+    #[should_panic(expected = "hor_res > 0")]
+    fn create_ex_rejects_non_positive_resolution() {
+        let mut ui = new_ui();
+        let _ = ui.display_create_ex(0, 480, None);
+    }
+
+    #[test]
+    fn external_data_free_cb() {
+        /* The data is a counter the callback bumps. */
+        fn free_cb(data: Option<Box<dyn Any>>) {
+            if let Some(c) = data.as_ref().and_then(|d| d.downcast_ref::<Rc<Cell<u32>>>()) {
+                c.set(c.get() + 1);
+            }
+        }
+
+        let mut ui = new_ui();
+        let disp = add_display(&mut ui, 10, 10);
+        {
+            let d = ui.display(disp).unwrap();
+            assert!(d.ext_data.data.is_none());
+            assert!(d.ext_data.free_cb.is_none());
+        }
+        let freed = Rc::new(Cell::new(0u32));
+        // Without a free_cb nothing is called.
+        ui.display_set_external_data(disp, Some(Box::new(freed.clone())), None);
+        ui.display_ext_data_free(disp);
+        assert_eq!(freed.get(), 0);
+
+        ui.display_set_external_data(disp, Some(Box::new(freed.clone())), Some(free_cb));
+        assert!(ui.display(disp).unwrap().ext_data.free_cb.is_some());
+        ui.display_ext_data_free(disp);
+        assert_eq!(freed.get(), 1);
+        // `data = NULL` after the call.
+        assert!(ui.display(disp).unwrap().ext_data.data.is_none());
     }
 
     #[test]
