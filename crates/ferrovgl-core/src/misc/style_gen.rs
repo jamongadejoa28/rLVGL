@@ -230,72 +230,84 @@ macro_rules! gen_style_setters {
 macro_rules! const_entry_fn {
     (num, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Num(value))
         }
     };
     (cast, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Num(value as i32))
         }
     };
     (enum, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Num(value as i32))
         }
     };
     (flags, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Num(value.bits() as i32))
         }
     };
     (bool, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: bool) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Num(value as i32))
         }
     };
     (color, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Color(value))
         }
     };
     (font, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: &'static (dyn $crate::font::Font + Sync)) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Font(value))
         }
     };
     (grad, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: &'static $crate::draw::grad::GradDsc) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Grad(value))
         }
     };
     (image, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $crate::misc::style::ConstImageSrc) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Image(value))
         }
     };
     (color_filter, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::ColorFilter(value))
         }
     };
     (tracks, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: &'static [i32]) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Tracks(value))
         }
     };
     (colorkey, $c:ident, $s:ident, $var:ident, $t:ty) => {
         #[doc = concat!("`LV_STYLE_CONST_", stringify!($c), "(value)`")]
+        #[must_use]
         pub const fn $s(value: $t) -> ConstStyleEntry {
             ConstStyleEntry::new(StyleProp::$c, ConstStyleValue::Colorkey(value))
         }

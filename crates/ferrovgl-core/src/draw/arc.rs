@@ -38,6 +38,7 @@ pub struct ArcDsc {
 
 impl ArcDsc {
     /// `lv_draw_arc_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -166,6 +167,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_arc_dsc()`
+    #[must_use]
     pub fn task_get_arc_dsc(&mut self, task: DrawTaskRef) -> Option<&mut ArcDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Arc {

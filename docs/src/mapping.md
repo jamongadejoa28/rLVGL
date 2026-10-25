@@ -1662,9 +1662,9 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_tick_elaps()` | `Ui::tick_elaps` | mapped |
 | `lv_tick_diff()` | `Ui::tick_diff` | mapped |
 | `lv_delay_ms()` | `Ui::delay_ms` | mapped |
-| `lv_delay_set_cb()` | `Ui::set_delay_cb` | mapped |
-| `lv_tick_set_cb()` | `Ui::set_tick_cb` | mapped |
-| `lv_tick_get_cb()` | `Ui::tick_cb` | mapped |
+| `lv_delay_set_cb()` | `Ui::delay_set_cb` | mapped |
+| `lv_tick_set_cb()` | `Ui::tick_set_cb` | mapped |
+| `lv_tick_get_cb()` | `Ui::tick_get_cb` | mapped |
 
 ### draw/lv_color.h
 
@@ -1732,7 +1732,7 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_draw_dispatch_wait_for_request()` | `DrawCtx::dispatch_wait_for_request` | mapped |
 | `lv_draw_wait_for_finish()` | `DrawCtx::wait_for_finish` | mapped |
 | `lv_draw_dispatch_request()` | `DrawCtx::dispatch_request` | mapped |
-| `lv_draw_get_unit_count()` | `Ui::draw_unit_count` | mapped |
+| `lv_draw_get_unit_count()` | `Ui::draw_get_unit_count` | mapped |
 | `lv_draw_get_available_task()` | `DrawCtx::get_available_task` | mapped |
 | `lv_draw_get_next_available_task()` | `DrawCtx::get_next_available_task` | mapped |
 | `lv_draw_get_dependent_count()` | `DrawCtx::get_dependent_count` | mapped |
@@ -1746,8 +1746,8 @@ porting functions; `cargo xtask gen-mapping --check` (after
 | `lv_draw_task_get_type()` | `DrawCtx::task_get_type` | mapped |
 | `lv_draw_task_get_draw_dsc()` | `DrawCtx::task_get_draw_dsc`, `DrawCtx::task_get_draw_dsc_mut` | mapped |
 | `lv_draw_task_get_area()` | `DrawCtx::task_get_area` | mapped |
-| `lv_draw_layer_create_drop_shadow()` | `DrawCtx::layer_create_drop_shadow`, `Ui::layer_create_drop_shadow` | mapped |
-| `lv_draw_layer_finish_drop_shadow()` | `DrawCtx::layer_finish_drop_shadow`, `Ui::layer_finish_drop_shadow` | mapped |
+| `lv_draw_layer_create_drop_shadow()` | `DrawCtx::layer_create_drop_shadow`, `Ui::draw_layer_create_drop_shadow` | mapped |
+| `lv_draw_layer_finish_drop_shadow()` | `DrawCtx::layer_finish_drop_shadow`, `Ui::draw_layer_finish_drop_shadow` | mapped |
 | `lv_draw_layer_dealloc_buf()` | `DrawCtx::layer_dealloc_buf` | mapped |
 | `lv_draw_layer_deinit()` | `DrawCtx::layer_deinit`, `Ui::draw_layer_deinit` | mapped |
 | `lv_draw_layer_delete()` | `DrawCtx::layer_delete`, `Ui::draw_layer_delete` | mapped |

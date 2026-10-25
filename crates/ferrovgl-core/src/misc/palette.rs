@@ -333,6 +333,7 @@ static DARKEN: [[Color; 4]; 19] = [
 ];
 
 /// `lv_palette_main()`: the main colour of a palette (black if invalid).
+#[must_use]
 pub fn main(p: Palette) -> Color {
     let i = p as usize;
     if i >= Palette::Last as usize {
@@ -343,6 +344,7 @@ pub fn main(p: Palette) -> Color {
 }
 
 /// `lv_palette_lighten()`: a lighter colour, `lvl` in `1..=5` (black if invalid).
+#[must_use]
 pub fn lighten(p: Palette, lvl: u8) -> Color {
     let i = p as usize;
     if i >= Palette::Last as usize {
@@ -357,6 +359,7 @@ pub fn lighten(p: Palette, lvl: u8) -> Color {
 }
 
 /// `lv_palette_darken()`: a darker colour, `lvl` in `1..=4` (black if invalid).
+#[must_use]
 pub fn darken(p: Palette, lvl: u8) -> Color {
     let i = p as usize;
     if i >= Palette::Last as usize {

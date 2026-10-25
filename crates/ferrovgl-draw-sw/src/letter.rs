@@ -163,7 +163,7 @@ pub fn draw_letter_bitmap(ctx: &mut DrawCtx, t: DrawTaskRef, dsc: &DrawGlyphDsc)
 /// The body of `draw_letter_cb()` with the unit and the task of the
 /// renderer entry point. `fill` set is the `glyph_draw_dsc == NULL` call
 /// (underline, strikethrough, selection background).
-pub(crate) fn draw_letter_cb_impl(
+pub fn draw_letter_cb_impl(
     unit: &mut SwDrawUnit,
     ctx: &mut DrawCtx,
     t: &DrawTask,
@@ -296,7 +296,8 @@ fn draw_letter_image(
             Some(buf) => ImageSrc::DrawBuf(Rc::new(buf)),
             None => ImageSrc::None,
         },
-        GlyphData::None | GlyphData::StaticBitmap => ImageSrc::None,
+        /*`GlyphData::None`, `GlyphData::StaticBitmap`*/
+        _ => ImageSrc::None,
     };
 
     let mut img_dsc = DrawImageDsc::new();

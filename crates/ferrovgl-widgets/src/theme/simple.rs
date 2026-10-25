@@ -70,12 +70,14 @@ fn theme_def(ui: &Ui) -> Option<ThemeId> {
 }
 
 /// `lv_theme_simple_is_inited()`: whether this `Ui`'s simple theme exists.
+#[must_use]
 pub fn is_inited(ui: &Ui) -> bool {
     theme_def(ui).is_some()
 }
 
 /// `lv_theme_simple_get()`: this `Ui`'s simple theme, or `None` if it is not
 /// initialized.
+#[must_use]
 pub fn get(ui: &Ui) -> Option<ThemeId> {
     if !is_inited(ui) {
         return None;

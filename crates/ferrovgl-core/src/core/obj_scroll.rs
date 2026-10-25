@@ -113,6 +113,7 @@ impl Ui {
      *====================*/
 
     /// `lv_obj_get_scrollbar_mode()`
+    #[must_use]
     pub fn obj_get_scrollbar_mode(&self, obj: Obj) -> ScrollbarMode {
         if !self.scroll_check_obj(obj) {
             return ScrollbarMode::Off;
@@ -125,6 +126,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_dir()`
+    #[must_use]
     pub fn obj_get_scroll_dir(&self, obj: Obj) -> Dir {
         if !self.scroll_check_obj(obj) {
             return Dir::NONE;
@@ -137,6 +139,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_snap_x()`
+    #[must_use]
     pub fn obj_get_scroll_snap_x(&self, obj: Obj) -> ScrollSnap {
         if !self.scroll_check_obj(obj) {
             return ScrollSnap::None;
@@ -149,6 +152,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_snap_y()`
+    #[must_use]
     pub fn obj_get_scroll_snap_y(&self, obj: Obj) -> ScrollSnap {
         if !self.scroll_check_obj(obj) {
             return ScrollSnap::None;
@@ -161,6 +165,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_x()`
+    #[must_use]
     pub fn obj_get_scroll_x(&self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -173,6 +178,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_y()`
+    #[must_use]
     pub fn obj_get_scroll_y(&self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -185,6 +191,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_scroll_top()`
+    #[must_use]
     pub fn obj_get_scroll_top(&self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -200,6 +207,7 @@ impl Ui {
     ///
     /// Takes `&mut self` because `lv_obj_get_self_height()` sends
     /// `LV_EVENT_GET_SELF_SIZE`.
+    #[must_use]
     pub fn obj_get_scroll_bottom(&mut self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -246,6 +254,7 @@ impl Ui {
     ///
     /// Takes `&mut self` because `lv_obj_get_self_width()` sends
     /// `LV_EVENT_GET_SELF_SIZE`.
+    #[must_use]
     pub fn obj_get_scroll_left(&mut self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -307,6 +316,7 @@ impl Ui {
     ///
     /// Takes `&mut self` because `lv_obj_get_self_width()` sends
     /// `LV_EVENT_GET_SELF_SIZE`.
+    #[must_use]
     pub fn obj_get_scroll_right(&mut self, obj: Obj) -> i32 {
         if !self.scroll_check_obj(obj) {
             return 0;
@@ -360,6 +370,7 @@ impl Ui {
 
     /// `lv_obj_get_scroll_end()`: the scroll position at the end of the
     /// running scroll animations (or the current one).
+    #[must_use]
     pub fn obj_get_scroll_end(&self, obj: Obj) -> Point {
         if !self.scroll_check_obj(obj) {
             return Point::new(0, 0);
@@ -675,6 +686,7 @@ impl Ui {
 
     /// `lv_obj_is_scrolling()`: an input device or a scroll animation is
     /// scrolling `obj`.
+    #[must_use]
     pub fn obj_is_scrolling(&self, obj: Obj) -> bool {
         if !self.scroll_check_obj(obj) {
             return false;
@@ -735,6 +747,7 @@ impl Ui {
     ///
     /// Takes `&mut self` because the scroll bound getters send
     /// `LV_EVENT_GET_SELF_SIZE`.
+    #[must_use]
     pub fn obj_get_scrollbar_area(&mut self, obj: Obj) -> (Area, Area) {
         let mut hor_area = Area::new(0, 0, -1, -1);
         let mut ver_area = Area::new(0, 0, -1, -1);

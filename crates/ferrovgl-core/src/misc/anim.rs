@@ -64,7 +64,7 @@ pub const ANIM_ON: bool = true;
 pub type AnimEnable = bool;
 
 /// Handle of a running animation (`lv_anim_t *` inside the animation list).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AnimId(pub Key);
 
 /// The animated variable (`void * var`).
@@ -73,6 +73,7 @@ pub struct AnimId(pub Key);
 /// `lv_obj_style.c`), input devices (scroll throw, `var = indev`) and
 /// displays; widgets / applications use [`AnimTarget::Tag`].
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum AnimTarget {
     /// `NULL`
     #[default]
@@ -80,7 +81,7 @@ pub enum AnimTarget {
     /// An object.
     Obj(Obj),
     /// A running style transition (`trans_t *`), see
-    /// [`crate::core::Ui::style_trans`].
+    /// `crate::core::Ui::style_trans`.
     StyleTrans(StyleTransId),
     /// An input device (`indev_scroll_throw_anim_cb`).
     Indev(IndevId),
@@ -100,6 +101,7 @@ pub type AnimCustomExecWithAnim = Rc<dyn Fn(&mut Ui, AnimId, i32)>;
 /// Equality compares the variant and, for custom callbacks, the tag only, so
 /// it has the same semantics as comparing C function pointers.
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum AnimExec {
     /// No exec callback.
     None,
@@ -254,6 +256,7 @@ pub type AnimPathCallback = fn(&Anim) -> i32;
 
 /// `path_cb`: the easing of an animation.
 #[derive(Copy, Clone, Debug, Default)]
+#[non_exhaustive]
 pub enum AnimPath {
     /// `lv_anim_path_linear`
     #[default]
@@ -313,7 +316,7 @@ pub type AnimExtDataFreeCb = fn(Option<Rc<dyn Any>>);
 /// `data` is shared (`Rc`) because `lv_anim_start()` copies the template
 /// with `lv_memcpy`, so the template and the running animation point to the
 /// same data, like the C `void *`.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct AnimExtData {
     /// `data`
     pub data: Option<Rc<dyn Any>>,
@@ -383,9 +386,57 @@ pub struct Anim {
     pub early_apply: bool,
 }
 
+impl core::fmt::Debug for Anim {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Anim")
+            .field("ext_data", &self.ext_data)
+            .field("var", &self.var)
+            .field("exec", &self.exec)
+            .field("custom_exec_cb", &self.custom_exec_cb)
+            .field(
+                "start_cb",
+                &self.start_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field(
+                "completed_cb",
+                &self.completed_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field(
+                "deleted_cb",
+                &self.deleted_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field(
+                "get_value_cb",
+                &self.get_value_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field("user_data", &self.user_data)
+            .field("path", &self.path)
+            .field("start_value", &self.start_value)
+            .field("current_value", &self.current_value)
+            .field("end_value", &self.end_value)
+            .field("duration", &self.duration)
+            .field("act_time", &self.act_time)
+            .field("reverse_delay", &self.reverse_delay)
+            .field("reverse_duration", &self.reverse_duration)
+            .field("repeat_delay", &self.repeat_delay)
+            .field("repeat_cnt", &self.repeat_cnt)
+            .field("bezier3", &self.bezier3)
+            .field("last_timer_run", &self.last_timer_run)
+            .field("pause_time", &self.pause_time)
+            .field("pause_duration", &self.pause_duration)
+            .field("is_paused", &self.is_paused)
+            .field("reverse_play_in_progress", &self.reverse_play_in_progress)
+            .field("run_round", &self.run_round)
+            .field("start_cb_called", &self.start_cb_called)
+            .field("early_apply", &self.early_apply)
+            .finish()
+    }
+}
+
 impl Anim {
     /// `lv_anim_init()`: zero everything, then 500 ms, `0 -> 100`, one
     /// repeat, linear path, `early_apply` on.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             ext_data: AnimExtData {
@@ -424,6 +475,7 @@ impl Anim {
 
     /// `lv_anim_get_playtime()`: total play time including delays and
     /// repeats ([`ANIM_PLAYTIME_INFINITE`] for infinite repeats).
+    #[must_use]
     pub fn playtime(&self) -> u32 {
         if self.repeat_cnt == ANIM_REPEAT_INFINITE {
             return ANIM_PLAYTIME_INFINITE;
@@ -445,6 +497,7 @@ impl Anim {
 
     /// `lv_anim_path_linear()`: calculate the current value of an animation
     /// applying linear characteristic.
+    #[must_use]
     pub fn path_linear(&self) -> i32 {
         // Calculate the current step
         let step = map(self.act_time, 0, self.duration, 0, ANIM_RESOLUTION);
@@ -459,26 +512,31 @@ impl Anim {
     }
 
     /// `lv_anim_path_ease_in()`: slow at the beginning.
+    #[must_use]
     pub fn path_ease_in(&self) -> i32 {
         self.path_cubic_bezier(BEZIER_0_42, BEZIER_0, BEZIER_1, BEZIER_1)
     }
 
     /// `lv_anim_path_ease_out()`: slow at the end.
+    #[must_use]
     pub fn path_ease_out(&self) -> i32 {
         self.path_cubic_bezier(BEZIER_0, BEZIER_0, BEZIER_0_58, BEZIER_1)
     }
 
     /// `lv_anim_path_ease_in_out()`: slow at the beginning and at the end.
+    #[must_use]
     pub fn path_ease_in_out(&self) -> i32 {
         self.path_cubic_bezier(BEZIER_0_42, BEZIER_0, BEZIER_0_58, BEZIER_1)
     }
 
     /// `lv_anim_path_overshoot()`: overshoot the end value.
+    #[must_use]
     pub fn path_overshoot(&self) -> i32 {
         self.path_cubic_bezier(341, 0, 683, 1300)
     }
 
     /// `lv_anim_path_bounce()`: bounce back from the end value.
+    #[must_use]
     pub fn path_bounce(&self) -> i32 {
         // Calculate the current step
         let mut t = map(self.act_time, 0, self.duration, 0, BEZIER_VAL_MAX);
@@ -526,6 +584,7 @@ impl Anim {
     }
 
     /// `lv_anim_path_step()`: `start_value` until the end, then `end_value`.
+    #[must_use]
     pub fn path_step(&self) -> i32 {
         if self.act_time >= self.duration {
             self.end_value
@@ -536,12 +595,14 @@ impl Anim {
 
     /// `lv_anim_path_custom_bezier3()`: cubic Bézier with the control points
     /// of [`Anim::bezier3`].
+    #[must_use]
     pub fn path_custom_bezier3(&self) -> i32 {
         let para = &self.bezier3;
         self.path_cubic_bezier(para.x1 as i32, para.y1 as i32, para.x2 as i32, para.y2 as i32)
     }
 
     /// Evaluate `self.path` (dispatch of `a->path_cb(a)`).
+    #[must_use]
     pub fn path_value(&self) -> i32 {
         match self.path {
             AnimPath::Linear => self.path_linear(),
@@ -690,26 +751,31 @@ impl Anim {
     }
 
     /// `lv_anim_get_delay()`
+    #[must_use]
     pub fn delay(&self) -> u32 {
         self.act_time.wrapping_neg() as u32
     }
 
     /// `lv_anim_get_time()`
+    #[must_use]
     pub fn time(&self) -> u32 {
         self.duration as u32
     }
 
     /// `lv_anim_get_repeat_count()`
+    #[must_use]
     pub fn repeat_count(&self) -> u32 {
         self.repeat_cnt
     }
 
     /// `lv_anim_get_user_data()`
+    #[must_use]
     pub fn user_data(&self) -> Option<&Rc<dyn Any>> {
         self.user_data.as_ref()
     }
 
     /// `lv_anim_is_paused()`
+    #[must_use]
     pub fn is_paused(&self) -> bool {
         self.is_paused
     }
@@ -768,9 +834,28 @@ pub struct AnimState {
     vsync_cb: Option<EventCallback>,
 }
 
+impl core::fmt::Debug for AnimState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AnimState")
+            .field("anims", &self.anims)
+            .field("order", &self.order)
+            .field("timer", &self.timer)
+            .field("list_changed", &self.list_changed)
+            .field("run_round", &self.run_round)
+            .field("vsync_registered", &self.vsync_registered)
+            .field("core_inited", &self.core_inited)
+            .field(
+                "vsync_cb",
+                &self.vsync_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .finish()
+    }
+}
+
 impl AnimState {
     /// The empty animation list; the timer is created by
     /// [`Ui::anim_core_init`].
+    #[must_use]
     pub fn new() -> Self {
         Self {
             anims: Arena::new(),
@@ -958,6 +1043,7 @@ impl Ui {
     }
 
     /// `lv_anim_get()`: find an animation of `var` with `exec`.
+    #[must_use]
     pub fn anim_get(&self, var: AnimTarget, exec: Option<&AnimExec>) -> Option<AnimId> {
         if var == AnimTarget::None {
             crate::misc::check_arg_failed("anim_get: var is NULL");
@@ -971,11 +1057,13 @@ impl Ui {
     }
 
     /// `lv_anim_get_timer()`
+    #[must_use]
     pub fn anim_get_timer(&self) -> Option<TimerId> {
         self.anims.timer
     }
 
     /// `lv_anim_count_running()`
+    #[must_use]
     pub fn anim_count_running(&self) -> u16 {
         // `uint16_t cnt; cnt++` per node: truncating
         self.anims.order.len() as u16
@@ -983,6 +1071,7 @@ impl Ui {
 
     /// `lv_anim_speed_clamped()`: encode a speed (units/sec) with a time
     /// range (ms) into a value usable as duration.
+    #[must_use]
     pub fn anim_speed_clamped(speed: u32, min_time: u32, max_time: u32) -> u32 {
         if speed == 0 {
             crate::misc::check_arg_failed("anim_speed_clamped: speed is 0");
@@ -1014,6 +1103,7 @@ impl Ui {
     }
 
     /// `lv_anim_speed()`: encode a speed (units/sec) without time limits.
+    #[must_use]
     pub fn anim_speed(speed: u32) -> u32 {
         if speed == 0 {
             crate::misc::check_arg_failed("anim_speed: speed is 0");
@@ -1024,6 +1114,7 @@ impl Ui {
 
     /// `lv_anim_speed_to_time()`: the time needed to go from `start` to
     /// `end` with `speed` units/sec (at least 1 ms).
+    #[must_use]
     pub fn anim_speed_to_time(speed: u32, start: i32, end: i32) -> u32 {
         if speed == 0 {
             crate::misc::check_arg_failed("anim_speed_to_time: speed is 0");
@@ -1049,6 +1140,7 @@ impl Ui {
     }
 
     /// `lv_anim_custom_get()`: `lv_anim_get(a ? a->var : NULL, exec_cb)`.
+    #[must_use]
     pub fn anim_custom_get(&self, a: AnimId, exec: Option<&AnimExec>) -> Option<AnimId> {
         let var = self.anim(a).map_or(AnimTarget::None, |x| x.var);
         self.anim_get(var, exec)
@@ -1056,6 +1148,7 @@ impl Ui {
 
     /// `lv_anim_resolve_speed()`: decode a value from
     /// [`Ui::anim_speed_clamped`] into a time; plain times are returned as is.
+    #[must_use]
     pub fn anim_resolve_speed(speed_or_time: u32, start: i32, end: i32) -> u32 {
         // It was a simple time
         if (speed_or_time & ANIM_SPEED_MASK) == 0 {
@@ -1077,6 +1170,7 @@ impl Ui {
     }
 
     /// `lv_anim_is_paused()`
+    #[must_use]
     pub fn anim_is_paused(&self, a: AnimId) -> bool {
         match self.anim(a) {
             Some(a) => a.is_paused,
@@ -1111,12 +1205,14 @@ impl Ui {
 
     /// Borrow a running animation.
     #[inline]
+    #[must_use]
     pub fn anim(&self, a: AnimId) -> Option<&Anim> {
         self.anims.anims.get(a.0)
     }
 
     /// Mutably borrow a running animation.
     #[inline]
+    #[must_use]
     pub fn anim_mut(&mut self, a: AnimId) -> Option<&mut Anim> {
         self.anims.anims.get_mut(a.0)
     }

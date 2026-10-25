@@ -105,6 +105,7 @@ impl core::fmt::Debug for FmtTxtFont<'_> {
 
 /// Errors reported by [`FmtTxtFont::from_bytes`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FontError {
     /// The blob does not start with the `.lvfnt` magic.
     BadMagic,
@@ -117,6 +118,7 @@ pub enum FontError {
 impl<'a> FmtTxtFont<'a> {
     /// Parse a `.lvfnt` blob in a `const` context. Panics on an invalid blob,
     /// which turns into a compile error when used to initialise a `static`.
+    #[must_use]
     pub const fn from_bytes_const(bytes: &'a [u8]) -> Self {
         match Self::from_bytes(bytes) {
             Ok(f) => f,
@@ -190,6 +192,7 @@ impl<'a> FmtTxtFont<'a> {
     /// Set the fallback font (`lv_font_t.fallback`).
     ///
     /// The fallback must be `Sync` so that the font can live in a `static`.
+    #[must_use]
     pub const fn with_fallback(mut self, fallback: &'a (dyn Font + Sync)) -> Self {
         self.fallback = Some(fallback);
         self
@@ -197,24 +200,28 @@ impl<'a> FmtTxtFont<'a> {
 
     /// Bits per pixel of the glyph bitmaps (1, 2, 3, 4 or 8).
     #[inline]
+    #[must_use]
     pub const fn bpp(&self) -> u8 {
         self.bpp
     }
 
     /// Number of glyph descriptors, including the reserved index 0.
     #[inline]
+    #[must_use]
     pub const fn glyph_count(&self) -> u32 {
         self.glyph_count
     }
 
     /// `true` when the bitmaps are RLE compressed.
     #[inline]
+    #[must_use]
     pub const fn is_compressed(&self) -> bool {
         self.bitmap_format != BITMAP_PLAIN
     }
 
     /// The whole packed bitmap table.
     #[inline]
+    #[must_use]
     pub fn bitmap_table(&self) -> &'a [u8] {
         &self.bytes[self.bitmap_off..self.bitmap_off + self.bitmap_len]
     }
@@ -271,6 +278,7 @@ impl<'a> FmtTxtFont<'a> {
     }
 
     /// `get_glyph_dsc_id()`: glyph index for a code point, 0 if missing.
+    #[must_use]
     pub fn glyph_id(&self, letter: u32) -> u32 {
         if letter == 0 {
             return 0;

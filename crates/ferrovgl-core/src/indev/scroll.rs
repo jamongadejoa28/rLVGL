@@ -9,6 +9,7 @@ const ELASTIC_SLOWNESS_FACTOR: i32 = 4;
 impl Ui {
     /// `lv_indev_find_scroll_obj()`: find the deepest ancestor that can scroll
     /// in this direction, falling back to the last elastic candidate.
+    #[must_use]
     pub fn indev_find_scroll_obj(&mut self, indev: IndevId) -> Option<Obj> {
         let d = self.indev_mut(indev)?;
         d.pointer.scroll_sum.x += d.pointer.vect.x;
@@ -329,6 +330,7 @@ impl Ui {
 
     /// `lv_indev_scroll_throw_predict()`. A zero or nonconvergent slowdown
     /// returns zero instead of entering C's unbounded prediction loop.
+    #[must_use]
     pub fn indev_scroll_throw_predict(&mut self, indev: IndevId, dir: Dir) -> i32 {
         let Some(d) = self.indev(indev) else {
             return 0;
@@ -351,6 +353,7 @@ impl Ui {
     }
 
     /// `lv_indev_scroll_get_snap_dist()`.
+    #[must_use]
     pub fn indev_scroll_get_snap_dist(&mut self, obj: Obj) -> Point {
         let Some(d) = self.obj(obj) else {
             return Point::default();

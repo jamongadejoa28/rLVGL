@@ -26,7 +26,7 @@ pub static BUTTON_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable button handle; its state belongs to the associated [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Button(Obj);
 
 impl Button {
@@ -40,11 +40,13 @@ impl Button {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the button class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &BUTTON_CLASS)).then_some(Self(obj))
     }

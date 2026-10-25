@@ -26,6 +26,7 @@ impl Ui {
     /// `lv_snapshot_create_draw_buf()`: allocate for the object's current size,
     /// including its extended draw area. Updates layout before measuring.
     /// Invalid/deleted objects and unrepresentable or empty sizes return `None`.
+    #[must_use]
     pub fn snapshot_create_draw_buf(&mut self, obj: Obj, cf: ColorFormat) -> Option<DrawBuf> {
         let area = self.snapshot_area(obj)?;
         let (w, h, _) = checked_geometry(&area, cf)?;
@@ -45,6 +46,7 @@ impl Ui {
     /// `lv_snapshot_take()`: render an object and its descendants into a newly
     /// allocated buffer. Its own transform/opacity is treated like upstream's
     /// `lv_obj_redraw`; transforms on descendants are rendered normally.
+    #[must_use]
     pub fn snapshot_take(&mut self, obj: Obj, cf: ColorFormat) -> Option<DrawBuf> {
         if !supported_format(cf) {
             return None;

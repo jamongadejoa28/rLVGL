@@ -64,7 +64,7 @@ pub fn line(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDs
 
 /// `draw_line_hor()`.
 #[allow(clippy::unnecessary_cast)] // ValuePrecise is either f32 or i32.
-pub fn draw_line_hor(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
+pub(crate) fn draw_line_hor(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
     let width = dsc.width - 1;
     let half0 = width >> 1;
     let half1 = half0 + (width & 1);
@@ -134,7 +134,7 @@ fn draw_horizontal_dashes(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask
 
 /// `draw_line_ver()`.
 #[allow(clippy::unnecessary_cast)] // ValuePrecise is either f32 or i32.
-pub fn draw_line_ver(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
+pub(crate) fn draw_line_ver(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
     let width = dsc.width - 1;
     let half0 = width >> 1;
     let half1 = half0 + (width & 1);
@@ -190,7 +190,7 @@ fn draw_vertical_dashes(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, 
 }
 
 /// `draw_line_skew()`.
-pub fn draw_line_skew(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
+pub(crate) fn draw_line_skew(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &LineDsc) {
     #[cfg(feature = "complex")]
     draw_skew_complex(unit, ctx, t, dsc);
     #[cfg(not(feature = "complex"))]

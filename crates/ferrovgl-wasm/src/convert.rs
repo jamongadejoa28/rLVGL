@@ -22,6 +22,7 @@ pub const SUPPORTED_FORMATS: &[ColorFormat] = &[
 
 /// Why a flushed area could not be converted.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConvertError {
     /// The color format is not in [`SUPPORTED_FORMATS`].
     UnsupportedFormat(ColorFormat),
@@ -54,6 +55,7 @@ impl fmt::Display for ConvertError {
 
 /// Parses a color format name as used by the JavaScript API
 /// (`"xrgb8888"`, `"argb8888"`, `"rgb888"`, `"rgb565"`; case-insensitive).
+#[must_use]
 pub fn parse_color_format(name: &str) -> Option<ColorFormat> {
     let lower = name.trim().to_ascii_lowercase();
     Some(match lower.as_str() {
@@ -67,6 +69,7 @@ pub fn parse_color_format(name: &str) -> Option<ColorFormat> {
 
 /// Parses a render mode name (`"partial"`, `"direct"`, `"full"`;
 /// case-insensitive, empty means partial like `LV_DISPLAY_RENDER_MODE_PARTIAL`).
+#[must_use]
 pub fn parse_render_mode(name: &str) -> Option<RenderMode> {
     let lower = name.trim().to_ascii_lowercase();
     Some(match lower.as_str() {
@@ -94,6 +97,7 @@ pub struct SourceLayout {
 /// area starts at `(0, 0)`. In direct and full mode the buffer is the
 /// whole screen with `screen_stride` and the area sits at its own
 /// coordinates.
+#[must_use]
 pub fn source_layout(mode: RenderMode, cf: ColorFormat, area: &Area, screen_stride: usize) -> SourceLayout {
     match mode {
         RenderMode::Partial => SourceLayout {
@@ -189,6 +193,7 @@ pub fn area_to_rgba(
 
 /// Expands one RGB565 pixel like upstream's RGB565 -> ARGB8888 blend
 /// (`(c.red * 2106) >> 8`, `(c.green * 1037) >> 8`, `(c.blue * 2106) >> 8`).
+#[must_use]
 pub fn rgb565_to_rgba(px: u16) -> [u8; 4] {
     let red = u32::from(px >> 11) & 0x1F;
     let green = u32::from(px >> 5) & 0x3F;

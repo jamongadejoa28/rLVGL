@@ -394,6 +394,7 @@ impl Ui {
 
     /// `lv_obj_calculate_ext_draw_size()`: the extra size `part` needs around
     /// the object for its shadow, outline, drop shadow and transform size.
+    #[must_use]
     pub fn obj_calculate_ext_draw_size(&self, obj: Obj, part: Part) -> i32 {
         if !self.obj_is_valid(obj) {
             check_arg_failed("lv_obj_calculate_ext_draw_size: obj is valid");
@@ -485,6 +486,7 @@ impl Ui {
 
     /// `lv_obj_get_ext_draw_size()`: the size of the extended draw area
     /// around the object's coordinates.
+    #[must_use]
     pub fn obj_get_ext_draw_size(&self, obj: Obj) -> i32 {
         let Some(o) = self.obj(obj) else {
             check_arg_failed("lv_obj_get_ext_draw_size: obj is valid");
@@ -497,6 +499,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_layer_type()`
+    #[must_use]
     pub fn obj_get_layer_type(&self, obj: Obj) -> LayerType {
         let Some(o) = self.obj(obj) else {
             check_arg_failed("lv_obj_get_layer_type: obj is valid");

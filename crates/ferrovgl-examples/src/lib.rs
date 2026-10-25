@@ -27,7 +27,7 @@ mod util;
 pub mod widgets;
 
 /// One runnable example.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Example {
     /// Upstream function name, e.g. `lv_example_get_started_button`.
     pub name: &'static str,
@@ -182,6 +182,7 @@ pub const EXAMPLES: &[Example] = examples![
 ];
 
 /// Looks up an example by its upstream name (with or without the `lv_example_` prefix).
+#[must_use]
 pub fn find(name: &str) -> Option<&'static Example> {
     let short = name.strip_prefix("lv_example_").unwrap_or(name);
     EXAMPLES

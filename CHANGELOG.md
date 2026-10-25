@@ -65,6 +65,47 @@ against upstream's reference images.
 - **`ferrovgl`**: umbrella crate re-exporting the above behind the `draw-sw`,
   `fonts`, `widgets` (default), `sdl`, `embedded` and `std` features.
 
+### API changes before 0.1.0
+
+The public API was audited against the Rust API Guidelines; the policy is
+[docs/src/api-guidelines.md](docs/src/api-guidelines.md). Rendering, event
+order and numeric values are unchanged.
+
+- `#[must_use]` on pure getters and queries, value constructors and
+  builders, reference accessors, id-returning registrations whose id is the
+  only handle (`style_create`, `theme_create`, `subject_create`,
+  `layout_create`, `event_register_id`, layer and task creation) and
+  results whose neglect is a bug (`obj_event_base`, `DrawBuf::reshape`,
+  `layer_alloc_buf`, `Font::glyph_dsc`). Object, widget, timer and
+  animation creators are not `#[must_use]`.
+- `#[non_exhaustive]` on enums that grow with LVGL (`DrawTaskType`,
+  `DrawTaskState`, `BlendMode`, `GradDir`, `ScreenLoadAnim`, `SubjectType`,
+  the gesture enums, `LabelLongMode`, `BarMode`, `SliderMode`, `ArcMode`,
+  `ImageAlign`, ...), on the data enums mirroring them (`DrawDsc`,
+  `EventParam`, `StyleValue`, `ImageSrc`, `AnimExec`, `AnimPath`, ...), on
+  the error enums, and on library-owned state structs (`ObjData`,
+  `DisplayData`, `Layer`, `TimerData`, `Event`, `EventDsc`, ...). Structs
+  built with struct literals (`UiConfig`, draw descriptors, `GlyphDsc`,
+  `IndevReadData`, `ObjClass`, `Theme`, `Anim`) are unchanged.
+- `Debug` on every public type; `PartialOrd`/`Ord` on every handle; `Hash`
+  on `ImageAlign` and `LabelLongMode`; `Default` on `EventFilter` and
+  `ConstStyle`.
+- Renamed to the C name with its module prefix: `Ui::layer_create_drop_shadow`
+  -> `Ui::draw_layer_create_drop_shadow`, `Ui::layer_finish_drop_shadow` ->
+  `Ui::draw_layer_finish_drop_shadow`, `Ui::draw_unit_count` ->
+  `Ui::draw_get_unit_count`, `Ui::tick_cb` -> `Ui::tick_get_cb`,
+  `Ui::set_tick_cb` -> `Ui::tick_set_cb`, `Ui::set_delay_cb` ->
+  `Ui::delay_set_cb`.
+- No longer public: the `Ui` fields that have accessor methods (`timers`,
+  `anims`, `tick`, `groups`, `layouts`, `app`, ...), the `lv_refr.c`,
+  rotation, layout-callback and software-renderer static helpers, and
+  `Ui::obj_pos_invalidate_expand_blur`. The `Ui` fields still used by other
+  workspace crates (`objs`, `displays`, `indevs`, `styles`, `themes`, ...)
+  and `ferrovgl_draw_sw::blend::words` are `#[doc(hidden)]`.
+- The `ferrovgl::prelude` now also exports `Ui`, `UiConfig`, `Obj`, the
+  handles, events, styles and selectors, the layout and animation types and
+  the coordinate helpers (`pct`, `SIZE_CONTENT`, `grid_fr`).
+
 ### Verified
 
 - **Every in-scope upstream reference image matches byte-exactly: 472/472**

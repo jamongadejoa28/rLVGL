@@ -183,6 +183,7 @@ impl Ui {
 
     /// `lv_obj_is_editable()`: the first `editable` value that is not
     /// `INHERIT`, walking from the object's class to its bases.
+    #[must_use]
     pub fn obj_is_editable(&self, obj: Obj) -> bool {
         let Some(o) = self.obj(obj) else {
             check_arg_failed("lv_obj_is_editable: obj != NULL");
@@ -205,6 +206,7 @@ impl Ui {
 
     /// `lv_obj_is_group_def()`: the first `group_def` value that is not
     /// `INHERIT`, walking from the object's class to its bases.
+    #[must_use]
     pub fn obj_is_group_def(&self, obj: Obj) -> bool {
         let Some(o) = self.obj(obj) else {
             check_arg_failed("lv_obj_is_group_def: obj != NULL");
@@ -292,6 +294,7 @@ fn get_instance_size(class: &'static ObjClass) -> fn() -> Box<dyn WidgetState> {
 
 /// `get_instance_size()` replacement: the widget state constructor of the
 /// most derived class.
+#[must_use]
 pub fn class_new_state(class: &'static ObjClass) -> fn() -> Box<dyn WidgetState> {
     get_instance_size(class)
 }

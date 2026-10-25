@@ -28,6 +28,7 @@ pub enum FontRef {
 impl FontRef {
     /// Borrow the font behind the handle.
     #[inline]
+    #[must_use]
     pub fn as_font(&self) -> &dyn Font {
         match self {
             FontRef::Static(f) => *f,
@@ -37,6 +38,7 @@ impl FontRef {
 
     /// Address of the font, used for identity comparison and cache keys.
     #[inline]
+    #[must_use]
     pub fn addr(&self) -> usize {
         match self {
             FontRef::Static(f) => (*f as *const (dyn Font + Sync)).cast::<u8>() as usize,
@@ -92,6 +94,7 @@ pub enum GlyphFormat {
 
 impl GlyphFormat {
     /// Format for a bit depth of 1, 2, 3, 4 or 8.
+    #[must_use]
     pub const fn from_bpp(bpp: u8) -> GlyphFormat {
         match bpp {
             1 => GlyphFormat::A1,
@@ -156,47 +159,60 @@ pub struct GlyphDsc {
 /// A font (`lv_font_t`).
 pub trait Font {
     /// `line_height`: the line height where any text fits.
+    #[must_use]
     fn line_height(&self) -> i32;
     /// `base_line`: baseline measured from the bottom of the line height.
+    #[must_use]
     fn base_line(&self) -> i32;
     /// `cap_height`
+    #[must_use]
     fn cap_height(&self) -> i32 {
         0
     }
     /// `x_height`
+    #[must_use]
     fn x_height(&self) -> i32 {
         0
     }
     /// `subpx`
+    #[must_use]
     fn subpx(&self) -> Subpx {
         Subpx::None
     }
     /// `kerning`
+    #[must_use]
     fn kerning(&self) -> Kerning {
         Kerning::Normal
     }
     /// `underline_position`: distance between the top of the underline and
     /// the baseline (negative means below).
+    #[must_use]
     fn underline_position(&self) -> i8;
     /// `underline_thickness`
+    #[must_use]
     fn underline_thickness(&self) -> i8;
     /// `static_bitmap`: glyph bitmaps live in constant memory and can be used
     /// in place through [`Font::glyph_static_bitmap`].
+    #[must_use]
     fn has_static_bitmap(&self) -> bool {
         false
     }
     /// `fallback`: font to try when a glyph is missing.
+    #[must_use]
     fn fallback(&self) -> Option<&dyn Font> {
         None
     }
     /// `get_glyph_dsc`: fill `out` for `letter`, adjusting `adv_w` for the
     /// kerning with `letter_next` (0 if none). Returns `false` if missing.
+    #[must_use]
     fn glyph_dsc(&self, out: &mut GlyphDsc, letter: u32, letter_next: u32) -> bool;
     /// `get_glyph_bitmap` for bitmap formats: write the glyph as A8 rows of
     /// `stride` bytes into `out`. Returns `false` if the glyph has no bitmap.
+    #[must_use]
     fn glyph_bitmap_a8(&self, g: &GlyphDsc, out: &mut [u8], stride: usize) -> bool;
     /// `lv_font_get_glyph_static_bitmap`: the packed bitmap in the font's own
     /// format (`g.format`), only for fonts with static bitmaps.
+    #[must_use]
     fn glyph_static_bitmap(&self, _g: &GlyphDsc) -> Option<&[u8]> {
         None
     }
@@ -208,6 +224,7 @@ pub const USE_FONT_PLACEHOLDER: bool = true;
 /// `lv_font_get_glyph_dsc()`: look `letter` up in `font` and its fallback
 /// chain. Returns the descriptor and the font that actually resolved it
 /// (`resolved_font`); `None` for the font means a placeholder.
+#[must_use]
 pub fn get_glyph_dsc<'f>(
     font: &'f dyn Font,
     letter: u32,
@@ -229,7 +246,7 @@ pub fn get_glyph_dsc<'f>(
         f = cur.fallback();
     }
     if USE_FONT_PLACEHOLDER && let Some(pf) = placeholder_font {
-        pf.glyph_dsc(&mut dsc, letter, next);
+        let _ = pf.glyph_dsc(&mut dsc, letter, next);
         return (dsc, Some(pf));
     }
     let mut dsc = GlyphDsc::default();
@@ -245,6 +262,7 @@ pub fn get_glyph_dsc<'f>(
 }
 
 /// `lv_font_get_glyph_width()`: advance width of `letter` (0 for text markers).
+#[must_use]
 pub fn get_glyph_width(font: &dyn Font, letter: u32, letter_next: u32) -> u16 {
     if crate::misc::text::is_marker(letter) {
         return 0;
@@ -254,6 +272,7 @@ pub fn get_glyph_width(font: &dyn Font, letter: u32, letter_next: u32) -> u16 {
 
 /// `lv_font_get_line_height()`
 #[inline]
+#[must_use]
 pub fn get_line_height(font: &dyn Font) -> i32 {
     font.line_height()
 }

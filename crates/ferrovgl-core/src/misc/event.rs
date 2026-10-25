@@ -233,18 +233,21 @@ impl EventCode {
 
     /// Raw code.
     #[inline]
+    #[must_use]
     pub const fn as_u16(self) -> u16 {
         self.0
     }
 
     /// Wrap a raw code (the `(lv_event_code_t)` cast).
     #[inline]
+    #[must_use]
     pub const fn from_u16(v: u16) -> EventCode {
         EventCode(v)
     }
 
     /// `true` for a code registered with `lv_event_register_id()`.
     #[inline]
+    #[must_use]
     pub const fn is_custom(self) -> bool {
         self.0 > Self::LAST.0 && self.0 <= Self::LAST_CUSTOM.0
     }
@@ -252,6 +255,7 @@ impl EventCode {
     /// `lv_event_code_get_name()`: the name of the code without the `LV_`
     /// prefix (e.g. `"EVENT_CLICKED"`), `"EVENT_UNKNOWN"` for custom codes,
     /// `LV_EVENT_LAST` and `LV_EVENT_LAST_CUSTOM`.
+    #[must_use]
     pub fn name(self) -> &'static str {
         // Remove the preprocess flag
         let code = EventCode(self.0 & !(EventCode::PREPROCESS as u16));
@@ -362,7 +366,7 @@ impl EventCode {
 ///
 /// Stored in [`EventDsc::filter`] as a raw `u32` exactly like upstream; this
 /// is the typed view used by the `*_add_event_cb` APIs.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct EventFilter {
     /// The code to match (`EventCode::ALL` matches everything).
     pub code: EventCode,
@@ -372,18 +376,21 @@ pub struct EventFilter {
 
 impl EventFilter {
     /// Build a filter.
+    #[must_use]
     pub const fn new(code: EventCode, preprocess: bool) -> Self {
         Self { code, preprocess }
     }
 
     /// The raw `uint32_t filter` (`code | LV_EVENT_PREPROCESS`).
     #[inline]
+    #[must_use]
     pub const fn to_u32(self) -> u32 {
         self.code.0 as u32 | if self.preprocess { EventCode::PREPROCESS } else { 0 }
     }
 
     /// Decode a raw filter (ignores `LV_EVENT_MARKED_DELETING`).
     #[inline]
+    #[must_use]
     pub const fn from_u32(filter: u32) -> Self {
         Self {
             code: EventCode((filter & EventCode::CODE_MASK) as u16),
@@ -405,7 +412,7 @@ impl From<EventCode> for EventFilter {
 pub type EventCallback = Rc<dyn for<'p> Fn(&mut Ui, &mut Event<'p>)>;
 
 /// Handle of an event descriptor (`lv_event_dsc_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EventDscId(pub Key);
 
 /// The `LV_USE_EXT_DATA` release hook. A removed descriptor passes its
@@ -414,7 +421,7 @@ pub type EventExtDataFreeCb = fn(Option<Rc<dyn Any>>);
 
 /// `lv_ext_data_t` for an event descriptor. Shared ownership keeps external
 /// data borrowed by an active callback alive when that callback removes itself.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct EventExtData {
     /// `data`; independent of the callback's application `user_data`.
     pub data: Option<Rc<dyn Any>>,
@@ -424,6 +431,7 @@ pub struct EventExtData {
 }
 
 /// `lv_event_dsc_t`: one registered callback.
+#[non_exhaustive]
 pub struct EventDsc {
     /// `ext_data` (`LV_USE_EXT_DATA`).
     pub ext_data: EventExtData,
@@ -436,21 +444,35 @@ pub struct EventDsc {
     pub filter: u32,
 }
 
+impl core::fmt::Debug for EventDsc {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("EventDsc")
+            .field("ext_data", &self.ext_data)
+            .field("cb", &crate::misc::OpaqueCallback)
+            .field("user_data", &self.user_data)
+            .field("filter", &self.filter)
+            .finish()
+    }
+}
+
 impl EventDsc {
     /// The code part of `filter`.
     #[inline]
+    #[must_use]
     pub const fn code(&self) -> EventCode {
         EventCode((self.filter & EventCode::CODE_MASK) as u16)
     }
 
     /// `filter & LV_EVENT_PREPROCESS`
     #[inline]
+    #[must_use]
     pub const fn is_preprocess(&self) -> bool {
         self.filter & EventCode::PREPROCESS != 0
     }
 
     /// `filter & LV_EVENT_MARKED_DELETING`
     #[inline]
+    #[must_use]
     pub const fn is_marked_deleting(&self) -> bool {
         self.filter & EventCode::MARKED_DELETING != 0
     }
@@ -472,6 +494,7 @@ pub struct EventList {
 
 impl EventList {
     /// An empty list.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             dscs: Vec::new(),
@@ -483,12 +506,14 @@ impl EventList {
 
     /// `lv_event_get_count()`
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.dscs.len()
     }
 
     /// `true` if no callback is registered.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.dscs.is_empty()
     }
@@ -496,6 +521,7 @@ impl EventList {
 
 /// The object an event is sent to (`void * target`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum EventTarget {
     /// An object.
     Obj(Obj),
@@ -510,6 +536,7 @@ pub enum EventTarget {
 impl EventTarget {
     /// The object if the target is one.
     #[inline]
+    #[must_use]
     pub fn obj(self) -> Option<Obj> {
         match self {
             EventTarget::Obj(o) => Some(o),
@@ -550,6 +577,7 @@ pub struct CoverCheckInfo {
 }
 
 /// Typed replacement of the `void * param` of an event.
+#[non_exhaustive]
 pub enum EventParam<'p> {
     /// No parameter.
     None,
@@ -637,6 +665,8 @@ pub struct EventFrame {
 }
 
 /// `lv_event_t`
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct Event<'p> {
     /// `code`
     pub code: EventCode,
@@ -661,7 +691,7 @@ pub struct Event<'p> {
     /// `deleted`: the target was deleted during dispatch. `event_send`
     /// copies it back from the [`EventFrame`] after every callback.
     pub deleted: bool,
-    /// `prev`: index of this event's frame in [`Ui::event_stack`] while it
+    /// `prev`: index of this event's frame in `Ui::event_stack` while it
     /// is pushed (`None` before `event_push` / after `event_pop`).
     pub frame: Option<usize>,
 }
@@ -669,42 +699,49 @@ pub struct Event<'p> {
 impl<'p> Event<'p> {
     /// `lv_event_get_target()`
     #[inline]
+    #[must_use]
     pub fn target(&self) -> EventTarget {
         self.target
     }
 
     /// `lv_event_get_current_target()`
     #[inline]
+    #[must_use]
     pub fn current_target(&self) -> EventTarget {
         self.current_target
     }
 
     /// `lv_event_get_target_obj()`
     #[inline]
+    #[must_use]
     pub fn target_obj(&self) -> Option<Obj> {
         self.target.obj()
     }
 
     /// `lv_event_get_current_target_obj()`
     #[inline]
+    #[must_use]
     pub fn current_target_obj(&self) -> Option<Obj> {
         self.current_target.obj()
     }
 
     /// `lv_event_get_code()`: the code without the `LV_EVENT_PREPROCESS` flag.
     #[inline]
+    #[must_use]
     pub fn code(&self) -> EventCode {
         EventCode(self.code.0 & !(EventCode::PREPROCESS as u16))
     }
 
     /// `lv_event_get_param()`
     #[inline]
+    #[must_use]
     pub fn param(&mut self) -> &mut EventParam<'p> {
         &mut self.param
     }
 
     /// `lv_event_get_user_data()`
     #[inline]
+    #[must_use]
     pub fn user_data(&self) -> Option<&Rc<dyn Any>> {
         self.user_data.as_ref()
     }
@@ -728,6 +765,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_indev()`: the input device of an input related event.
+    #[must_use]
     pub fn indev(&self) -> Option<IndevId> {
         const INDEV_CODES: [EventCode; 22] = [
             EventCode::PRESSED,
@@ -763,6 +801,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_layer()`: the layer of a `LV_EVENT_DRAW_*` event.
+    #[must_use]
     pub fn layer(&self) -> Option<LayerId> {
         const DRAW_CODES: [EventCode; 6] = [
             EventCode::DRAW_MAIN,
@@ -782,6 +821,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_old_size()`: the old area of `LV_EVENT_SIZE_CHANGED`.
+    #[must_use]
     pub fn old_size(&self) -> Option<&Area> {
         if !check_event_code(self.code == EventCode::SIZE_CHANGED) {
             return None;
@@ -794,6 +834,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_key()`: the key of `LV_EVENT_KEY` (0 if none).
+    #[must_use]
     pub fn key(&self) -> u32 {
         if !check_event_code(self.code == EventCode::KEY) {
             return 0;
@@ -805,6 +846,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_rotary_diff()`: the diff of `LV_EVENT_ROTARY` (0 if none).
+    #[must_use]
     pub fn rotary_diff(&self) -> i32 {
         if !check_event_code(self.code == EventCode::ROTARY) {
             return 0;
@@ -816,6 +858,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_scroll_anim()`: the animation of `LV_EVENT_SCROLL_BEGIN`.
+    #[must_use]
     pub fn scroll_anim(&self) -> Option<AnimId> {
         if !check_event_code(self.code == EventCode::SCROLL_BEGIN) {
             return None;
@@ -838,6 +881,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_self_size_info()`: the point to fill in `LV_EVENT_GET_SELF_SIZE`.
+    #[must_use]
     pub fn self_size_info(&mut self) -> Option<&mut Point> {
         if !check_event_code(self.code == EventCode::GET_SELF_SIZE) {
             return None;
@@ -849,6 +893,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_hit_test_info()`: the info of `LV_EVENT_HIT_TEST`.
+    #[must_use]
     pub fn hit_test_info(&mut self) -> Option<&mut HitTestInfo> {
         if !check_event_code(self.code == EventCode::HIT_TEST) {
             return None;
@@ -860,6 +905,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_cover_area()`: the area to check in `LV_EVENT_COVER_CHECK`.
+    #[must_use]
     pub fn cover_area(&self) -> Option<&Area> {
         if !check_event_code(self.code == EventCode::COVER_CHECK) {
             return None;
@@ -885,6 +931,7 @@ impl<'p> Event<'p> {
     }
 
     /// `lv_event_get_draw_task()`: the task of `LV_EVENT_DRAW_TASK_ADDED`.
+    #[must_use]
     pub fn draw_task(&self) -> Option<DrawTaskRef> {
         if !check_event_code(self.code == EventCode::DRAW_TASK_ADDED) {
             return None;
@@ -897,6 +944,7 @@ impl<'p> Event<'p> {
 
     /// `lv_event_get_prev_state()`: the previous state in
     /// `LV_EVENT_STATE_CHANGED` (empty if none).
+    #[must_use]
     pub fn prev_state(&self) -> State {
         if !check_event_code(self.code == EventCode::STATE_CHANGED) {
             return State::empty();
@@ -909,6 +957,7 @@ impl<'p> Event<'p> {
 
     /// `lv_event_get_invalidated_area()`: the area of a display's
     /// `LV_EVENT_INVALIDATE_AREA` (may be modified).
+    #[must_use]
     pub fn invalidated_area(&mut self) -> Option<&mut Area> {
         if !check_event_code(self.code == EventCode::INVALIDATE_AREA) {
             return None;
@@ -1034,17 +1083,20 @@ impl Ui {
     }
 
     /// `lv_event_get_dsc()`: the descriptor at `index`.
+    #[must_use]
     pub fn event_get_dsc(&self, list: &EventList, index: usize) -> Option<&EventDsc> {
         let dsc = list.dscs.get(index)?;
         self.event_dscs.get(dsc.0)
     }
 
     /// `lv_event_dsc_get_cb()`
+    #[must_use]
     pub fn event_dsc_get_cb(&self, dsc: EventDscId) -> Option<EventCallback> {
         self.event_dscs.get(dsc.0).map(|d| d.cb.clone())
     }
 
     /// `lv_event_dsc_get_user_data()`
+    #[must_use]
     pub fn event_dsc_get_user_data(&self, dsc: EventDscId) -> Option<Rc<dyn Any>> {
         self.event_dscs.get(dsc.0).and_then(|d| d.user_data.clone())
     }
@@ -1226,7 +1278,7 @@ impl Ui {
         (&mut self.event_dscs, list)
     }
 
-    /// Keep `e` and its frame of [`Ui::event_stack`] in step (in C they are
+    /// Keep `e` and its frame of `Ui::event_stack` in step (in C they are
     /// the same memory): the frame follows the targets of `e`, and `deleted`
     /// set on either side is visible on both.
     fn event_frame_sync(&mut self, e: &mut Event<'_>) {
@@ -1294,6 +1346,7 @@ impl Ui {
 
     /// `lv_event_register_id()`: a new custom event code
     /// (`EventCode::LAST` if `LAST_CUSTOM` is exhausted).
+    #[must_use]
     pub fn event_register_id(&mut self) -> EventCode {
         if self.event_last_register_id.wrapping_add(1) > EventCode::LAST_CUSTOM.0 as u32 {
             #[cfg(feature = "log")]
@@ -1306,7 +1359,7 @@ impl Ui {
     }
 
     /// `lv_event_mark_deleted()`: mark every running event (every frame of
-    /// [`Ui::event_stack`]) whose target is `target` as deleted.
+    /// `Ui::event_stack`) whose target is `target` as deleted.
     pub fn event_mark_deleted(&mut self, target: EventTarget) {
         for e in self.event_stack.iter_mut().rev() {
             if e.original_target == target || e.current_target == target {

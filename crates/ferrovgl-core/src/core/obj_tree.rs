@@ -343,6 +343,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_screen()`: the root of `obj`'s tree.
+    #[must_use]
     pub fn obj_get_screen(&self, obj: Obj) -> Obj {
         if !self.obj_tree_check_obj(obj) {
             return obj;
@@ -358,6 +359,7 @@ impl Ui {
 
     /// `lv_obj_get_display()`: the display whose screen list contains
     /// `obj`'s screen.
+    #[must_use]
     pub fn obj_get_display(&self, obj: Obj) -> Option<DisplayId> {
         let o = self.obj_tree_obj_checked(obj)?;
 
@@ -383,6 +385,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_parent()`
+    #[must_use]
     pub fn obj_get_parent(&self, obj: Obj) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(obj)?;
 
@@ -390,6 +393,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_child()`: negative indexes count from the end.
+    #[must_use]
     pub fn obj_get_child(&self, obj: Obj, idx: i32) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(obj)?;
 
@@ -415,6 +419,7 @@ impl Ui {
 
     /// `lv_obj_get_child_by_type()`: the `idx`-th child whose class is
     /// exactly `class` (`-1` is the last such child).
+    #[must_use]
     pub fn obj_get_child_by_type(&self, obj: Obj, idx: i32, class: &'static ObjClass) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(obj)?;
 
@@ -453,6 +458,7 @@ impl Ui {
 
     /// `lv_obj_get_sibling()`: the child of `obj`'s parent at
     /// `index(obj) + idx`.
+    #[must_use]
     pub fn obj_get_sibling(&self, obj: Obj, idx: i32) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(obj)?;
         if o.parent.is_none() {
@@ -472,6 +478,7 @@ impl Ui {
     /// `lv_obj_get_sibling_by_type()`: like
     /// [`obj_get_sibling`](Self::obj_get_sibling) counting only children of
     /// exactly `class`.
+    #[must_use]
     pub fn obj_get_sibling_by_type(&self, obj: Obj, idx: i32, class: &'static ObjClass) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(obj)?;
         if o.parent.is_none() {
@@ -489,6 +496,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_child_count()`
+    #[must_use]
     pub fn obj_get_child_count(&self, obj: Obj) -> u32 {
         let Some(o) = self.obj_tree_obj_checked(obj) else {
             return 0;
@@ -501,6 +509,7 @@ impl Ui {
 
     /// `lv_obj_get_child_count_by_type()`: number of children whose class
     /// is exactly `class`.
+    #[must_use]
     pub fn obj_get_child_count_by_type(&self, obj: Obj, class: &'static ObjClass) -> u32 {
         let Some(o) = self.obj_tree_obj_checked(obj) else {
             return 0;
@@ -561,6 +570,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_name()`
+    #[must_use]
     pub fn obj_get_name(&self, obj: Obj) -> Option<Rc<str>> {
         let o = self.obj_tree_obj_checked(obj)?;
 
@@ -571,6 +581,7 @@ impl Ui {
     /// ending in `#` is auto-indexed among the older siblings with the same
     /// name. Resolved into a [`OBJ_NAME_MAX_LEN`] byte buffer like the
     /// upstream callers do.
+    #[must_use]
     pub fn obj_get_name_resolved(&self, obj: Obj) -> String {
         let buf = self.obj_tree_name_resolved(obj, OBJ_NAME_MAX_LEN);
         String::from_utf8_lossy(&buf).into_owned()
@@ -579,6 +590,7 @@ impl Ui {
     /// `lv_obj_find_by_name(NULL, name)`: the `parent == NULL` branch of
     /// `lv_obj_find_by_name()`, which searches below
     /// `lv_display_get_screen_active(lv_display_get_default())`.
+    #[must_use]
     pub fn obj_find_by_name_on_active_screen(&self, name: &str) -> Option<Obj> {
         let parent = self.display_get_screen_active(self.display_get_default())?;
 
@@ -587,6 +599,7 @@ impl Ui {
 
     /// `lv_obj_find_by_name()`: recursive search below `parent` (direct
     /// children first, then depth first).
+    #[must_use]
     pub fn obj_find_by_name(&self, parent: Obj, name: &str) -> Option<Obj> {
         // `parent == NULL` is `obj_find_by_name_on_active_screen()`. C does not
         // validate a non-NULL `parent`; a stale handle simply finds nothing.
@@ -614,6 +627,7 @@ impl Ui {
 
     /// `lv_obj_get_child_by_name()`: `"a/b/c"` path lookup, each segment
     /// matched against the resolved names of the direct children.
+    #[must_use]
     pub fn obj_get_child_by_name(&self, parent: Obj, name_path: &str) -> Option<Obj> {
         let o = self.obj_tree_obj_checked(parent)?;
         if o.spec.is_none() {
@@ -653,6 +667,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_index()`: -1 if `obj` has no parent.
+    #[must_use]
     pub fn obj_get_index(&self, obj: Obj) -> i32 {
         if !self.obj_tree_check_obj(obj) {
             return -1;
@@ -674,6 +689,7 @@ impl Ui {
 
     /// `lv_obj_get_index_by_type()`: the index of `obj` among the siblings
     /// whose class is exactly `class` (-1 if not found or no parent).
+    #[must_use]
     pub fn obj_get_index_by_type(&self, obj: Obj, class: &'static ObjClass) -> i32 {
         if !self.obj_tree_check_obj(obj) {
             return -1;
@@ -777,6 +793,7 @@ impl Ui {
     }
 
     /// Children of `obj` (empty if it has no `spec_attr`).
+    #[must_use]
     pub fn obj_children(&self, obj: Obj) -> &[ObjId] {
         match self.obj(obj).and_then(|o| o.spec.as_deref()) {
             Some(spec) => &spec.children,

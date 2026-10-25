@@ -122,6 +122,7 @@ pub struct BidiState {
 
 impl BidiState {
     /// The zero-initialized statics.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             custom_neutrals: None,
@@ -190,6 +191,7 @@ impl BidiState {
     /// `lv_bidi_detect_base_dir()`: `Rtl` if any strong RTL character is
     /// found, else `Ltr` if any strong LTR one is, else
     /// [`BIDI_BASE_DIR_DEF`] (`Ltr` for `Auto`).
+    #[must_use]
     pub fn detect_base_dir(&self, txt: &[u8]) -> BaseDir {
         let mut i: u32 = 0;
         let mut letter: u32;
@@ -226,6 +228,7 @@ impl BidiState {
     ///
     /// A `visual_pos` past the converted characters reads outside the C
     /// buffer; here such a read gives position 0 (LTR).
+    #[must_use]
     pub fn get_logical_pos(
         &self,
         str_in: &[u8],
@@ -264,6 +267,7 @@ impl BidiState {
 
     /// `lv_bidi_get_visual_pos()`: the visual position of the character at
     /// `logical_pos` of a line of `len` bytes (`(uint16_t) -1` if not found).
+    #[must_use]
     pub fn get_visual_pos(
         &self,
         str_in: &[u8],

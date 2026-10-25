@@ -160,7 +160,7 @@ pub static TEXTAREA_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable text area handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Textarea(Obj);
 
 impl Textarea {
@@ -175,11 +175,13 @@ impl Textarea {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the text area class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &TEXTAREA_CLASS)).then_some(Self(obj))
     }
@@ -578,6 +580,7 @@ impl Textarea {
      *====================*/
 
     /// `lv_textarea_get_text()`: the real text, also in password mode.
+    #[must_use]
     pub fn text(self, ui: &Ui) -> &str {
         let Some(ta) = state(ui, self.0) else { return "" };
 
@@ -589,6 +592,7 @@ impl Textarea {
     }
 
     /// `lv_textarea_get_placeholder_text()`
+    #[must_use]
     pub fn placeholder_text(self, ui: &Ui) -> &str {
         state(ui, self.0)
             .and_then(|ta| ta.placeholder_txt.as_deref())
@@ -596,26 +600,31 @@ impl Textarea {
     }
 
     /// `lv_textarea_get_label()`
+    #[must_use]
     pub fn label(self, ui: &Ui) -> Option<Obj> {
         state(ui, self.0).and_then(|ta| ta.label)
     }
 
     /// `lv_textarea_get_cursor_pos()`: the cursor position in characters.
+    #[must_use]
     pub fn cursor_pos(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |ta| ta.cursor.pos)
     }
 
     /// `lv_textarea_get_cursor_click_pos()`
+    #[must_use]
     pub fn cursor_click_pos(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|ta| ta.cursor.click_pos)
     }
 
     /// `lv_textarea_get_password_mode()`
+    #[must_use]
     pub fn password_mode(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|ta| ta.pwd_mode)
     }
 
     /// `lv_textarea_get_password_bullet()`
+    #[must_use]
     pub fn password_bullet(self, ui: &Ui) -> &str {
         let Some(ta) = state(ui, self.0) else { return "" };
 
@@ -636,21 +645,25 @@ impl Textarea {
     }
 
     /// `lv_textarea_get_one_line()`
+    #[must_use]
     pub fn one_line(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|ta| ta.one_line)
     }
 
     /// `lv_textarea_get_accepted_chars()`: `None` is `NULL`.
+    #[must_use]
     pub fn accepted_chars(self, ui: &Ui) -> Option<&str> {
         state(ui, self.0).and_then(|ta| ta.accepted_chars.as_deref())
     }
 
     /// `lv_textarea_get_max_length()`
+    #[must_use]
     pub fn max_length(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |ta| ta.max_length)
     }
 
     /// `lv_textarea_text_is_selected()`
+    #[must_use]
     pub fn text_is_selected(self, ui: &Ui) -> bool {
         let Some(label) = label_of(ui, self.0) else {
             return false;
@@ -661,16 +674,19 @@ impl Textarea {
     }
 
     /// `lv_textarea_get_text_selection()`: whether selection mode is enabled.
+    #[must_use]
     pub fn text_selection(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|ta| ta.text_sel_en)
     }
 
     /// `lv_textarea_get_password_show_time()`
+    #[must_use]
     pub fn password_show_time(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |ta| ta.pwd_show_time)
     }
 
     /// `lv_textarea_get_current_char()`: the character at the cursor or 0.
+    #[must_use]
     pub fn current_char(self, ui: &Ui) -> u32 {
         let Some(ta) = state(ui, self.0) else { return 0 };
 

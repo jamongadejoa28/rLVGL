@@ -109,6 +109,7 @@ pub enum BaseDir {
 /// `lv_text_leading_trim_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum LeadingTrim {
     /// `LV_TEXT_LEADING_TRIM_NONE`
     #[default]
@@ -151,6 +152,7 @@ pub struct TextAttributes {
 
 impl TextAttributes {
     /// `lv_text_attributes_init()`: all zero / no flags.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             letter_space: 0,
@@ -163,17 +165,20 @@ impl TextAttributes {
 
 /// `lv_text_is_break_char()`
 #[inline]
+#[must_use]
 pub fn is_break_char(letter: u32) -> bool {
     TXT_BREAK_CHARS.bytes().any(|c| letter == c as u32)
 }
 
 /// `lv_text_is_hanging_space()`
 #[inline]
+#[must_use]
 pub const fn is_hanging_space(letter: u32) -> bool {
     letter == ' ' as u32 || letter == '\n' as u32 || letter == '\r' as u32
 }
 
 /// `lv_text_is_a_word()`: CJK and other characters that are words by themselves.
+#[must_use]
 pub const fn is_a_word(letter: u32) -> bool {
     if letter == 0 {
         return false;
@@ -206,6 +211,7 @@ pub const fn is_a_word(letter: u32) -> bool {
 }
 
 /// `lv_text_is_marker()`: control characters that occupy no space.
+#[must_use]
 pub const fn is_marker(letter: u32) -> bool {
     if letter < 0x20 {
         return true;
@@ -241,6 +247,7 @@ pub const fn is_marker(letter: u32) -> bool {
 }
 
 /// `lv_font_get_bottom_trim_internal()` / `lv_font_get_bottom_trim()`
+#[must_use]
 pub fn font_get_bottom_trim(font: &dyn Font, trim: LeadingTrim) -> i32 {
     match trim {
         LeadingTrim::CapitalBaseline | LeadingTrim::LowerBaseline => font.base_line(),
@@ -249,6 +256,7 @@ pub fn font_get_bottom_trim(font: &dyn Font, trim: LeadingTrim) -> i32 {
 }
 
 /// `lv_font_get_top_trim_internal()` / `lv_font_get_top_trim()`
+#[must_use]
 pub fn font_get_top_trim(font: &dyn Font, trim: LeadingTrim) -> i32 {
     match trim {
         LeadingTrim::CapitalBaseline | LeadingTrim::Capital => {
@@ -323,6 +331,7 @@ const fn is_invalid_utf8_code(value: u8) -> bool {
 
 /// `lv_text_get_size()` / `lv_text_get_size_internal()`: size of `text`
 /// rendered with `font`.
+#[must_use]
 pub fn get_size(
     text: &str,
     font: &dyn Font,
@@ -343,6 +352,7 @@ pub fn get_size(
 ///
 /// Upstream writes `LV_COORD_MAX` back into `attributes->max_width` when
 /// `LV_TEXT_FLAG_EXPAND` is set; here that happens on a private copy.
+#[must_use]
 pub fn get_size_attributes(text: &str, font: &dyn Font, attributes: &TextAttributes) -> Point {
     let text = text.as_bytes();
     let mut attributes = *attributes;
@@ -416,6 +426,7 @@ pub fn get_size_attributes(text: &str, font: &dyn Font, attributes: &TextAttribu
 
 /// `lv_text_is_cmd()`: advance the recolor command state machine with `c`.
 /// Returns `true` if `c` is part of a command (should not be drawn).
+#[must_use]
 pub fn is_cmd(state: &mut TextCmdState, c: u32) -> bool {
     let mut ret = false;
 
@@ -662,6 +673,7 @@ fn is_space_run(txt: &[u8], len: u32) -> bool {
 
 /// `lv_text_get_line_width()`: width of the first `length` bytes of `txt`,
 /// ignoring trailing hanging spaces.
+#[must_use]
 pub fn get_line_width(txt: &str, length: u32, font: &dyn Font, attributes: &TextAttributes) -> i32 {
     get_line_width_bytes(txt.as_bytes(), length, font, attributes)
 }
@@ -683,6 +695,7 @@ fn get_line_width_bytes(txt: &[u8], length: u32, font: &dyn Font, attributes: &T
 
 /// `lv_text_get_next_line()`: byte index where the next line starts.
 /// `used_width`, when given, receives the width of the line.
+#[must_use]
 pub fn get_next_line(
     txt: &str,
     len: u32,
@@ -811,6 +824,7 @@ fn get_next_line_bytes(
 }
 
 /// `lv_text_get_width()`: width of the first `length` bytes of `txt`.
+#[must_use]
 pub fn get_width(txt: &str, length: u32, font: &dyn Font, attributes: &TextAttributes) -> i32 {
     get_width_bytes(txt.as_bytes(), length, font, attributes)
 }
@@ -897,6 +911,7 @@ pub fn cut(txt: &mut alloc::string::String, pos: u32, len: u32) {
 /// branch) the formatted raw text is passed through `lv_text_ap_proc()`
 /// ([`ap_proc`]), so Arabic/Persian letters come back in their contextual
 /// presentation forms.
+#[must_use]
 pub fn set_text_vfmt(args: core::fmt::Arguments<'_>) -> alloc::string::String {
     if USE_ARABIC_PERSIAN_CHARS {
         /* Put together the text according to the format string */
@@ -931,6 +946,7 @@ fn encoded_letter_next_2_bytes(txt: &[u8], letter: &mut u32, letter_next: &mut u
 
 /// `lv_text_encoded_size()` / `lv_text_utf8_size()`: byte length of the
 /// UTF-8 sequence starting at `txt[0]` (1, 2, 3 or 4), 0 on an invalid code.
+#[must_use]
 pub fn encoded_size(txt: &[u8]) -> u8 {
     let c = byte_at(txt, 0);
     if is_ascii(c) {
@@ -949,6 +965,7 @@ pub fn encoded_size(txt: &[u8]) -> u8 {
 /// `lv_text_unicode_to_encoded()` / `lv_text_unicode_to_utf8()`: unicode code
 /// point to UTF-8 bytes packed in native byte order ("Little Endian to be
 /// compatible with C chars").
+#[must_use]
 pub fn unicode_to_encoded(letter_uni: u32) -> u32 {
     if letter_uni < 128 {
         return letter_uni;
@@ -980,6 +997,7 @@ pub fn unicode_to_encoded(letter_uni: u32) -> u32 {
 
 /// `lv_text_encoded_conv_wc()` / `lv_text_utf8_conv_wc()`: a wide character
 /// (packed UTF-8 bytes, e.g. `'Á'` as a multi-char constant) to big endian.
+#[must_use]
 pub fn encoded_conv_wc(c: u32) -> u32 {
     /* Swap the bytes (UTF-8 is big endian, but the MCUs are little endian) */
     if cfg!(target_endian = "little") && (c & 0x80) != 0 {
@@ -1131,6 +1149,7 @@ pub fn encoded_prev(txt: &[u8], i: Option<&mut u32>) -> u32 {
 /// `lv_text_encoded_get_byte_id()` / `lv_text_utf8_get_byte_id()`: character
 /// index to byte index. E.g. in `"AÁRT"` `'R'` is the 2nd char but starts at
 /// byte 3 because `'Á'` is 2 bytes long.
+#[must_use]
 pub fn encoded_get_byte_id(txt: &[u8], utf8_id: u32) -> u32 {
     let mut byte_cnt: u32 = 0;
     let mut i: u32 = 0;
@@ -1150,6 +1169,7 @@ pub fn encoded_get_byte_id(txt: &[u8], utf8_id: u32) -> u32 {
 ///
 /// Upstream never terminates for a `byte_id` past the end of the string;
 /// here the count stops at the end of `txt` instead.
+#[must_use]
 pub fn encoded_get_char_id(txt: &[u8], byte_id: u32) -> u32 {
     let mut i: u32 = 0;
     let mut char_cnt: u32 = 0;
@@ -1168,6 +1188,7 @@ pub fn encoded_get_char_id(txt: &[u8], byte_id: u32) -> u32 {
 /// `lv_text_get_encoded_length()` / `lv_text_utf8_get_length()`: number of
 /// characters (and NOT bytes) in `txt`. E.g. `"ÁBC"` is 3 characters (but 4
 /// bytes).
+#[must_use]
 pub fn get_encoded_length(txt: &[u8]) -> u32 {
     let mut len: u32 = 0;
     let mut i: u32 = 0;
@@ -1290,12 +1311,14 @@ static AP_CHARS_MAP: [ApCharsMap; 53] = [
 ///
 /// Every Arabic/Persian letter is counted with the size of its end form.
 /// Like upstream, the string ends at its first NUL byte.
+#[must_use]
 pub fn ap_strlen(txt: &str) -> usize {
     ap_strlen_bytes(txt.as_bytes())
 }
 
 /// `lv_text_ap_strlen()` on raw bytes ([`ap_strlen`] for text that is not
 /// valid UTF-8: an invalid byte counts as one byte).
+#[must_use]
 pub fn ap_strlen_bytes(txt: &[u8]) -> usize {
     let mut chars_cnt: u32 = 0;
 
@@ -1337,6 +1360,7 @@ pub fn ap_strlen_bytes(txt: &[u8]) -> usize {
 /// bytes before the terminator; the returned string ends at the first of
 /// them, which is where every C reader of `txt_out` stops. Like upstream,
 /// `txt` ends at its first NUL byte.
+#[must_use]
 pub fn ap_proc(txt: &str) -> alloc::string::String {
     let txt = txt.as_bytes();
 

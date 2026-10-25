@@ -27,6 +27,7 @@ pub struct MaskRectDsc {
 
 impl MaskRectDsc {
     /// `lv_draw_mask_rect_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -58,6 +59,7 @@ pub struct MaskBitmapDsc {
 
 impl MaskBitmapDsc {
     /// A zeroed descriptor (`lv_draw.c` zeroes the `MASK_BITMAP` slot).
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -107,6 +109,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_mask_rect_dsc()`
+    #[must_use]
     pub fn task_get_mask_rect_dsc(&mut self, task: DrawTaskRef) -> Option<&mut MaskRectDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::MaskRectangle {

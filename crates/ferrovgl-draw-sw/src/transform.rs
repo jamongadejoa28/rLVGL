@@ -43,7 +43,7 @@ use ferrovgl_core::misc::math::{TRIGO_SHIFT, trigo_sin};
 
 /// Per-pixel sampling data (`point_transform_dsc_t`).
 #[derive(Clone, Debug, Default)]
-pub struct PointTransfDsc {
+pub(crate) struct PointTransfDsc {
     /// `sinma`
     pub sinma: i32,
     /// `cosma`

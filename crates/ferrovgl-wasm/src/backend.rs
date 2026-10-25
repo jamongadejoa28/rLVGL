@@ -119,7 +119,7 @@ impl DisplayDriver for CanvasDriver {
 }
 
 /// Parameters of [`Backend::new`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BackendConfig {
     /// Horizontal resolution in pixels.
     pub width: u32,
@@ -224,6 +224,18 @@ pub struct Backend {
     clock: FrameClock,
 }
 
+impl core::fmt::Debug for Backend {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Backend")
+            .field("ui", &self.ui)
+            .field("display", &self.display)
+            .field("group", &self.group)
+            .field("inputs", &self.inputs)
+            .field("clock", &self.clock)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Backend {
     /// Creates the context, software draw unit, display, draw buffers and
     /// input devices.
@@ -303,46 +315,55 @@ impl Backend {
     }
 
     /// The display drawn to the surface.
+    #[must_use]
     pub fn display(&self) -> DisplayId {
         self.display
     }
 
     /// The default focus group used by the keypad and encoder.
+    #[must_use]
     pub fn group(&self) -> GroupId {
         self.group
     }
 
     /// The active screen, or `None` after the display was deleted.
+    #[must_use]
     pub fn screen(&self) -> Option<Obj> {
         self.ui.display_get_screen_active(Some(self.display))
     }
 
     /// Pointer device, owned by the UI.
+    #[must_use]
     pub fn pointer(&self) -> IndevId {
         self.inputs.pointer
     }
 
     /// Keyboard device, owned by the UI.
+    #[must_use]
     pub fn keypad(&self) -> IndevId {
         self.inputs.keypad
     }
 
     /// Wheel / middle-button encoder, owned by the UI.
+    #[must_use]
     pub fn encoder(&self) -> IndevId {
         self.inputs.encoder
     }
 
     /// Number of areas delivered to the surface so far.
+    #[must_use]
     pub fn flushed_areas(&self) -> u64 {
         self.target.borrow().flushes
     }
 
     /// The flush layout used by the last refresh.
+    #[must_use]
     pub fn flush_config(&self) -> FlushConfig {
         self.target.borrow().config
     }
 
     /// Whether the display still exists.
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         self.ui.display(self.display).is_some()
     }

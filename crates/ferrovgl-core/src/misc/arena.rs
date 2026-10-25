@@ -21,11 +21,13 @@ pub struct Key {
 impl Key {
     /// Slot index (for debugging and deterministic ordering).
     #[inline]
+    #[must_use]
     pub const fn index(self) -> u32 {
         self.index
     }
     /// Generation of the slot when the key was issued.
     #[inline]
+    #[must_use]
     pub const fn generation(self) -> u32 {
         self.generation.get()
     }
@@ -37,6 +39,7 @@ impl fmt::Debug for Key {
     }
 }
 
+#[derive(Debug)]
 enum Slot<T> {
     Occupied {
         generation: NonZeroU32,
@@ -49,6 +52,7 @@ enum Slot<T> {
 }
 
 /// A generational arena.
+#[derive(Debug)]
 pub struct Arena<T> {
     slots: Vec<Slot<T>>,
     free_head: Option<u32>,
@@ -63,6 +67,7 @@ impl<T> Default for Arena<T> {
 
 impl<T> Arena<T> {
     /// Create an empty arena.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             slots: Vec::new(),
@@ -72,6 +77,7 @@ impl<T> Arena<T> {
     }
 
     /// Create an arena with room for `cap` values.
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             slots: Vec::with_capacity(cap),
@@ -82,17 +88,20 @@ impl<T> Arena<T> {
 
     /// Number of live values.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// `true` if no value is stored.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
     /// Insert a value and return its key.
+    #[must_use]
     pub fn insert(&mut self, value: T) -> Key {
         self.len += 1;
         if let Some(index) = self.free_head {
@@ -150,12 +159,14 @@ impl<T> Arena<T> {
 
     /// `true` if `key` refers to a live value.
     #[inline]
+    #[must_use]
     pub fn contains(&self, key: Key) -> bool {
         self.get(key).is_some()
     }
 
     /// Borrow the value behind `key`.
     #[inline]
+    #[must_use]
     pub fn get(&self, key: Key) -> Option<&T> {
         match self.slots.get(key.index as usize)? {
             Slot::Occupied { generation, value } if *generation == key.generation => Some(value),
@@ -165,6 +176,7 @@ impl<T> Arena<T> {
 
     /// Mutably borrow the value behind `key`.
     #[inline]
+    #[must_use]
     pub fn get_mut(&mut self, key: Key) -> Option<&mut T> {
         match self.slots.get_mut(key.index as usize)? {
             Slot::Occupied { generation, value } if *generation == key.generation => Some(value),
@@ -175,6 +187,7 @@ impl<T> Arena<T> {
     /// Mutably borrow two distinct values at once (e.g. a parent and a child).
     ///
     /// Returns `None` if either key is dead or both keys are equal.
+    #[must_use]
     pub fn get2_mut(&mut self, a: Key, b: Key) -> Option<(&mut T, &mut T)> {
         if a.index == b.index {
             return None;

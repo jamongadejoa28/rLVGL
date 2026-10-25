@@ -40,6 +40,7 @@ pub struct KeyMapping {
 impl KeyMapping {
     /// Whether the key produced anything; the page should then call
     /// `preventDefault()` so Tab, arrows and Space do not move the browser.
+    #[must_use]
     pub fn is_handled(&self) -> bool {
         self.control.is_some() || self.text.is_some()
     }
@@ -52,6 +53,7 @@ impl KeyMapping {
 
 /// Packs a character like `sdl_keyboard_read()`: `lv_memcpy(&data->key,
 /// buf, utf8_len)` copies the UTF-8 bytes into a zeroed native `uint32_t`.
+#[must_use]
 pub fn pack_utf8(c: char) -> u32 {
     let mut bytes = [0u8; 4];
     c.encode_utf8(&mut bytes);
@@ -63,6 +65,7 @@ pub fn pack_utf8(c: char) -> u32 {
 ///
 /// Upstream sends `LV_KEY_NEXT` for Tab regardless of Shift; like the
 /// SDL backend of this workspace, Shift+Tab sends `LV_KEY_PREV` instead.
+#[must_use]
 pub fn control_key(key: &str, code: &str, mods: Modifiers) -> Option<u32> {
     // SDLK_KP_PLUS / SDLK_KP_MINUS / SDLK_KP_ENTER are physical keypad keys.
     match code {
@@ -91,6 +94,7 @@ pub fn control_key(key: &str, code: &str, mods: Modifiers) -> Option<u32> {
 
 /// The `SDL_TEXTINPUT` part: a `key` that is exactly one character and is
 /// not a shortcut (Ctrl/Meta without AltGr) produces that character.
+#[must_use]
 pub fn text_key(key: &str, mods: Modifiers) -> Option<u32> {
     let mut chars = key.chars();
     let c = chars.next()?;
@@ -107,6 +111,7 @@ pub fn text_key(key: &str, mods: Modifiers) -> Option<u32> {
 
 /// Maps one DOM `keydown` to LVGL keys. Events with
 /// `KeyboardEvent.isComposing` (IME composition) should not be passed in.
+#[must_use]
 pub fn map_key(key: &str, code: &str, mods: Modifiers) -> KeyMapping {
     let control = control_key(key, code, mods);
     // SDL emits no text input for Enter, Tab, Escape or Backspace, but the

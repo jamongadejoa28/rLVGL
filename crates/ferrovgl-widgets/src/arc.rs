@@ -128,6 +128,7 @@ fn sin(angle: i32) -> i32 {
 /// discriminants.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ArcMode {
     /// `LV_ARC_MODE_NORMAL`: clockwise.
     #[default]
@@ -194,7 +195,7 @@ pub static ARC_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable arc handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Arc(Obj);
 
 fn state(ui: &Ui, obj: Obj) -> Option<&ArcState> {
@@ -216,11 +217,13 @@ impl Arc {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the arc class (spinners do).
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &ARC_CLASS)).then_some(Self(obj))
     }
@@ -536,56 +539,67 @@ impl Arc {
     }
 
     /// `lv_arc_get_angle_start()`
+    #[must_use]
     pub fn angle_start(self, ui: &Ui) -> ValuePrecise {
         state(ui, self.0).map_or(vp(0), |arc| arc.indic_angle_start)
     }
 
     /// `lv_arc_get_angle_end()`
+    #[must_use]
     pub fn angle_end(self, ui: &Ui) -> ValuePrecise {
         state(ui, self.0).map_or(vp(0), |arc| arc.indic_angle_end)
     }
 
     /// `lv_arc_get_bg_angle_start()`
+    #[must_use]
     pub fn bg_angle_start(self, ui: &Ui) -> ValuePrecise {
         state(ui, self.0).map_or(vp(0), |arc| arc.bg_angle_start)
     }
 
     /// `lv_arc_get_bg_angle_end()`
+    #[must_use]
     pub fn bg_angle_end(self, ui: &Ui) -> ValuePrecise {
         state(ui, self.0).map_or(vp(0), |arc| arc.bg_angle_end)
     }
 
     /// `lv_arc_get_value()`
+    #[must_use]
     pub fn value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |arc| arc.value)
     }
 
     /// `lv_arc_get_min_value()`
+    #[must_use]
     pub fn min_value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |arc| arc.min_value)
     }
 
     /// `lv_arc_get_max_value()`
+    #[must_use]
     pub fn max_value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |arc| arc.max_value)
     }
 
     /// `lv_arc_get_mode()`
+    #[must_use]
     pub fn mode(self, ui: &Ui) -> ArcMode {
         state(ui, self.0).map_or(ArcMode::Normal, |arc| arc.type_)
     }
 
     /// `lv_arc_get_rotation()`
+    #[must_use]
     pub fn rotation(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |arc| arc.rotation)
     }
 
     /// `lv_arc_get_knob_offset()`
+    #[must_use]
     pub fn knob_offset(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |arc| i32::from(arc.knob_offset))
     }
 
     /// `lv_arc_get_change_rate()`
+    #[must_use]
     pub fn change_rate(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |arc| arc.chg_rate)
     }

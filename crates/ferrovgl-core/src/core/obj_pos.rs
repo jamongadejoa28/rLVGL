@@ -11,7 +11,7 @@
 //!
 //! Cross-file contract: `lv_obj_invalidate_expand_blur()` is defined in
 //! `lv_obj_pos.c`, so its body is ported here as
-//! [`Ui::obj_pos_invalidate_expand_blur`]. The skeleton entry point
+//! `Ui::obj_pos_invalidate_expand_blur`. The skeleton entry point
 //! `Ui::obj_invalidate_expand_blur` in `refr.rs` must delegate to it
 //! (`self.obj_pos_invalidate_expand_blur(disp)`) rather than port it again.
 
@@ -58,11 +58,13 @@ pub enum ObjPointTransformFlag {
 impl ObjPointTransformFlag {
     /// `flags & RECURSIVE`
     #[inline]
+    #[must_use]
     pub const fn recursive(self) -> bool {
         (self as u8) & 0x01 != 0
     }
     /// `flags & INVERSE`
     #[inline]
+    #[must_use]
     pub const fn inverse(self) -> bool {
         (self as u8) & 0x02 != 0
     }
@@ -154,6 +156,7 @@ fn size_in_effect_is_pct(
 }
 
 /// `lv_clamp_width()`
+#[must_use]
 pub fn clamp_width(width: i32, min_width: i32, max_width: i32, ref_width: i32) -> i32 {
     let mut min_width = min_width;
     let mut max_width = max_width;
@@ -167,6 +170,7 @@ pub fn clamp_width(width: i32, min_width: i32, max_width: i32, ref_width: i32) -
 }
 
 /// `lv_clamp_height()`
+#[must_use]
 pub fn clamp_height(height: i32, min_height: i32, max_height: i32, ref_height: i32) -> i32 {
     let mut min_height = min_height;
     let mut max_height = max_height;
@@ -294,6 +298,7 @@ impl Ui {
     /// Takes `&mut self` (the skeleton had `&self`): resolving
     /// `LV_SIZE_CONTENT` sends `LV_EVENT_GET_SELF_SIZE` and calls the
     /// layout's `get_min_size_cb`.
+    #[must_use]
     pub fn obj_calc_dynamic_width(&mut self, obj: Obj, prop: StyleProp) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -310,6 +315,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_calc_dynamic_height(&mut self, obj: Obj, prop: StyleProp) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -549,6 +555,7 @@ impl Ui {
     }
 
     /// `lv_obj_is_layout_positioned()`
+    #[must_use]
     pub fn obj_is_layout_positioned(&self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -828,6 +835,7 @@ impl Ui {
 
     /// `lv_obj_get_transform()`: the `LV_DRAW_TRANSFORM_USE_MATRIX == 0`
     /// branch, which always returns `NULL`.
+    #[must_use]
     pub fn obj_get_transform(&self, obj: Obj) -> Option<&Matrix> {
         if !self.obj_is_valid(obj) {
             return None;
@@ -836,11 +844,13 @@ impl Ui {
     }
 
     /// `lv_obj_get_coords()`
+    #[must_use]
     pub fn obj_get_coords(&self, obj: Obj) -> Area {
         self.pos_coords(obj)
     }
 
     /// `lv_obj_get_x()`
+    #[must_use]
     pub fn obj_get_x(&self, obj: Obj) -> i32 {
         let Some(d) = self.obj(obj) else { return 0 };
 
@@ -857,6 +867,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_x2()`
+    #[must_use]
     pub fn obj_get_x2(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -866,6 +877,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_y()`
+    #[must_use]
     pub fn obj_get_y(&self, obj: Obj) -> i32 {
         let Some(d) = self.obj(obj) else { return 0 };
 
@@ -882,6 +894,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_y2()`
+    #[must_use]
     pub fn obj_get_y2(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -891,6 +904,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_x_aligned()`
+    #[must_use]
     pub fn obj_get_x_aligned(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -900,6 +914,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_y_aligned()`
+    #[must_use]
     pub fn obj_get_y_aligned(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -909,16 +924,19 @@ impl Ui {
     }
 
     /// `lv_obj_get_width()`
+    #[must_use]
     pub fn obj_get_width(&self, obj: Obj) -> i32 {
         self.obj(obj).map_or(0, |d| d.coords.width())
     }
 
     /// `lv_obj_get_height()`
+    #[must_use]
     pub fn obj_get_height(&self, obj: Obj) -> i32 {
         self.obj(obj).map_or(0, |d| d.coords.height())
     }
 
     /// `lv_obj_get_content_width()`
+    #[must_use]
     pub fn obj_get_content_width(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -931,6 +949,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_content_height()`
+    #[must_use]
     pub fn obj_get_content_height(&self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -943,6 +962,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_content_coords()`
+    #[must_use]
     pub fn obj_get_content_coords(&self, obj: Obj) -> Area {
         if !self.obj_is_valid(obj) {
             return Area::default();
@@ -957,6 +977,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_self_width()`
+    #[must_use]
     pub fn obj_get_self_width(&mut self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -968,6 +989,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_self_height()`
+    #[must_use]
     pub fn obj_get_self_height(&mut self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -982,6 +1004,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_get_style_clamped_width(&mut self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -1005,6 +1028,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_get_style_clamped_height(&mut self, obj: Obj) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0;
@@ -1025,6 +1049,7 @@ impl Ui {
     }
 
     /// `lv_obj_is_style_any_width_content()`
+    #[must_use]
     pub fn obj_is_style_any_width_content(&self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1037,6 +1062,7 @@ impl Ui {
     }
 
     /// `lv_obj_is_style_any_height_content()`
+    #[must_use]
     pub fn obj_is_style_any_height_content(&self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1052,6 +1078,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_is_width_min(&mut self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1066,6 +1093,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_is_height_min(&mut self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1080,6 +1108,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_is_width_max(&mut self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1094,6 +1123,7 @@ impl Ui {
     ///
     /// Takes `&mut self` (the skeleton had `&self`), see
     /// [`obj_calc_dynamic_width`](Self::obj_calc_dynamic_width).
+    #[must_use]
     pub fn obj_is_height_max(&mut self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1465,7 +1495,7 @@ impl Ui {
     /// body lives here next to the private helpers it uses. The skeleton
     /// entry point `Ui::obj_invalidate_expand_blur` (`refr.rs`) must delegate
     /// to this function; it must not be ported a second time.
-    pub fn obj_pos_invalidate_expand_blur(&mut self, disp: DisplayId) {
+    pub(crate) fn obj_pos_invalidate_expand_blur(&mut self, disp: DisplayId) {
         let Some(d) = self.displays.get(disp.0) else {
             return;
         };
@@ -1554,6 +1584,7 @@ impl Ui {
     }
 
     /// `lv_obj_area_is_visible()`: clips `area` to the visible part.
+    #[must_use]
     pub fn obj_area_is_visible(&self, obj: Obj, area: &mut Area) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1620,6 +1651,7 @@ impl Ui {
     }
 
     /// `lv_obj_is_visible()`
+    #[must_use]
     pub fn obj_is_visible(&self, obj: Obj) -> bool {
         if !self.obj_is_valid(obj) {
             return false;
@@ -1645,6 +1677,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_click_area()`
+    #[must_use]
     pub fn obj_get_click_area(&self, obj: Obj) -> Area {
         let Some(d) = self.obj(obj) else {
             return Area::default();
@@ -1658,6 +1691,7 @@ impl Ui {
     }
 
     /// `lv_obj_hit_test()`
+    #[must_use]
     pub fn obj_hit_test(&mut self, obj: Obj, point: Point) -> bool {
         if !self.obj_is_valid(obj) {
             return false;

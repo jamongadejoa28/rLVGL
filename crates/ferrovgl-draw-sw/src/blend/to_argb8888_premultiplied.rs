@@ -691,7 +691,8 @@ fn blend_non_normal_pixel_premultiplied(
             res.blue = (db - sb).unsigned_abs() as u8;
         }
         /* LV_LOG_WARN("Not supported blend mode") */
-        BlendMode::Normal => return,
+        /*`default:`, which is also where `BlendMode::Normal` lands*/
+        _ => return,
     }
 
     res.alpha = src_alpha; /* Keep the alpha from premultiplied source */

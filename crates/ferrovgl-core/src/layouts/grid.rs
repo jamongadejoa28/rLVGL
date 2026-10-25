@@ -18,6 +18,7 @@ pub const GRID_TEMPLATE_LAST: i32 = coord::MAX;
 
 /// `LV_GRID_FR(x)` / `lv_grid_fr()`
 #[inline]
+#[must_use]
 pub const fn grid_fr(x: u8) -> i32 {
     coord::MAX - 100 + x as i32
 }
@@ -45,6 +46,7 @@ pub enum GridAlign {
 
 impl GridAlign {
     /// Convert a raw style number (`Start` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> GridAlign {
         match v {
             1 => GridAlign::Center,
@@ -59,7 +61,7 @@ impl GridAlign {
 }
 
 /// `grid_update()`: the layout callback registered as `LV_LAYOUT_GRID`.
-pub fn grid_update(ui: &mut Ui, obj: Obj) {
+pub(crate) fn grid_update(ui: &mut Ui, obj: Obj) {
     let Some(grid) = calc(ui, obj) else { return };
     let coords = ui.obj_get_coords(obj);
     let origin = Point::new(
@@ -88,7 +90,7 @@ pub fn grid_update(ui: &mut Ui, obj: Obj) {
 
 /// LVGL's grid registers a NULL minimum-size callback. Returning `false`
 /// delegates content/minimum sizing to the ordinary child-bounds calculation.
-pub fn grid_get_min_size(_ui: &mut Ui, _obj: Obj, _req_size: &mut i32, _width: bool) -> bool {
+pub(crate) fn grid_get_min_size(_ui: &mut Ui, _obj: Obj, _req_size: &mut i32, _width: bool) -> bool {
     false
 }
 

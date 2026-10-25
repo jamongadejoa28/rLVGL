@@ -131,6 +131,15 @@ pub struct WebDisplay {
     listeners: Vec<Listener>,
 }
 
+impl core::fmt::Debug for WebDisplay {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("WebDisplay")
+            .field("running", &self.running.get())
+            .field("pixel_scale", &self.pixel_scale.get())
+            .finish_non_exhaustive()
+    }
+}
+
 #[wasm_bindgen]
 impl WebDisplay {
     /// Binds to the canvas with id `canvas_id` and creates a `width` x
@@ -214,11 +223,13 @@ impl WebDisplay {
     }
 
     /// Display width in pixels.
+    #[must_use]
     pub fn width(&self) -> u32 {
         self.state.borrow().config.width
     }
 
     /// Display height in pixels.
+    #[must_use]
     pub fn height(&self) -> u32 {
         self.state.borrow().config.height
     }
@@ -274,6 +285,7 @@ impl WebDisplay {
     }
 
     /// The scene last passed to [`Self::show`].
+    #[must_use]
     pub fn scene(&self) -> String {
         self.state.borrow().scene.clone()
     }
@@ -285,6 +297,7 @@ impl WebDisplay {
     }
 
     /// Number of areas flushed to the canvas so far in this scene.
+    #[must_use]
     pub fn flushed_areas(&self) -> f64 {
         self.state
             .borrow()
@@ -294,11 +307,13 @@ impl WebDisplay {
     }
 
     /// The error that stopped the loop, if any.
+    #[must_use]
     pub fn last_error(&self) -> Option<String> {
         self.state.borrow().error.clone()
     }
 
     /// Whether the animation-frame loop is running.
+    #[must_use]
     pub fn is_running(&self) -> bool {
         self.running.get()
     }
@@ -586,6 +601,7 @@ fn apply_css_size(canvas: &HtmlCanvasElement, width: u32, height: u32, pixel_sca
 /// Names of every scene [`WebDisplay::show`] accepts: `"gallery"` first,
 /// then each ported `lv_example_*` in upstream order.
 #[wasm_bindgen]
+#[must_use]
 pub fn scene_names() -> js_sys::Array {
     gallery::scene_names()
         .into_iter()
@@ -595,6 +611,7 @@ pub fn scene_names() -> js_sys::Array {
 
 /// Number of ported `lv_example_*` functions (`ferrovgl_examples::EXAMPLES`).
 #[wasm_bindgen]
+#[must_use]
 pub fn example_count() -> u32 {
     ferrovgl_examples::EXAMPLES.len() as u32
 }

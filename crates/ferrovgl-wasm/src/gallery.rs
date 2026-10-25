@@ -38,6 +38,7 @@ pub const WIDGETS: [&str; 13] = [
 
 /// Every scene the demo can show: [`GALLERY`] first, then each entry of
 /// [`ferrovgl_examples::EXAMPLES`].
+#[must_use]
 pub fn scene_names() -> Vec<&'static str> {
     std::iter::once(GALLERY)
         .chain(ferrovgl_examples::EXAMPLES.iter().map(|e| e.name))
@@ -46,6 +47,7 @@ pub fn scene_names() -> Vec<&'static str> {
 
 /// Looks up a scene by name: [`GALLERY`] or anything
 /// [`ferrovgl_examples::find`] accepts.
+#[must_use]
 pub fn find_scene(name: &str) -> Option<fn(&mut Ui)> {
     if name == GALLERY || name.is_empty() {
         return Some(widget_gallery);

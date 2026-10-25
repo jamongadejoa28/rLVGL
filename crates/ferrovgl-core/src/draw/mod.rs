@@ -93,6 +93,7 @@ const DRAW_UNIT_NONE_ID: u8 = DRAW_UNIT_NONE as u8;
 /// `lv_draw_task_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum DrawTaskType {
     /// `LV_DRAW_TASK_TYPE_NONE`
     #[default]
@@ -133,6 +134,7 @@ pub enum DrawTaskType {
 /// `lv_draw_task_state_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum DrawTaskState {
     /// `LV_DRAW_TASK_STATE_BLOCKED`
     #[default]
@@ -150,11 +152,11 @@ pub enum DrawTaskState {
 }
 
 /// Handle of a layer (`lv_layer_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LayerId(pub Key);
 
 /// Reference to a task inside a layer's queue (`lv_draw_task_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DrawTaskRef {
     /// The layer owning the task.
     pub layer: LayerId,
@@ -195,6 +197,7 @@ pub struct DrawDscBase {
 
 impl DrawDscBase {
     /// Zero-initialised base (`lv_memzero`).
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             obj: None,
@@ -220,6 +223,7 @@ impl Default for DrawDscBase {
 
 /// `void * draw_dsc`: the typed descriptor of a task.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum DrawDsc {
     /// No descriptor.
     None,
@@ -253,6 +257,7 @@ pub enum DrawDsc {
 
 impl DrawDsc {
     /// The common base of the descriptor, if any.
+    #[must_use]
     pub fn base(&self) -> Option<&DrawDscBase> {
         match self {
             DrawDsc::None => None,
@@ -272,6 +277,7 @@ impl DrawDsc {
     }
 
     /// Mutable access to the common base.
+    #[must_use]
     pub fn base_mut(&mut self) -> Option<&mut DrawDscBase> {
         match self {
             DrawDsc::None => None,
@@ -333,6 +339,8 @@ pub struct DrawTask {
 /// `lv_layer_t`
 ///
 /// `user_data` is omitted (only the NanoVG backend uses it).
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct Layer {
     /// `draw_buf`: target buffer (`None` until allocated).
     pub draw_buf: Option<DrawBuf>,
@@ -371,6 +379,7 @@ impl Layer {
     /// `lv_layer_init()`: a zeroed layer (`lv_memzero`, so `next = None` and
     /// `color_format = UNKNOWN`) followed by [`Layer::reset`]
     /// (`opa = COVER`, transparent `recolor`, `all_tasks_added = false`).
+    #[must_use]
     pub fn new() -> Self {
         let mut layer = Self {
             draw_buf: None,
@@ -413,6 +422,7 @@ impl Default for Layer {
 /// positive when a task was taken.
 pub trait DrawUnit {
     /// `name`
+    #[must_use]
     fn name(&self) -> &'static str;
     /// `evaluate_cb`: decide whether this unit can render `task` and set
     /// `preferred_draw_unit_id` / `preference_score`.
@@ -431,6 +441,14 @@ pub trait DrawUnit {
     /// display for refresh events, ...).
     fn on_event(&mut self, code: EventCode, param: &mut EventParam<'_>) {
         let _ = (code, param);
+    }
+}
+
+impl core::fmt::Debug for dyn DrawUnit {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DrawUnit")
+            .field("name", &self.name())
+            .finish_non_exhaustive()
     }
 }
 
@@ -458,6 +476,7 @@ fn reborrow<'a>(units: &'a mut Option<&mut DrawUnits>) -> Option<&'a mut DrawUni
 
 /// `lv_draw_global_info_t`: the draw subsystem state owned by [`Ui`]
 /// (except `unit_head`, which is `Ui::draw_units`).
+#[derive(Debug)]
 pub struct DrawCtx {
     /// All live layers.
     pub layers: Arena<Layer>,
@@ -484,6 +503,7 @@ pub struct DrawCtx {
 impl DrawCtx {
     /// `lv_draw_init()`: layers only; units are registered with
     /// `Ui::draw_create_unit`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             layers: Arena::new(),
@@ -504,6 +524,7 @@ impl DrawCtx {
     /// descriptor ([`DrawDsc::None`], the zeroed `draw_dsc` slot upstream);
     /// the caller stores its descriptor into [`DrawTask::dsc`] before
     /// finalizing. Panics on a stale `layer` (upstream: `LV_CHECK_ARG`).
+    #[must_use]
     pub fn add_task(&mut self, layer: LayerId, coords: &Area, ty: DrawTaskType) -> DrawTaskRef {
         let lyr = &mut self.layers[layer.0];
         let new_task = DrawTask {
@@ -721,6 +742,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_get_available_task()`
+    #[must_use]
     pub fn get_available_task(
         &self,
         layer: LayerId,
@@ -738,6 +760,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_get_next_available_task()`
+    #[must_use]
     pub fn get_next_available_task(
         &self,
         layer: LayerId,
@@ -775,6 +798,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_get_dependent_count()`
+    #[must_use]
     pub fn get_dependent_count(&self, t_check: DrawTaskRef) -> u32 {
         let Some(lyr) = self.layers.get(t_check.layer.0) else {
             return 0;
@@ -839,6 +863,7 @@ impl DrawCtx {
     /// `lv_draw_layer_create()` without draw units (no
     /// `LV_EVENT_CHILD_CREATED`; see the module docs and
     /// [`Ui::draw_layer_create`]).
+    #[must_use]
     pub fn layer_create(
         &mut self,
         parent: Option<LayerId>,
@@ -998,6 +1023,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_layer_alloc_buf()`: returns `false` if allocation failed.
+    #[must_use]
     pub fn layer_alloc_buf(&mut self, layer: LayerId) -> bool {
         let Some(l) = self.layers.get(layer.0) else {
             return false;
@@ -1038,6 +1064,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_layer_go_to_xy()`: byte offset of `(x, y)` in the layer buffer.
+    #[must_use]
     pub fn layer_go_to_xy(&self, layer: LayerId, x: i32, y: i32) -> Option<usize> {
         self.layers
             .get(layer.0)?
@@ -1047,7 +1074,8 @@ impl DrawCtx {
     }
 
     /// `lv_draw_layer_create_drop_shadow()` without draw units (no
-    /// `LV_EVENT_CHILD_CREATED`; see [`Ui::layer_create_drop_shadow`]).
+    /// `LV_EVENT_CHILD_CREATED`; see [`Ui::draw_layer_create_drop_shadow`]).
+    #[must_use]
     pub fn layer_create_drop_shadow(
         &mut self,
         parent: LayerId,
@@ -1184,45 +1212,53 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_type()`
+    #[must_use]
     pub fn task_get_type(&self, t: DrawTaskRef) -> DrawTaskType {
         self.task(t).map_or(DrawTaskType::None, |task| task.ty)
     }
 
     /// `lv_draw_task_get_draw_dsc()`
+    #[must_use]
     pub fn task_get_draw_dsc(&self, t: DrawTaskRef) -> Option<&DrawDsc> {
         self.task(t).map(|task| &task.dsc)
     }
 
     /// Mutable `lv_draw_task_get_draw_dsc()`.
+    #[must_use]
     pub fn task_get_draw_dsc_mut(&mut self, t: DrawTaskRef) -> Option<&mut DrawDsc> {
         self.task_mut(t).map(|task| &mut task.dsc)
     }
 
     /// `lv_draw_task_get_area()`
+    #[must_use]
     pub fn task_get_area(&self, t: DrawTaskRef) -> Area {
         self.task(t).map_or_else(Area::default, |task| task.area)
     }
 
     /// Borrow a task.
     #[inline]
+    #[must_use]
     pub fn task(&self, t: DrawTaskRef) -> Option<&DrawTask> {
         self.layers.get(t.layer.0)?.tasks.get(t.index)
     }
 
     /// Mutably borrow a task.
     #[inline]
+    #[must_use]
     pub fn task_mut(&mut self, t: DrawTaskRef) -> Option<&mut DrawTask> {
         self.layers.get_mut(t.layer.0)?.tasks.get_mut(t.index)
     }
 
     /// Borrow a layer.
     #[inline]
+    #[must_use]
     pub fn layer(&self, l: LayerId) -> Option<&Layer> {
         self.layers.get(l.0)
     }
 
     /// Mutably borrow a layer.
     #[inline]
+    #[must_use]
     pub fn layer_mut(&mut self, l: LayerId) -> Option<&mut Layer> {
         self.layers.get_mut(l.0)
     }
@@ -1347,6 +1383,7 @@ impl Ui {
     /// `lv_draw_layer_create()`: a root layer (no parent) is bound to the
     /// refreshing display (`Ui::disp_refresh`) and the draw units get
     /// `LV_EVENT_CHILD_CREATED`.
+    #[must_use]
     pub fn draw_layer_create(
         &mut self,
         parent: Option<LayerId>,
@@ -1399,7 +1436,8 @@ impl Ui {
 
 impl Ui {
     /// `lv_draw_layer_create_drop_shadow()` with child-layer draw-unit notifications.
-    pub fn layer_create_drop_shadow(
+    #[must_use]
+    pub fn draw_layer_create_drop_shadow(
         &mut self,
         parent: LayerId,
         base: &DrawDscBase,
@@ -1411,7 +1449,7 @@ impl Ui {
 
     /// `lv_draw_layer_finish_drop_shadow()` with draw-unit evaluation and dispatch.
     /// Call this after drawing the shadow silhouette into the child A8 layer.
-    pub fn layer_finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
+    pub fn draw_layer_finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
         let Some(data) = self.draw.layer(layer) else {
             return;
         };
@@ -2114,8 +2152,8 @@ mod tests {
     #[test]
     fn layer_deinit_cleans_tasks_and_dealloc_accounting_is_safe() {
         let (mut ctx, layer) = ctx_with_layer(Area::new(0, 0, 99, 99));
-        ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
-        ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
+        let _ = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
+        let _ = ctx.add_task(layer, &Area::new(0, 0, 9, 9), DrawTaskType::Fill);
         ctx.layer_deinit(layer);
         assert!(ctx.layer(layer).unwrap().tasks.is_empty());
         /*No buffer: dealloc is a no-op and the counter stays*/

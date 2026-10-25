@@ -65,6 +65,7 @@ impl Ui {
     /// their own `event_cb`, exactly like `lv_obj_event_base(MY_CLASS, e)`.
     /// (The C `class_p == NULL` form, used only by the dispatcher, is the
     /// crate-private `obj_event_base_core(None, e)`.)
+    #[must_use = "stop handling the event when the base class returns `LvResult::Invalid` (the object was deleted)"]
     pub fn obj_event_base(&mut self, class: &'static ObjClass, e: &mut Event<'_>) -> LvResult {
         self.obj_event_base_core(Some(class), e)
     }
@@ -144,6 +145,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_event_count()`
+    #[must_use]
     pub fn obj_get_event_count(&self, obj: Obj) -> u32 {
         let Some(spec) = self.obj(obj).and_then(|o| o.spec.as_deref()) else {
             return 0;
@@ -152,6 +154,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_event_dsc()`
+    #[must_use]
     pub fn obj_get_event_dsc(&self, obj: Obj, index: u32) -> Option<&EventDsc> {
         let spec = self.obj(obj).and_then(|o| o.spec.as_deref())?;
         self.event_get_dsc(&spec.event_list, index as usize)

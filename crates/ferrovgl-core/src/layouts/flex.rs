@@ -39,6 +39,7 @@ pub enum FlexAlign {
 
 impl FlexAlign {
     /// Convert a raw style number (`Start` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> FlexAlign {
         match v {
             1 => FlexAlign::End,
@@ -76,6 +77,7 @@ pub enum FlexFlow {
 
 impl FlexFlow {
     /// Convert a raw style number (`Row` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> FlexFlow {
         match v {
             0x01 => FlexFlow::Column,
@@ -91,23 +93,26 @@ impl FlexFlow {
 
     /// `flow & LV_FLEX_COLUMN`
     #[inline]
+    #[must_use]
     pub const fn is_column(self) -> bool {
         (self as u8) & FLEX_COLUMN != 0
     }
     /// `flow & LV_FLEX_WRAP`
     #[inline]
+    #[must_use]
     pub const fn is_wrap(self) -> bool {
         (self as u8) & FLEX_WRAP != 0
     }
     /// `flow & LV_FLEX_REVERSE`
     #[inline]
+    #[must_use]
     pub const fn is_reverse(self) -> bool {
         (self as u8) & FLEX_REVERSE != 0
     }
 }
 
 /// `flex_update()`: the layout callback registered as `LV_LAYOUT_FLEX`.
-pub fn flex_update(ui: &mut Ui, obj: Obj) {
+pub(crate) fn flex_update(ui: &mut Ui, obj: Obj) {
     if !ui.obj_is_valid(obj) {
         return;
     }
@@ -230,7 +235,7 @@ pub fn flex_update(ui: &mut Ui, obj: Obj) {
 
 /// `calc_min_size()`: handle the main axis, leaving the cross axis to the
 /// ordinary content-size calculation. Growing children contribute their minima.
-pub fn flex_get_min_size(ui: &mut Ui, obj: Obj, req_size: &mut i32, width: bool) -> bool {
+pub(crate) fn flex_get_min_size(ui: &mut Ui, obj: Obj, req_size: &mut i32, width: bool) -> bool {
     if ui.obj(obj).and_then(|data| data.spec.as_ref()).is_none() {
         return false;
     }

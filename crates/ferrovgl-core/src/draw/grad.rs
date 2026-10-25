@@ -13,6 +13,7 @@ pub const GRADIENT_MAX_STOPS: usize = 2;
 /// `lv_grad_dir_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum GradDir {
     /// `LV_GRAD_DIR_NONE`: no gradient (the `grad_color` property is ignored).
     #[default]
@@ -31,6 +32,7 @@ pub enum GradDir {
 
 impl GradDir {
     /// Convert a raw style number back to a direction (`None` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> GradDir {
         match v {
             1 => GradDir::Ver,
@@ -95,6 +97,7 @@ pub const GRAD_PARAMS_WORDS: usize = 8;
 /// [`GradParams::Raw`]. Equality and hashing compare the union words, so a
 /// typed variant equals the `Raw` value holding the same memory.
 #[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
 pub enum GradParams {
     /// No parameters (simple `Ver` / `Hor`): the zeroed union (`lv_memzero`).
     None,
@@ -147,6 +150,7 @@ const fn unpack_angles(word: i32) -> (i16, i16) {
 impl GradParams {
     /// The union memory as 32-bit words (`lv_grad_dsc_t::params`); words a
     /// typed variant does not name are zero.
+    #[must_use]
     pub const fn words(&self) -> [i32; GRAD_PARAMS_WORDS] {
         match *self {
             GradParams::None => [0; GRAD_PARAMS_WORDS],
@@ -185,6 +189,7 @@ impl GradParams {
     }
 
     /// `params.linear` read through the union: `(start, end)`.
+    #[must_use]
     pub const fn linear(&self) -> (Point, Point) {
         let w = self.words();
         (Point::new(w[0], w[1]), Point::new(w[2], w[3]))
@@ -192,6 +197,7 @@ impl GradParams {
 
     /// `params.radial` read through the union:
     /// `(focal, focal_extent, end, end_extent)`.
+    #[must_use]
     pub const fn radial(&self) -> (Point, Point, Point, Point) {
         let w = self.words();
         (
@@ -204,6 +210,7 @@ impl GradParams {
 
     /// `params.conical` read through the union:
     /// `(center, start_angle, end_angle)`.
+    #[must_use]
     pub const fn conical(&self) -> (Point, i16, i16) {
         let w = self.words();
         let (start_angle, end_angle) = unpack_angles(w[2]);
@@ -251,6 +258,7 @@ pub struct GradDsc {
 
 impl GradDsc {
     /// A zeroed descriptor (`lv_memzero`).
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             stops: [GradStop {

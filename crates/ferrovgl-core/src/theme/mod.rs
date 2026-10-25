@@ -15,14 +15,14 @@ use crate::misc::color::Color;
 use crate::misc::palette::{self, Palette};
 
 /// Handle of a theme (`lv_theme_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ThemeId(pub Key);
 
 /// `lv_theme_apply_cb_t`
 pub type ThemeApplyCallback = fn(&mut Ui, ThemeId, Obj);
 
 /// `lv_theme_t`
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Theme {
     /// `apply_cb`
     pub apply: Option<ThemeApplyCallback>,
@@ -52,6 +52,7 @@ pub struct Theme {
 
 impl Theme {
     /// `lv_theme_create()` defaults (all zero / `None`).
+    #[must_use]
     pub fn new() -> Self {
         Self {
             apply: None,
@@ -77,6 +78,7 @@ impl Default for Theme {
 
 impl Ui {
     /// `lv_theme_create()`
+    #[must_use]
     pub fn theme_create(&mut self) -> ThemeId {
         ThemeId(self.themes.insert(Theme::new()))
     }
@@ -96,6 +98,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_from_obj()`
+    #[must_use]
     pub fn theme_get_from_obj(&self, obj: Option<Obj>) -> Option<ThemeId> {
         let disp = match obj {
             Some(obj) => self.obj_get_display(obj),
@@ -138,6 +141,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_font_small()`
+    #[must_use]
     pub fn theme_get_font_small(&self, obj: Option<Obj>) -> Option<FontRef> {
         match self.theme_get_from_obj(obj).and_then(|id| self.theme(id)) {
             Some(theme) => theme.font_small.clone(),
@@ -146,6 +150,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_font_normal()`
+    #[must_use]
     pub fn theme_get_font_normal(&self, obj: Option<Obj>) -> Option<FontRef> {
         match self.theme_get_from_obj(obj).and_then(|id| self.theme(id)) {
             Some(theme) => theme.font_normal.clone(),
@@ -154,6 +159,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_font_large()`
+    #[must_use]
     pub fn theme_get_font_large(&self, obj: Option<Obj>) -> Option<FontRef> {
         match self.theme_get_from_obj(obj).and_then(|id| self.theme(id)) {
             Some(theme) => theme.font_large.clone(),
@@ -162,6 +168,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_color_primary()`
+    #[must_use]
     pub fn theme_get_color_primary(&self, obj: Option<Obj>) -> Color {
         self.theme_get_from_obj(obj)
             .and_then(|id| self.theme(id))
@@ -169,6 +176,7 @@ impl Ui {
     }
 
     /// `lv_theme_get_color_secondary()`
+    #[must_use]
     pub fn theme_get_color_secondary(&self, obj: Option<Obj>) -> Color {
         self.theme_get_from_obj(obj)
             .and_then(|id| self.theme(id))
@@ -177,6 +185,7 @@ impl Ui {
 
     /// `lv_theme_get_user_data()`: borrow the shared payload mutably.
     /// Returns `None` if a copy of the theme already holds a borrow.
+    #[must_use]
     pub fn theme_get_user_data(&self, theme: ThemeId) -> Option<RefMut<'_, dyn Any>> {
         let data = self.theme(theme)?.user_data.as_ref()?;
         Some(RefMut::map(data.try_borrow_mut().ok()?, |data| data.as_mut()))
@@ -221,12 +230,14 @@ impl Ui {
 
     /// Borrow a theme.
     #[inline]
+    #[must_use]
     pub fn theme(&self, theme: ThemeId) -> Option<&Theme> {
         self.themes.get(theme.0)
     }
 
     /// Mutably borrow a theme.
     #[inline]
+    #[must_use]
     pub fn theme_mut(&mut self, theme: ThemeId) -> Option<&mut Theme> {
         self.themes.get_mut(theme.0)
     }

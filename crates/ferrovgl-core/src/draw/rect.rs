@@ -101,6 +101,7 @@ impl RectDsc {
     /// font lives in `UiConfig::font_default`, which a bare descriptor
     /// cannot see, so it starts as `None` (`lv_obj_init_draw_rect_dsc()`
     /// sets it from the style).
+    #[must_use]
     pub fn new() -> Self {
         let mut bg_grad = GradDsc::new();
         bg_grad.stops[0].color = Color::white();
@@ -162,6 +163,7 @@ pub struct FillDsc {
 
 impl FillDsc {
     /// `lv_draw_fill_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -198,6 +200,7 @@ pub struct BorderDsc {
 
 impl BorderDsc {
     /// `lv_draw_border_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -242,6 +245,7 @@ pub struct BoxShadowDsc {
 
 impl BoxShadowDsc {
     /// `lv_draw_box_shadow_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -325,11 +329,11 @@ impl TaskSink for Ui {
     }
 
     fn finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
-        self.layer_finish_drop_shadow(layer, base);
+        self.draw_layer_finish_drop_shadow(layer, base);
     }
 
     fn create_drop_shadow(&mut self, parent: LayerId, base: &DrawDscBase, area: &Area) -> Option<LayerId> {
-        self.layer_create_drop_shadow(parent, base, area)
+        self.draw_layer_create_drop_shadow(parent, base, area)
     }
 
     fn send_mask_task_added(&mut self, t: DrawTaskRef) {
@@ -685,6 +689,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_fill_dsc()`
+    #[must_use]
     pub fn task_get_fill_dsc(&mut self, task: DrawTaskRef) -> Option<&mut FillDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Fill {
@@ -697,6 +702,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_border_dsc()`
+    #[must_use]
     pub fn task_get_border_dsc(&mut self, task: DrawTaskRef) -> Option<&mut BorderDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Border {
@@ -709,6 +715,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_box_shadow_dsc()`
+    #[must_use]
     pub fn task_get_box_shadow_dsc(&mut self, task: DrawTaskRef) -> Option<&mut BoxShadowDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::BoxShadow {

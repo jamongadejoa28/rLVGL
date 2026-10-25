@@ -42,6 +42,7 @@ const ANIM_ON: AnimEnable = true;
 /// `lv_slider_mode_t`, with the upstream discriminants (equal to [`BarMode`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum SliderMode {
     /// `LV_SLIDER_MODE_NORMAL` = `LV_BAR_MODE_NORMAL`
     #[default]
@@ -145,7 +146,7 @@ pub static SLIDER_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable slider handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Slider(Obj);
 
 impl Slider {
@@ -159,16 +160,19 @@ impl Slider {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the slider class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &SLIDER_CLASS)).then_some(Self(obj))
     }
 
     /// `lv_slider_is_dragged()`: whether a drag is in progress.
+    #[must_use]
     pub fn is_dragged(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|slider| slider.dragging)
     }
@@ -223,31 +227,37 @@ impl Slider {
     }
 
     /// `lv_slider_get_value()`: the main knob's value.
+    #[must_use]
     pub fn value(self, ui: &Ui) -> i32 {
         as_bar(ui, self.0).map_or(0, |bar| bar.value(ui))
     }
 
     /// `lv_slider_get_left_value()`: the left knob's value.
+    #[must_use]
     pub fn left_value(self, ui: &Ui) -> i32 {
         as_bar(ui, self.0).map_or(0, |bar| bar.start_value(ui))
     }
 
     /// `lv_slider_get_min_value()`
+    #[must_use]
     pub fn min_value(self, ui: &Ui) -> i32 {
         as_bar(ui, self.0).map_or(0, |bar| bar.min_value(ui))
     }
 
     /// `lv_slider_get_max_value()`
+    #[must_use]
     pub fn max_value(self, ui: &Ui) -> i32 {
         as_bar(ui, self.0).map_or(0, |bar| bar.max_value(ui))
     }
 
     /// `lv_slider_get_mode()`
+    #[must_use]
     pub fn mode(self, ui: &Ui) -> SliderMode {
         slider_get_mode(ui, self.0)
     }
 
     /// `lv_slider_get_orientation()`
+    #[must_use]
     pub fn orientation(self, ui: &Ui) -> SliderOrientation {
         let Some(bar) = as_bar(ui, self.0) else {
             return SliderOrientation::Auto; /*LV_CHECK_OBJ*/
@@ -261,30 +271,35 @@ impl Slider {
     }
 
     /// `lv_slider_is_symmetrical()`: whether the slider is in symmetrical mode.
+    #[must_use]
     pub fn is_symmetrical(self, ui: &Ui) -> bool {
         as_bar(ui, self.0).is_some_and(|bar| bar.is_symmetrical(ui))
     }
 
     /// `lv_slider_t::left_knob_area`: the left knob's area computed by the
     /// last `draw_knob()` of `lv_slider.c` (upstream tests read the field).
+    #[must_use]
     pub fn left_knob_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |slider| slider.left_knob_area)
     }
 
     /// `lv_slider_t::right_knob_area`: the main knob's area computed by the
     /// last `draw_knob()` of `lv_slider.c` (upstream tests read the field).
+    #[must_use]
     pub fn right_knob_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |slider| slider.right_knob_area)
     }
 
     /// `lv_slider_t::value_to_set`: the value a drag adjusts (`NULL` = `None`;
     /// upstream tests read the field).
+    #[must_use]
     pub fn value_to_set(self, ui: &Ui) -> Option<SliderValueTarget> {
         state(ui, self.0).and_then(|slider| slider.value_to_set)
     }
 
     /// `lv_slider_t::left_knob_focus`: whether an encoder or keypad adjusts
     /// the left knob (upstream tests read the field).
+    #[must_use]
     pub fn left_knob_focus(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|slider| slider.left_knob_focus)
     }

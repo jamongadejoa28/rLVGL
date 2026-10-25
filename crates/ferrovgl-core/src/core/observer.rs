@@ -52,7 +52,7 @@ use crate::misc::event::{Event, EventCallback, EventCode, event_free_user_data_c
 use crate::misc::style::{State, StyleProp, StyleSelector, StyleValue};
 
 /// Handle of a subject (`lv_subject_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SubjectId(pub Key);
 
 impl SubjectId {
@@ -60,13 +60,14 @@ impl SubjectId {
     /// [`Ui::subject_as_user_data`]): `(lv_subject_t *)lv_event_get_user_data(e)`
     /// of the event callbacks that are registered with the subject as user
     /// data. `None` if `data` is not a subject pointer.
+    #[must_use]
     pub fn from_user_data(data: &Rc<dyn Any>) -> Option<SubjectId> {
         (**data).downcast_ref::<SubjectPtr>().map(|p| p.0)
     }
 }
 
 /// Handle of an observer (`lv_observer_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ObserverId(pub Key);
 
 /// The payload of a subject's canonical pointer `Rc`.
@@ -82,6 +83,7 @@ const SUBJECT_SIZE_MASK: u32 = 0x00FF_FFFF;
 /// upstream discriminants.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum SubjectType {
     /// `LV_SUBJECT_TYPE_INVALID`: the subject is not initialized yet.
     #[default]
@@ -105,6 +107,7 @@ pub enum SubjectType {
 /// `lv_subject_value_t`: the C union as an enum; the subject's [`SubjectType`]
 /// tells which member is meaningful, like in C.
 #[derive(Clone, Default)]
+#[non_exhaustive]
 pub enum SubjectValue {
     /// `num`: integer number (opacity, enums, booleans or "normal" numbers).
     /// Also the zeroed state of a fresh subject.
@@ -143,6 +146,7 @@ impl core::fmt::Debug for SubjectValue {
 
 impl SubjectValue {
     /// `value.num` (0 for the zeroed union or another member).
+    #[must_use]
     pub fn num(&self) -> i32 {
         match self {
             SubjectValue::Num(n) => *n,
@@ -152,6 +156,7 @@ impl SubjectValue {
 
     /// `value.float_v` (0 for the zeroed union or another member).
     #[cfg(feature = "float")]
+    #[must_use]
     pub fn float_v(&self) -> f32 {
         match self {
             SubjectValue::Float(v) => *v,
@@ -164,6 +169,7 @@ impl SubjectValue {
     /// crates that do not see the `float` feature. 0 for the zeroed union,
     /// another member or without `LV_USE_FLOAT` (no float subject can exist
     /// then).
+    #[must_use]
     pub fn float_v_as_i32(&self) -> i32 {
         match self {
             #[cfg(feature = "float")]
@@ -177,6 +183,7 @@ impl SubjectValue {
     /// `label_text_observer_cb()`, usable from crates that do not see the
     /// `float` feature. 0 for the zeroed union, another member or without
     /// `LV_USE_FLOAT`.
+    #[must_use]
     pub fn float_v_as_f64(&self) -> f64 {
         match self {
             #[cfg(feature = "float")]
@@ -186,6 +193,7 @@ impl SubjectValue {
     }
 
     /// `value.color` (black for the zeroed union or another member).
+    #[must_use]
     pub fn color(&self) -> Color {
         match self {
             SubjectValue::Color(c) => *c,
@@ -194,6 +202,7 @@ impl SubjectValue {
     }
 
     /// `value.pointer` of a pointer subject (`NULL` otherwise).
+    #[must_use]
     pub fn pointer(&self) -> Option<Rc<dyn Any>> {
         match self {
             SubjectValue::Pointer(p) => p.clone(),
@@ -202,6 +211,7 @@ impl SubjectValue {
     }
 
     /// `value.pointer` of a string subject (`NULL` otherwise).
+    #[must_use]
     pub fn str(&self) -> Option<&str> {
         match self {
             SubjectValue::Str(s) => s.as_deref(),
@@ -210,6 +220,7 @@ impl SubjectValue {
     }
 
     /// `value.pointer` of a group subject (`NULL` otherwise).
+    #[must_use]
     pub fn group(&self) -> Option<Rc<[SubjectId]>> {
         match self {
             SubjectValue::Group(g) => g.clone(),
@@ -223,7 +234,7 @@ pub type SubjectExtDataFreeCb = fn(Option<Rc<dyn Any>>);
 
 /// `lv_ext_data_t` of a subject (`LV_USE_EXT_DATA`), set by
 /// `lv_subject_set_external_data()`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SubjectExtData {
     /// `data`
     pub data: Option<Rc<dyn Any>>,
@@ -232,7 +243,7 @@ pub struct SubjectExtData {
 }
 
 /// `lv_subject_t`: an observable value.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Subject {
     /// `ext_data` (`LV_USE_EXT_DATA`).
     pub ext_data: SubjectExtData,
@@ -280,6 +291,7 @@ pub type ObjSetPointerCb = Rc<dyn Fn(&mut Ui, Obj, Option<Rc<dyn Any>>)>;
 /// `void (*user_cb)(void)` of an observer: the setter stored by the
 /// `lv_obj_bind_<type>()` functions.
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum ObserverUserCb {
     /// `lv_obj_bind_bool()`
     Bool(ObjSetBoolCb),
@@ -296,9 +308,24 @@ pub enum ObserverUserCb {
     Pointer(ObjSetPointerCb),
 }
 
+impl core::fmt::Debug for ObserverUserCb {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let kind = match self {
+            Self::Bool(_) => "Bool",
+            Self::Int(_) => "Int",
+            #[cfg(feature = "float")]
+            Self::Float(_) => "Float",
+            Self::String(_) => "String",
+            Self::Color(_) => "Color",
+            Self::Pointer(_) => "Pointer",
+        };
+        f.debug_tuple(kind).field(&crate::misc::OpaqueCallback).finish()
+    }
+}
+
 /// `void * target` of an observer; `for_obj` is the [`ObserverTarget::Obj`]
 /// variant.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub enum ObserverTarget {
     /// `NULL`
     #[default]
@@ -331,6 +358,22 @@ pub struct Observer {
     pub for_obj: bool,
     /// The canonical `lv_observer_t *`.
     ptr: Option<Rc<dyn Any>>,
+}
+
+impl core::fmt::Debug for Observer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Observer")
+            .field("subject", &self.subject)
+            .field("cb", &self.cb.as_ref().map(|_| crate::misc::OpaqueCallback))
+            .field("target", &self.target)
+            .field("user_data", &self.user_data)
+            .field("user_cb", &self.user_cb)
+            .field("auto_free_user_data", &self.auto_free_user_data)
+            .field("notified", &self.notified)
+            .field("for_obj", &self.for_obj)
+            .field("ptr", &self.ptr)
+            .finish()
+    }
 }
 
 /// `lv_subject_increment_dsc_t`: created by
@@ -368,9 +411,31 @@ pub struct ObserverState {
     group_notify_cb: Option<ObserverCb>,
 }
 
+impl core::fmt::Debug for ObserverState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ObserverState")
+            .field("subjects", &self.subjects)
+            .field("subject_order", &self.subject_order)
+            .field("observers", &self.observers)
+            .field(
+                "unsubscribe_on_delete_cb",
+                &self
+                    .unsubscribe_on_delete_cb
+                    .as_ref()
+                    .map(|_| crate::misc::OpaqueCallback),
+            )
+            .field(
+                "group_notify_cb",
+                &self.group_notify_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .finish()
+    }
+}
+
 impl ObserverState {
     /// `lv_subject_global_init()`: `lv_ll_init(&subject_list, ...)`, an empty
     /// list.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             subjects: Arena::new(),
@@ -548,6 +613,7 @@ impl Ui {
     /// of the event callbacks registered with the subject as user data, so
     /// `lv_obj_remove_event_cb_with_user_data(obj, NULL, subject)` finds
     /// them. `None` for a stale handle.
+    #[must_use]
     pub fn subject_as_user_data(&self, subject: SubjectId) -> Option<Rc<dyn Any>> {
         self.observer.subjects.get(subject.0).and_then(|s| s.ptr.clone())
     }
@@ -582,6 +648,7 @@ impl Ui {
     /// `lv_subject_init_*()` functions and released with
     /// `lv_subject_deinit()`. Its slot lives as long as the [`Ui`], like a
     /// static.
+    #[must_use]
     pub fn subject_alloc_static(&mut self) -> SubjectId {
         let key = self.observer.subjects.insert(Subject::default());
         let id = SubjectId(key);
@@ -591,6 +658,7 @@ impl Ui {
 
     /// `lv_subject_create()`: create a subject of `type_`. `None` (`NULL`)
     /// for `Invalid`/`None`, or `Float` without `LV_USE_FLOAT`.
+    #[must_use]
     pub fn subject_create(&mut self, type_: SubjectType) -> Option<SubjectId> {
         if !(type_ != SubjectType::Invalid && type_ != SubjectType::None) {
             check_arg_failed("lv_subject_create: type != INVALID && type != NONE");
@@ -697,6 +765,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_int()`
+    #[must_use]
     pub fn subject_get_int(&self, subject: SubjectId) -> i32 {
         if !self.subject_check_type(subject, SubjectType::Int, "lv_subject_get_int") {
             return 0;
@@ -706,6 +775,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_previous_int()`
+    #[must_use]
     pub fn subject_get_previous_int(&self, subject: SubjectId) -> i32 {
         if !self.subject_check_type(subject, SubjectType::Int, "lv_subject_get_previous_int") {
             return 0;
@@ -775,6 +845,7 @@ impl Ui {
 
     /// `lv_subject_get_float()`
     #[cfg(feature = "float")]
+    #[must_use]
     pub fn subject_get_float(&self, subject: SubjectId) -> f32 {
         if !self.subject_check_type(subject, SubjectType::Float, "lv_subject_get_float") {
             return 0.0;
@@ -785,6 +856,7 @@ impl Ui {
 
     /// `lv_subject_get_previous_float()`
     #[cfg(feature = "float")]
+    #[must_use]
     pub fn subject_get_previous_float(&self, subject: SubjectId) -> f32 {
         if !self.subject_check_type(subject, SubjectType::Float, "lv_subject_get_previous_float") {
             return 0.0;
@@ -908,6 +980,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_string()`: `None` is `NULL`.
+    #[must_use]
     pub fn subject_get_string(&self, subject: SubjectId) -> Option<&str> {
         if !self.subject_check_type(subject, SubjectType::String, "lv_subject_get_string") {
             return None;
@@ -917,6 +990,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_previous_string()`: `None` is `NULL`.
+    #[must_use]
     pub fn subject_get_previous_string(&self, subject: SubjectId) -> Option<&str> {
         if !self.subject_check_type(subject, SubjectType::String, "lv_subject_get_previous_string") {
             return None;
@@ -952,6 +1026,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_pointer()`
+    #[must_use]
     pub fn subject_get_pointer(&self, subject: SubjectId) -> Option<Rc<dyn Any>> {
         if !self.subject_check_type(subject, SubjectType::Pointer, "lv_subject_get_pointer") {
             return None;
@@ -961,6 +1036,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_previous_pointer()`
+    #[must_use]
     pub fn subject_get_previous_pointer(&self, subject: SubjectId) -> Option<Rc<dyn Any>> {
         if !self.subject_check_type(subject, SubjectType::Pointer, "lv_subject_get_previous_pointer") {
             return None;
@@ -996,6 +1072,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_color()`
+    #[must_use]
     pub fn subject_get_color(&self, subject: SubjectId) -> Color {
         if !self.subject_check_type(subject, SubjectType::Color, "lv_subject_get_color") {
             return Color::black();
@@ -1005,6 +1082,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_previous_color()`
+    #[must_use]
     pub fn subject_get_previous_color(&self, subject: SubjectId) -> Color {
         if !self.subject_check_type(subject, SubjectType::Color, "lv_subject_get_previous_color") {
             return Color::black();
@@ -1053,6 +1131,7 @@ impl Ui {
     }
 
     /// `lv_subject_get_group_element()`: `None` if `index` is out of bounds.
+    #[must_use]
     pub fn subject_get_group_element(&self, subject: SubjectId, index: i32) -> Option<SubjectId> {
         if !self.subject_check_type(subject, SubjectType::Group, "lv_subject_get_group_element") {
             return None;
@@ -1257,6 +1336,7 @@ impl Ui {
     }
 
     /// `lv_observer_get_target()`
+    #[must_use]
     pub fn observer_get_target(&self, observer: ObserverId) -> ObserverTarget {
         let Some(o) = self.observer.observers.get(observer.0) else {
             check_arg_failed("lv_observer_get_target: observer != NULL");
@@ -1267,6 +1347,7 @@ impl Ui {
     }
 
     /// `lv_observer_get_target_obj()`
+    #[must_use]
     pub fn observer_get_target_obj(&self, observer: ObserverId) -> Option<Obj> {
         if !self.observer.observers.contains(observer.0) {
             check_arg_failed("lv_observer_get_target_obj: observer != NULL");
@@ -1280,6 +1361,7 @@ impl Ui {
     }
 
     /// `lv_observer_get_user_data()`
+    #[must_use]
     pub fn observer_get_user_data(&self, observer: ObserverId) -> Option<Rc<dyn Any>> {
         let Some(o) = self.observer.observers.get(observer.0) else {
             check_arg_failed("lv_observer_get_user_data: observer != NULL");

@@ -49,6 +49,7 @@ pub struct LineDsc {
 
 impl LineDsc {
     /// `lv_draw_line_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -80,6 +81,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_line_dsc()`
+    #[must_use]
     pub fn task_get_line_dsc(&mut self, task: DrawTaskRef) -> Option<&mut LineDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Line {

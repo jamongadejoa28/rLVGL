@@ -143,7 +143,7 @@ pub fn image(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &DrawI
 /// `img_draw_core()`: blit / transform `decoded` (the `decoder_dsc`) into
 /// the layer; the `lv_draw_image_core_cb` of this renderer.
 #[allow(clippy::too_many_arguments)] // mirrors the C signature
-pub fn img_draw_core(
+pub(crate) fn img_draw_core(
     unit: &mut SwDrawUnit,
     ctx: &mut DrawCtx,
     t: &DrawTask,
