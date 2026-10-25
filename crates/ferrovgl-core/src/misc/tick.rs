@@ -3,6 +3,8 @@
 //!
 //! Provide access to the system tick with 1 millisecond resolution.
 
+use core::cell::Cell;
+
 use crate::core::Ui;
 
 /// `lv_tick_get_cb_t`
@@ -15,8 +17,10 @@ pub type DelayCallback = fn(u32);
 pub struct TickState {
     /// `sys_time`
     pub sys_time: u32,
-    /// `sys_irq_flag`
-    pub irq_flag: bool,
+    /// `sys_irq_flag`: cleared by `lv_tick_inc()`, set by every
+    /// `lv_tick_get()` that has no `tick_get_cb` (a `Cell` because the read
+    /// path takes `&self`).
+    pub irq_flag: Cell<bool>,
     /// `tick_get_cb`
     pub tick_get_cb: Option<TickGetCallback>,
     /// `delay_cb`
@@ -31,7 +35,7 @@ impl Ui {
     pub fn tick_inc(&mut self, tick_period: u32) {
         let state_p = &mut self.tick;
 
-        state_p.irq_flag = false;
+        state_p.irq_flag.set(false);
         state_p.sys_time = state_p.sys_time.wrapping_add(tick_period);
     }
 
@@ -40,9 +44,8 @@ impl Ui {
     /// Upstream re-reads `sys_time` in a `do { irq_flag = 1; result = sys_time; }
     /// while(!irq_flag)` loop to survive `lv_tick_inc()` being called from an
     /// interrupt in the middle of the read. Through `&self` nothing can mutate
-    /// `sys_time` concurrently (and the flag cannot be written), so the loop
-    /// always terminates after its first iteration and reduces to a plain
-    /// read of `sys_time`.
+    /// `sys_time` concurrently, so the loop always terminates after its first
+    /// iteration: it sets `sys_irq_flag` and reads `sys_time` once.
     pub fn tick_get(&self) -> u32 {
         let state_p = &self.tick;
 
@@ -50,7 +53,17 @@ impl Ui {
             return cb();
         }
 
-        state_p.sys_time
+        // do { sys_irq_flag = 1; result = sys_time; } while(!sys_irq_flag);
+        let mut result;
+        loop {
+            state_p.irq_flag.set(true);
+            result = state_p.sys_time;
+            if state_p.irq_flag.get() {
+                break;
+            }
+        }
+
+        result
     }
 
     /// `lv_tick_elaps()`: ms elapsed since `prev_tick`.
@@ -227,8 +240,28 @@ mod tests {
     #[test]
     fn tick_inc_clears_irq_flag() {
         let mut ui = ui();
-        ui.tick.irq_flag = true;
+        ui.tick.irq_flag.set(true);
         ui.tick_inc(1);
-        assert!(!ui.tick.irq_flag);
+        assert!(!ui.tick.irq_flag.get());
+    }
+
+    #[test]
+    fn tick_get_sets_irq_flag_without_callback() {
+        static TICK: AtomicU32 = AtomicU32::new(7);
+        fn test_tick_cb() -> u32 {
+            TICK.load(Ordering::Relaxed)
+        }
+
+        let mut ui = ui();
+        ui.tick_inc(1);
+        assert!(!ui.tick.irq_flag.get());
+        assert_eq!(ui.tick_get(), 1);
+        assert!(ui.tick.irq_flag.get(), "lv_tick_get sets sys_irq_flag = 1");
+
+        // With tick_get_cb the flag is not touched
+        ui.tick_inc(1);
+        ui.set_tick_cb(Some(test_tick_cb));
+        assert_eq!(ui.tick_get(), 7);
+        assert!(!ui.tick.irq_flag.get());
     }
 }
