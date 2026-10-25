@@ -16,9 +16,14 @@
 //! `disp->buf_act`. Here a [`DrawBuf`] has one owner, so [`Ui::refr_area`]
 //! moves the active display buffer (`buf_1` / `buf_2` / `buf_3` selected
 //! by `buf_act`) into the display layer's `draw_buf` and `draw_buf_flush()`
-//! hands it to the driver and moves it back before swapping `buf_act`.
-//! While an area is being rendered the active `DisplayData::buf_n` slot is
-//! therefore `None`; [`disp_is_double_buffered`] accounts for that.
+//! moves it back into its slot *before* calling the driver (which gets
+//! `px_map` borrowed from that slot), so during the flush and the
+//! `FLUSH_START` / `FLUSH_FINISH` events `buf_act` is valid as upstream.
+//! While an area is being rendered (from `refr_area()` until the flush)
+//! the active `DisplayData::buf_n` slot is `None` and the buffer is
+//! `layer_head`'s `draw_buf`; [`disp_is_double_buffered`] accounts for
+//! that, and `lv_display_get_buf_active()` must fall back to
+//! `layer_head.draw_buf` while the slot is empty (display owner contract).
 //!
 //! Driver mapping: `flush_cb` is [`DisplayDriver::flush`]
 //! ([`FlushResult::Done`] means `lv_display_flush_ready()` was already
@@ -53,6 +58,10 @@ use crate::misc::types::coord;
 /// `LV_COLOR_FORMAT_DEFAULT` of the parity configuration
 /// (`LV_COLOR_DEPTH 32`): the format of opaque simple layers.
 const COLOR_FORMAT_DEFAULT: ColorFormat = ColorFormat::Xrgb8888;
+
+/// Name of the software draw unit (`ferrovgl_draw_sw::DRAW_UNIT_NAME`),
+/// the owner of `lv_draw_sw_mask_cleanup()`'s circle cache.
+const DRAW_SW_UNIT_NAME: &str = "SW";
 
 /// `LV_DRAW_TRANSFORM_USE_MATRIX` (off in every upstream test configuration).
 const DRAW_TRANSFORM_USE_MATRIX: bool = false;
@@ -105,9 +114,14 @@ fn disp_has_buf_3(d: &DisplayData) -> bool {
 
 /// `disp->sync_cb != NULL`.
 ///
-/// [`crate::display::DisplayDriver`] has no way to tell whether the driver
-/// implements `sync`, so a user sync callback is never assumed (see the
-/// `has_sync` change request).
+/// Known divergence (blocked outside this file): neither
+/// [`crate::display::DisplayDriver`] nor [`DisplayData`] can say whether a
+/// `sync_cb` is set, so a user sync callback is never assumed and the
+/// `user_sync` paths of [`Ui::display_refr_timer`] / `refr_sync_areas()`
+/// stay dormant. Change request for the display owner: add
+/// `fn has_sync(&self) -> bool { false }` to `DisplayDriver` (or a
+/// `sync_cb_set` flag on `DisplayData`), then this becomes
+/// `d.driver.as_ref().is_some_and(|dr| dr.has_sync())`.
 #[inline]
 fn disp_has_sync_cb(d: &DisplayData) -> bool {
     let _ = d;
@@ -712,13 +726,25 @@ impl Ui {
 
         /*refr_finish:*/
 
-        /* LV_DRAW_SW_COMPLEX: `lv_draw_sw_mask_cleanup()` lives in the
-         * renderer crate; the draw units are notified instead. */
-        self.draw_unit_send_event(None, EventCode::REFR_READY, EventParam::None);
+        self.refr_finish_draw_sw_mask_cleanup();
 
         if self.display(disp).is_some() {
             self.display_send_event(disp, EventCode::REFR_READY, EventParam::None);
         }
+    }
+
+    /// `#if LV_DRAW_SW_COMPLEX == 1 lv_draw_sw_mask_cleanup(); #endif` of
+    /// `refr_finish`.
+    ///
+    /// The circle cache (`_circle_cache`) lives in the software draw unit
+    /// of `ferrovgl-draw-sw`, which this crate cannot call, so the cleanup
+    /// is requested with `LV_EVENT_REFR_READY` sent only to the units named
+    /// [`DRAW_SW_UNIT_NAME`] (other units get no extra notification).
+    /// Cross-crate contract: the SW unit's `on_event` must handle
+    /// `REFR_READY` with `ferrovgl_draw_sw::mask::cleanup(&mut
+    /// self.circle_cache)`, which frees and zeroes every entry.
+    fn refr_finish_draw_sw_mask_cleanup(&mut self) {
+        self.draw_unit_send_event(Some(DRAW_SW_UNIT_NAME), EventCode::REFR_READY, EventParam::None);
     }
 
     /// `lv_refr_get_top_obj()`: the topmost object fully covering `area`,
@@ -1627,18 +1653,10 @@ impl Ui {
         let has_flush_cb = d.driver.is_some();
         let refreshed_area = d.refreshed_area;
 
-        /*Take the rendered buffer back from the display layer*/
-        let mut buf = self.draw.layers.get_mut(layer.0).and_then(|l| l.draw_buf.take());
-
-        if has_flush_cb {
-            let mut empty: [u8; 0] = [];
-            let px_map: &mut [u8] = match buf.as_mut().and_then(|b| b.data_mut()) {
-                Some(px) => px,
-                None => &mut empty,
-            };
-            self.call_flush_cb(disp, &refreshed_area, px_map);
-        }
-
+        /*Take the rendered buffer back from the display layer and return it to its `buf_act` slot
+         *before flushing, so `disp->buf_act` is valid while the flush callback and the
+         *FLUSH_START / FLUSH_FINISH handlers run (like upstream)*/
+        let buf = self.draw.layers.get_mut(layer.0).and_then(|l| l.draw_buf.take());
         let Some(d) = self.display_mut(disp) else {
             return;
         };
@@ -1649,6 +1667,15 @@ impl Ui {
             *slot = buf;
         }
 
+        if has_flush_cb {
+            /*px_map = layer->draw_buf->data, i.e. the data of `buf_act`*/
+            self.call_flush_cb(disp, &refreshed_area, buf_act);
+        }
+
+        let Some(d) = self.display_mut(disp) else {
+            return;
+        };
+
         /*If there are 2 buffers swap them. With direct mode swap only on the last area*/
         if disp_is_double_buffered(d) && (d.render_mode != RenderMode::Direct || flushing_last) {
             d.buf_act = next_buf_act(d);
@@ -1657,7 +1684,12 @@ impl Ui {
 
     /// `call_flush_cb()`: send `LV_EVENT_FLUSH_START`, call the driver's
     /// `flush` with the offset area and send `LV_EVENT_FLUSH_FINISH`.
-    fn call_flush_cb(&mut self, disp: DisplayId, area: &Area, px_map: &mut [u8]) {
+    ///
+    /// `px_buf` selects the display buffer (`buf_1..=3`) whose data is the
+    /// C `px_map`; it is borrowed from its slot only for the driver call,
+    /// so the buffer stays reachable through `buf_act` for the event
+    /// handlers.
+    fn call_flush_cb(&mut self, disp: DisplayId, area: &Area, px_buf: u8) {
         let Some(d) = self.display(disp) else {
             return;
         };
@@ -1676,7 +1708,17 @@ impl Ui {
 
         /* LV_COLOR_16_SWAP is not defined: no RGB565 swap */
 
-        if let Some(mut driver) = self.display_mut(disp).and_then(|d| d.driver.take()) {
+        if let Some(d) = self.display_mut(disp)
+            && let Some(mut driver) = d.driver.take()
+        {
+            let mut empty: [u8; 0] = [];
+            let px_map: &mut [u8] = match buf_slot(d, px_buf)
+                .and_then(|s| s.as_mut())
+                .and_then(|b| b.data_mut())
+            {
+                Some(px) => px,
+                None => &mut empty,
+            };
             let res = driver.flush(disp, &offset_area, px_map);
             if let Some(d) = self.display_mut(disp) {
                 if d.driver.is_none() {
@@ -2000,6 +2042,7 @@ mod tests {
     use super::*;
     use crate::core::UiConfig;
     use crate::misc::event::EventList;
+    use alloc::boxed::Box;
     use alloc::rc::Rc;
     use alloc::vec;
     use core::any::Any;
@@ -2365,5 +2408,44 @@ mod tests {
         ui.display_mut(disp).unwrap().inv_p = 1;
         ui.obj_invalidate_expand_blur(disp);
         assert_eq!(ui.display(disp).unwrap().inv_p, 1);
+    }
+
+    struct EventLogUnit {
+        name: &'static str,
+        events: Rc<core::cell::RefCell<Vec<(&'static str, EventCode)>>>,
+    }
+
+    impl crate::draw::DrawUnit for EventLogUnit {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn evaluate(&mut self, _task: &mut crate::draw::DrawTask) -> i32 {
+            0
+        }
+
+        fn dispatch(&mut self, _ctx: &mut crate::draw::DrawCtx, _layer: LayerId) -> i32 {
+            -1
+        }
+
+        fn on_event(&mut self, code: EventCode, _param: &mut EventParam<'_>) {
+            self.events.borrow_mut().push((self.name, code));
+        }
+    }
+
+    #[test]
+    fn refr_finish_cleans_only_the_sw_mask_cache() {
+        /*`lv_draw_sw_mask_cleanup()` is the only draw-unit side effect of refr_finish:
+         *the request reaches the SW unit, no other unit is notified*/
+        let mut ui = Ui::new(UiConfig::default());
+        let events = Rc::new(core::cell::RefCell::new(Vec::new()));
+        for name in ["OTHER", DRAW_SW_UNIT_NAME] {
+            ui.draw_units.push(Box::new(EventLogUnit {
+                name,
+                events: events.clone(),
+            }));
+        }
+        ui.refr_finish_draw_sw_mask_cleanup();
+        assert_eq!(*events.borrow(), vec![(DRAW_SW_UNIT_NAME, EventCode::REFR_READY)]);
     }
 }
