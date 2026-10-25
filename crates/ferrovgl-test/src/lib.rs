@@ -8,6 +8,43 @@
 //! installs the light theme, as `lv_display_create()` does with
 //! `LV_USE_THEME_DEFAULT`, for upstream parity. Every constructor creates the
 //! three test input devices right after the display, like `lv_test_init()`.
+//!
+//! # Differences from `lv_test_init()`
+//!
+//! The reference images come from the `full` + `depth_32` + `run_tests`
+//! configuration, where `lv_test_init()` also does three things this harness
+//! leaves out:
+//!
+//! - `lv_test_fs_init()`: there is no test file system.
+//! - `lv_test_indev_gesture_create()` (`LV_USE_GESTURE_RECOGNITION=y`): a fourth
+//!   `LV_INDEV_TYPE_POINTER` device, created after the encoder with its own read
+//!   timer, that reports a released pointer at (0, 0). ferrovgl-core has no
+//!   multitouch gesture recognition (see `ferrovgl_core::indev`), so upstream
+//!   sees four devices from `lv_indev_get_next()` where this harness has three,
+//!   and upstream's extra pointer sends its own `HOVER_OVER`/`HOVER_LEAVE`
+//!   events to whatever object is at (0, 0). A port that depends on device
+//!   count, device or timer order, or hover events must create a fourth
+//!   released pointer at (0, 0) right after the encoder.
+//! - `lv_sysmon_hide_performance()` (`LV_USE_SYSMON`, `LV_USE_PERF_MONITOR`):
+//!   there is no system monitor, so there is no performance label to hide.
+//!
+//! None of these changes the pixels of the matched reference images.
+//!
+//! # One display per `#[test]`
+//!
+//! Upstream runs `lv_test_init()` once per test file (`tests/config.yml`
+//! `:suite_setup:`); the tests of a file share the tick, the input devices and
+//! their internal state (`last_short_click_timestamp`/`point`, `last_hovered`,
+//! `prev_state`, the test devices' pointer position, pressed state, key and
+//! encoder diff) and the screen, and `tearDown()` only calls
+//! `lv_obj_clean(lv_screen_active())`. A fresh [`TestDisplay`] corresponds to
+//! the *first* test of an upstream suite. State carried from earlier tests is
+//! not modelled: for example two consecutive upstream tests that each end and
+//! start with `lv_test_mouse_click_at()` on the same point are less than
+//! `LV_INDEV_DEF_DOUBLE_CLICK_TIME` apart, so the second one gets
+//! `LV_EVENT_DOUBLE_CLICKED`. A port that depends on such state must run the
+//! earlier tests' input sequence on the same [`TestDisplay`], calling
+//! [`TestDisplay::clean_screen`] between them as upstream's `tearDown()` does.
 
 #![warn(missing_docs)]
 
@@ -111,10 +148,18 @@ fn buf_changed_event_cb(ui: &mut Ui, e: &mut ferrovgl_core::Event<'_>) {
 /// A real Ui, software draw unit and single-buffered headless display with
 /// upstream's three test input devices.
 ///
-/// Construction follows `lv_test_init()`: `lv_init()`, then
-/// `lv_test_display_create()`, then `lv_test_indev_create_all()`. Pixel
-/// format, size, DPI and font match the upstream 32-bit screenshot harness.
-/// The theme is opt-in. Dropping the display is `lv_test_deinit()`.
+/// Construction follows the parts of `lv_test_init()` that ferrovgl
+/// represents: `lv_init()`, then `lv_test_display_create()`, then
+/// `lv_test_indev_create_all()`. `lv_test_fs_init()`, the gesture pointer of
+/// `lv_test_indev_gesture_create()` and `lv_sysmon_hide_performance()` are
+/// left out (see the [crate docs](crate#differences-from-lv_test_init)).
+/// Pixel format, size, DPI and font match the upstream 32-bit screenshot
+/// harness. The theme is opt-in. Dropping the display is `lv_test_deinit()`.
+///
+/// Each value starts like the first test of an upstream suite; tick, input
+/// device and screen state carried over from earlier tests of the same
+/// upstream file is not modelled unless the scenario replays those tests on
+/// the same display (see the [crate docs](crate#one-display-per-test)).
 pub struct TestDisplay {
     /// The UI under test. Tests build scenes using its public methods.
     pub ui: Ui,
@@ -227,6 +272,10 @@ impl TestDisplay {
 
     /// The `tearDown()` of most upstream test files:
     /// `lv_obj_clean(lv_screen_active())`.
+    ///
+    /// Only the screen's children are deleted; the tick and the input
+    /// devices' state carry over to the next scenario on this display, as
+    /// they do between the tests of one upstream suite.
     pub fn clean_screen(&mut self) {
         if let Some(screen) = self.ui.screen_active() {
             self.ui.obj_clean(screen);
@@ -527,5 +576,26 @@ mod tests {
         display.clean_screen();
         assert!(!display.ui.obj_is_valid(obj));
         assert!(display.screen().is_some_and(|s| display.ui.obj_is_valid(s)));
+    }
+
+    #[test]
+    fn suite_state_carries_over_clean_screen() {
+        // Two consecutive upstream tests of one suite, each clicking (15, 15):
+        // the second click lands within `LV_INDEV_DEF_DOUBLE_CLICK_TIME`.
+        let mut display = TestDisplay::with_resolution(64, 64).unwrap();
+        let mouse = display.inputs().mouse.id();
+        clickable(&mut display);
+        display.mouse_click_at(15, 15);
+        assert_eq!(display.ui.indev_get_short_click_streak(mouse), 1);
+        display.clean_screen();
+        clickable(&mut display);
+        display.mouse_click_at(15, 15);
+        assert_eq!(display.ui.indev_get_short_click_streak(mouse), 2);
+        // A fresh display starts like the first test of a suite.
+        let mut fresh = TestDisplay::with_resolution(64, 64).unwrap();
+        let mouse = fresh.inputs().mouse.id();
+        clickable(&mut fresh);
+        fresh.mouse_click_at(15, 15);
+        assert_eq!(fresh.ui.indev_get_short_click_streak(mouse), 1);
     }
 }
