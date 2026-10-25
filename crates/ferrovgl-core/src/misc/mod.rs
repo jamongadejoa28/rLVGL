@@ -21,6 +21,16 @@ pub mod tick;
 pub mod timer;
 pub mod types;
 
+/// `Debug` stand-in for a callback (`Rc<dyn Fn ..>`) field, which has no
+/// `Debug` of its own: prints `<callback>`.
+pub(crate) struct OpaqueCallback;
+
+impl core::fmt::Debug for OpaqueCallback {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("<callback>")
+    }
+}
+
 /// Report a failed argument check (`LV_CHECK_ARG`).
 ///
 /// With the `check-arg-panic` feature this panics, which is the upstream

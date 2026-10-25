@@ -25,6 +25,7 @@ pub struct CssRect {
 
 /// Default number of device pixels per LVGL pixel for a
 /// `devicePixelRatio`: the ratio rounded to the nearest integer, at least 1.
+#[must_use]
 pub fn default_pixel_scale(device_pixel_ratio: f64) -> f64 {
     if device_pixel_ratio.is_finite() && device_pixel_ratio > 0.0 {
         device_pixel_ratio.round().max(1.0)
@@ -35,6 +36,7 @@ pub fn default_pixel_scale(device_pixel_ratio: f64) -> f64 {
 
 /// CSS length (in `px`) of `display_px` LVGL pixels when every LVGL pixel
 /// covers `pixel_scale` device pixels at `device_pixel_ratio`.
+#[must_use]
 pub fn css_length(display_px: u32, pixel_scale: f64, device_pixel_ratio: f64) -> f64 {
     let dpr = if device_pixel_ratio.is_finite() && device_pixel_ratio > 0.0 {
         device_pixel_ratio
@@ -55,6 +57,7 @@ pub fn css_length(display_px: u32, pixel_scale: f64, device_pixel_ratio: f64) ->
 /// divided by the zoom (CSS pixels per display pixel) and truncated to an
 /// `int16_t`. Positions outside the canvas are not clamped here; the
 /// pointer indev clamps them to the display (`indev_pointer_proc()`).
+#[must_use]
 pub fn client_to_display(
     client_x: f64,
     client_y: f64,
@@ -80,6 +83,7 @@ pub fn client_to_display(
 /// scroll direction (`if(wheel.y < 0) diff++; if(wheel.y > 0) diff--;`).
 /// SDL's `y` points away from the user while DOM `deltaY` points towards
 /// the content below, so a positive `deltaY` is `+1`.
+#[must_use]
 pub fn wheel_steps(delta_y: f64) -> i16 {
     if delta_y > 0.0 {
         1

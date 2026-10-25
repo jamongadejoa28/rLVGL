@@ -122,18 +122,21 @@ impl ButtonmatrixCtrl {
 
     /// The raw value.
     #[inline]
+    #[must_use]
     pub const fn bits(self) -> u16 {
         self.0
     }
 
     /// Whether every bit of `other` is set (`(self & other) == other`).
     #[inline]
+    #[must_use]
     pub const fn contains(self, other: ButtonmatrixCtrl) -> bool {
         self.0 & other.0 == other.0
     }
 
     /// Whether any bit of `other` is set (`(self & other) != 0`).
     #[inline]
+    #[must_use]
     pub const fn intersects(self, other: ButtonmatrixCtrl) -> bool {
         self.0 & other.0 != 0
     }
@@ -232,7 +235,7 @@ const BUTTONMATRIX_DEF_MAP: &[SharedStr] = &[
 ];
 
 /// A copyable button matrix handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Buttonmatrix(Obj);
 
 impl Buttonmatrix {
@@ -247,11 +250,13 @@ impl Buttonmatrix {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the button matrix class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         check_obj(ui, obj).then_some(Self(obj))
     }
@@ -346,17 +351,20 @@ impl Buttonmatrix {
     }
 
     /// `lv_buttonmatrix_get_map()`
+    #[must_use]
     pub fn map(self, ui: &Ui) -> Option<ButtonmatrixMap> {
         state(ui, self.0).and_then(|btnm| btnm.map_p.clone())
     }
 
     /// `lv_buttonmatrix_get_selected_button()`: index of the last
     /// "activated" button or [`BUTTONMATRIX_BUTTON_NONE`].
+    #[must_use]
     pub fn selected_button(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |btnm| btnm.btn_id_sel)
     }
 
     /// `lv_buttonmatrix_get_button_text()`: `None` is `NULL`.
+    #[must_use]
     pub fn button_text(self, ui: &Ui, btn_id: u32) -> Option<&str> {
         // LV_CHECK_OBJ(obj, MY_CLASS, return 0);
         let btnm = state(ui, self.0)?;
@@ -392,29 +400,46 @@ impl Buttonmatrix {
 
     /// `lv_buttonmatrix_has_button_ctrl()`: whether all of `ctrl` are set on
     /// a button.
+    #[must_use]
     pub fn has_button_ctrl(self, ui: &Ui, btn_id: u32, ctrl: ButtonmatrixCtrl) -> bool {
         has_button_ctrl(ui, self.0, btn_id, ctrl)
     }
 
     /// `lv_buttonmatrix_get_one_checked()`
+    #[must_use]
     pub fn one_checked(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|btnm| btnm.one_check)
     }
 
     /// `lv_buttonmatrix_t::btn_cnt`: the number of buttons (upstream tests
     /// read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
+    #[must_use]
     pub fn btn_cnt(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |btnm| btnm.btn_cnt)
     }
 
     /// `lv_buttonmatrix_t::button_areas`: the button areas relative to the
     /// object (upstream tests read the field).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
+    #[must_use]
     pub fn button_areas(self, ui: &Ui) -> &[Area] {
         state(ui, self.0).map_or(&[][..], |btnm| btnm.button_areas.as_slice())
     }
 
     /// Assign `lv_buttonmatrix_t::btn_id_sel` without invalidating anything
-    /// (upstream tests write the field).
+    /// (upstream tests write the field). Not
+    /// [`Buttonmatrix::set_selected_button`], the public API.
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which write this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
     pub fn set_btn_id_sel(self, ui: &mut Ui, btn_id: u32) {
         if let Some(btnm) = state_mut(ui, self.0) {
             btnm.btn_id_sel = btn_id;

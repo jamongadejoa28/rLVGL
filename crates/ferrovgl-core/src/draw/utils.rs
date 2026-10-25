@@ -257,7 +257,7 @@ fn rotate90_px<const N: usize>(
 }
 
 /// `rotate270_argb8888()`: strides in bytes (`/= sizeof(uint32_t)`).
-pub fn rotate270_argb8888(
+pub(crate) fn rotate270_argb8888(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -269,7 +269,7 @@ pub fn rotate270_argb8888(
 }
 
 /// `rotate180_argb8888()`: strides in bytes (`/= sizeof(uint32_t)`).
-pub fn rotate180_argb8888(
+pub(crate) fn rotate180_argb8888(
     src: &[u8],
     dst: &mut [u8],
     width: i32,
@@ -281,7 +281,7 @@ pub fn rotate180_argb8888(
 }
 
 /// `rotate90_argb8888()`: strides in bytes (`/= sizeof(uint32_t)`).
-pub fn rotate90_argb8888(
+pub(crate) fn rotate90_argb8888(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -293,7 +293,7 @@ pub fn rotate90_argb8888(
 }
 
 /// `rotate90_rgb888()`: strides in bytes.
-pub fn rotate90_rgb888(
+pub(crate) fn rotate90_rgb888(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -313,7 +313,7 @@ pub fn rotate90_rgb888(
 }
 
 /// `rotate180_rgb888()`: strides in bytes.
-pub fn rotate180_rgb888(
+pub(crate) fn rotate180_rgb888(
     src: &[u8],
     dst: &mut [u8],
     width: i32,
@@ -333,7 +333,7 @@ pub fn rotate180_rgb888(
 }
 
 /// `rotate270_rgb888()`: strides in bytes.
-pub fn rotate270_rgb888(
+pub(crate) fn rotate270_rgb888(
     src: &[u8],
     dst: &mut [u8],
     width: i32,
@@ -353,7 +353,7 @@ pub fn rotate270_rgb888(
 }
 
 /// `rotate270_rgb565()`: strides in bytes (`/= sizeof(uint16_t)`).
-pub fn rotate270_rgb565(
+pub(crate) fn rotate270_rgb565(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -365,7 +365,7 @@ pub fn rotate270_rgb565(
 }
 
 /// `rotate180_rgb565()`: strides in bytes (`/= sizeof(uint16_t)`).
-pub fn rotate180_rgb565(
+pub(crate) fn rotate180_rgb565(
     src: &[u8],
     dst: &mut [u8],
     width: i32,
@@ -377,7 +377,7 @@ pub fn rotate180_rgb565(
 }
 
 /// `rotate90_rgb565()`: strides in bytes (`/= sizeof(uint16_t)`).
-pub fn rotate90_rgb565(
+pub(crate) fn rotate90_rgb565(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -389,7 +389,7 @@ pub fn rotate90_rgb565(
 }
 
 /// `rotate90_l8()`: strides in bytes.
-pub fn rotate90_l8(
+pub(crate) fn rotate90_l8(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,
@@ -401,12 +401,19 @@ pub fn rotate90_l8(
 }
 
 /// `rotate180_l8()`: strides in bytes.
-pub fn rotate180_l8(src: &[u8], dst: &mut [u8], width: i32, height: i32, src_stride: i32, dest_stride: i32) {
+pub(crate) fn rotate180_l8(
+    src: &[u8],
+    dst: &mut [u8],
+    width: i32,
+    height: i32,
+    src_stride: i32,
+    dest_stride: i32,
+) {
     rotate180_px::<1>(src, dst, width, height, src_stride, dest_stride);
 }
 
 /// `rotate270_l8()`: strides in bytes.
-pub fn rotate270_l8(
+pub(crate) fn rotate270_l8(
     src: &[u8],
     dst: &mut [u8],
     src_width: i32,

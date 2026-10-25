@@ -93,8 +93,9 @@ fn open_mask(src: &ImageSrc) -> Option<MaskImage> {
         ImageSrc::Static(img) => (img.header, img.data),
         ImageSrc::Shared(img) => (img.header, img.data),
         ImageSrc::DrawBuf(buf) => (buf.header, buf.data()),
-        /*No file system, symbol or layer decoder for masks (see the module docs)*/
-        ImageSrc::None | ImageSrc::Path(_) | ImageSrc::Symbol(_) | ImageSrc::Layer(_) => return None,
+        /*`None`, `Path`, `Symbol`, `Layer`: no file system, symbol or layer
+        decoder for masks (see the module docs)*/
+        _ => return None,
     };
 
     if header.cf == ColorFormat::Unknown {
@@ -121,7 +122,8 @@ fn open_mask(src: &ImageSrc) -> Option<MaskImage> {
         ImageSrc::Static(img) => DrawBuf::from_image(img).ok().map(MaskImage::Wrapped),
         ImageSrc::Shared(img) => DrawBuf::from_image(img).ok().map(MaskImage::Wrapped),
         ImageSrc::DrawBuf(buf) => Some(MaskImage::Shared(buf.clone())),
-        ImageSrc::None | ImageSrc::Path(_) | ImageSrc::Symbol(_) | ImageSrc::Layer(_) => None,
+        /*`None`, `Path`, `Symbol`, `Layer`*/
+        _ => None,
     }
 }
 

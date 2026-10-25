@@ -27,18 +27,18 @@ use crate::misc::check_arg_failed;
 use crate::misc::color::{OPA_MAX, OPA_MIN, OPA_TRANSP, opa_mix2};
 use crate::misc::event::{
     CoverRes, Event, EventCallback, EventCode, EventList, EventParam, EventTarget, LvResult,
-    event_free_user_data_cb,
+    free_user_data_cb,
 };
 use crate::misc::style::{Part, State, StyleProp, StyleValue};
 
 /// Handle of an object slot in [`Ui::objs`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ObjId(pub Key);
+pub struct ObjId(#[doc(hidden)] pub Key);
 
 /// `lv_obj_t *`: a `Copy` handle to an object. Widget handles are newtypes
 /// over `Obj`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Obj(pub ObjId);
+pub struct Obj(#[doc(hidden)] pub ObjId);
 
 impl From<ObjId> for Obj {
     fn from(id: ObjId) -> Self {
@@ -55,6 +55,7 @@ impl From<Obj> for ObjId {
 impl Obj {
     /// The underlying id.
     #[inline]
+    #[must_use]
     pub const fn id(self) -> ObjId {
         self.0
     }
@@ -166,6 +167,7 @@ pub enum ScrollSnap {
 /// `lv_layer_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum LayerType {
     /// `LV_LAYER_TYPE_NONE`
     #[default]
@@ -223,20 +225,30 @@ pub enum ObjTreeWalkRes {
 /// [`impl_widget_state!`](crate::impl_widget_state) to implement it.
 pub trait WidgetState: Any {
     /// Return the state whose type id is `id`: `self` or an embedded base.
+    #[must_use]
     fn query(&self, id: TypeId) -> Option<&dyn Any>;
     /// Mutable [`WidgetState::query`].
+    #[must_use]
     fn query_mut(&mut self, id: TypeId) -> Option<&mut dyn Any>;
+}
+
+impl core::fmt::Debug for dyn WidgetState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("WidgetState").finish_non_exhaustive()
+    }
 }
 
 impl dyn WidgetState {
     /// Downcast to `T`, walking the embedded base states.
     #[inline]
+    #[must_use]
     pub fn get<T: Any>(&self) -> Option<&T> {
         self.query(TypeId::of::<T>())?.downcast_ref::<T>()
     }
 
     /// Mutable version of `get`.
     #[inline]
+    #[must_use]
     pub fn get_mut<T: Any>(&mut self) -> Option<&mut T> {
         self.query_mut(TypeId::of::<T>())?.downcast_mut::<T>()
     }
@@ -346,7 +358,7 @@ pub type ObjExtDataFreeCb = fn(Option<Rc<dyn Any>>);
 
 /// `lv_ext_data_t` of an object (`LV_USE_EXT_DATA`), set by
 /// [`Ui::obj_set_external_data`] and released by `lv_obj_destruct()`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ObjExtData {
     /// `data`; independent of the object's application `user_data`.
     pub data: Option<Rc<dyn Any>>,
@@ -355,6 +367,8 @@ pub struct ObjExtData {
 }
 
 /// `lv_obj_spec_attr_t`: rarely used attributes, allocated on demand.
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct SpecAttr {
     /// `children`
     pub children: Vec<ObjId>,
@@ -388,6 +402,7 @@ pub struct SpecAttr {
 
 impl SpecAttr {
     /// `lv_obj_allocate_spec_attr()` defaults.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             children: Vec::new(),
@@ -415,6 +430,8 @@ impl Default for SpecAttr {
 }
 
 /// `lv_obj_t`: the data of one object.
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct ObjData {
     /// `ext_data` (`LV_USE_EXT_DATA`).
     pub ext_data: ObjExtData,
@@ -1145,12 +1162,14 @@ fn call_delete_cb(ui: &mut Ui, e: &mut Event<'_>) {
 
 /// `lv_obj_add_child()`: append `child` to `parent->spec_attr->children`.
 ///
-/// Defined in `lv_obj.c` upstream; the `Ui::obj_add_child` declaration of
-/// `obj_tree.rs` delegates here. Like upstream the caller allocates the
+/// The literal `lv_obj.c` body, compiled for its unit tests only: the
+/// public operation is `Ui::obj_add_child` (`obj_tree.rs`), which also
+/// allocates a missing `spec_attr`. Like upstream the caller allocates the
 /// parent's `spec_attr` first (`lv_obj_class_create_obj()`,
 /// `lv_obj_set_parent()`); C dereferences it unchecked, here a missing
 /// `spec_attr` returns [`LvResult::Invalid`] (the realloc-failure result).
-pub fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
+#[cfg(test)]
+pub(crate) fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
     if !ui.check_obj(parent) {
         return LvResult::Invalid;
     }
@@ -1167,11 +1186,13 @@ pub fn obj_add_child(ui: &mut Ui, parent: Obj, child: Obj) -> LvResult {
 /// `lv_obj_remove_child()`: remove `child` from
 /// `parent->spec_attr->children`, shifting the following children down.
 ///
-/// Defined in `lv_obj.c` upstream; the `Ui::obj_remove_child` declaration
-/// of `obj_tree.rs` delegates here. Like upstream the start index is
+/// The literal `lv_obj.c` body, compiled for its unit tests only: the
+/// public operation is `Ui::obj_remove_child` (`obj_tree.rs`). Like
+/// upstream the start index is
 /// `lv_obj_get_index(child)` (looked up in the child's own parent), the
 /// array is freed when it held one child and shrunk by one otherwise.
-pub fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
+#[cfg(test)]
+pub(crate) fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
     if !ui.check_obj(parent) || !ui.check_obj(child) {
         return;
     }
@@ -1204,6 +1225,7 @@ pub fn obj_remove_child(ui: &mut Ui, parent: Obj, child: Obj) {
 
 /// `lv_obj_get_index()` read straight from `spec_attr` (`-1` without a
 /// parent or when the parent doesn't list `obj`).
+#[cfg(test)]
 fn obj_get_index_raw(ui: &Ui, obj: Obj) -> i32 {
     let Some(parent) = ui.obj(obj).and_then(|d| d.parent) else {
         return -1;
@@ -1236,6 +1258,7 @@ macro_rules! flag_getters {
         impl Ui {
             $(
                 #[doc = concat!("`", $lv_is, "()`")]
+                #[must_use]
                 pub fn $is(&self, obj: Obj) -> bool {
                     self.get_flag_bit(obj, ObjFlags::$flag)
                 }
@@ -1257,6 +1280,7 @@ macro_rules! state_accessors {
                 }
 
                 #[doc = concat!("`", $lv_is, "()`")]
+                #[must_use]
                 pub fn $is(&self, obj: Obj) -> bool {
                     if !self.check_obj(obj) {
                         return false;
@@ -1558,6 +1582,7 @@ state_accessors! {
 
 impl Ui {
     /// `lv_obj_has_flag()`: `true` if all of `f` are set.
+    #[must_use]
     pub fn obj_has_flag(&self, obj: Obj, f: ObjFlags) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1586,6 +1611,7 @@ impl Ui {
     }
 
     /// `lv_obj_has_flag_any()`: `true` if any of `f` is set.
+    #[must_use]
     pub fn obj_has_flag_any(&self, obj: Obj, f: ObjFlags) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1638,6 +1664,7 @@ flag_getters! {
 #[allow(clippy::collapsible_if)] // keep the C `if` nesting
 impl Ui {
     /// `lv_obj_is_radio_button()`
+    #[must_use]
     pub fn obj_is_radio_button(&self, obj: Obj) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1646,6 +1673,7 @@ impl Ui {
     }
 
     /// `lv_obj_is_flex_in_new_track()`
+    #[must_use]
     pub fn obj_is_flex_in_new_track(&self, obj: Obj) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1661,6 +1689,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_state()`
+    #[must_use]
     pub fn obj_get_state(&self, obj: Obj) -> State {
         if !self.check_obj(obj) {
             return State::DEFAULT;
@@ -1670,6 +1699,7 @@ impl Ui {
     }
 
     /// `lv_obj_has_state()`
+    #[must_use]
     pub fn obj_has_state(&self, obj: Obj, state: State) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1678,6 +1708,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_group()`
+    #[must_use]
     pub fn obj_get_group(&self, obj: Obj) -> Option<GroupId> {
         if !self.check_obj(obj) {
             return None;
@@ -1706,6 +1737,7 @@ impl Ui {
     }
 
     /// `lv_obj_check_type()`: exact class match.
+    #[must_use]
     pub fn obj_check_type(&self, obj: Obj, class: &'static ObjClass) -> bool {
         let Some(d) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1715,6 +1747,7 @@ impl Ui {
     }
 
     /// `lv_obj_has_class()`: class or any base class matches.
+    #[must_use]
     pub fn obj_has_class(&self, obj: Obj, class: &'static ObjClass) -> bool {
         let Some(d) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1736,6 +1769,7 @@ impl Ui {
     ///
     /// For a stale handle (the C `NULL` object) the argument check fails and
     /// [`OBJ_CLASS`] is returned, as the signature has no `NULL`.
+    #[must_use]
     pub fn obj_get_class(&self, obj: Obj) -> &'static ObjClass {
         match self.obj(obj) {
             Some(d) => d.class,
@@ -1748,12 +1782,14 @@ impl Ui {
 
     /// `lv_obj_is_valid()` / `lv_obj_is_in_widget_tree()`: the handle refers
     /// to a live object.
+    #[must_use]
     pub fn obj_is_valid(&self, obj: Obj) -> bool {
         self.objs.contains(obj.0.0)
     }
 
     /// `lv_obj_is_in_widget_tree()`: walk up to the screen and check that
     /// the screen belongs to a display.
+    #[must_use]
     pub fn obj_is_in_widget_tree(&self, obj: Obj) -> bool {
         let Some(mut d) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1817,7 +1853,7 @@ impl Ui {
 
         let cb: EventCallback = Rc::new(screen_load_on_trigger_event_cb);
         self.obj_add_event_cb(obj, cb, trigger, Some(dsc.clone()));
-        let free_cb: EventCallback = Rc::new(event_free_user_data_cb);
+        let free_cb: EventCallback = Rc::new(free_user_data_cb);
         self.obj_add_event_cb(obj, free_cb, EventCode::DELETE, Some(dsc));
     }
 
@@ -1844,7 +1880,7 @@ impl Ui {
 
         let cb: EventCallback = Rc::new(screen_create_on_trigger_event_cb);
         self.obj_add_event_cb(obj, cb, trigger, Some(dsc.clone()));
-        let free_cb: EventCallback = Rc::new(event_free_user_data_cb);
+        let free_cb: EventCallback = Rc::new(free_user_data_cb);
         self.obj_add_event_cb(obj, free_cb, EventCode::DELETE, Some(dsc));
     }
 
@@ -1880,6 +1916,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_user_data()`
+    #[must_use]
     pub fn obj_get_user_data(&self, obj: Obj) -> Option<&dyn Any> {
         if !self.check_obj(obj) {
             return None;
@@ -1889,6 +1926,7 @@ impl Ui {
     }
 
     /// Mutable `lv_obj_get_user_data()`.
+    #[must_use]
     pub fn obj_get_user_data_mut(&mut self, obj: Obj) -> Option<&mut dyn Any> {
         if !self.check_obj(obj) {
             return None;
@@ -1898,6 +1936,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_user_flag()`
+    #[must_use]
     pub fn obj_get_user_flag(&self, obj: Obj, bit: u32) -> bool {
         if !self.check_obj(obj) {
             return false;
@@ -1961,6 +2000,7 @@ impl Ui {
     /// `NULL`).
     #[cfg(feature = "obj-id")]
     #[cfg_attr(docsrs, doc(cfg(feature = "obj-id")))]
+    #[must_use]
     pub fn obj_get_id(&self, obj: Obj) -> usize {
         let Some(d) = self.obj(obj) else {
             check_arg_failed("lv_obj_get_id: obj != NULL");
@@ -1975,6 +2015,7 @@ impl Ui {
     #[cfg(feature = "obj-id")]
     #[cfg_attr(docsrs, doc(cfg(feature = "obj-id")))]
     #[deprecated(note = "IDs are used only to print the widget trees. To find a widget use obj_find_by_name")]
+    #[must_use]
     pub fn obj_find_by_id(&self, obj: Option<Obj>, id: usize) -> Option<Obj> {
         if id == 0 {
             check_arg_failed("lv_obj_find_by_id: id != NULL");
@@ -1998,7 +2039,7 @@ impl Ui {
         let child_cnt = self.obj_get_child_count(obj);
         for i in 0..child_cnt {
             let child = self.obj_get_child(obj, i as i32)?;
-            if crate::core::obj_id::obj_id_compare(self.obj(child)?.id, id) == 0 {
+            if crate::core::obj_id::compare(self.obj(child)?.id, id) == 0 {
                 return Some(child);
             }
             let found = self.obj_find_by_id_core(child, id);
@@ -2011,22 +2052,26 @@ impl Ui {
 
     /// Borrow an object's data (`None` for a stale handle).
     #[inline]
+    #[must_use]
     pub fn obj(&self, obj: Obj) -> Option<&ObjData> {
         self.objs.get(obj.0.0)
     }
 
     /// Mutably borrow an object's data.
     #[inline]
+    #[must_use]
     pub fn obj_mut(&mut self, obj: Obj) -> Option<&mut ObjData> {
         self.objs.get_mut(obj.0.0)
     }
 
     /// Borrow the widget state of `obj` as `T` (walks base classes).
+    #[must_use]
     pub fn widget<T: Any>(&self, obj: Obj) -> Option<&T> {
         self.obj(obj)?.widget.get::<T>()
     }
 
     /// Mutable [`widget`](Self::widget).
+    #[must_use]
     pub fn widget_mut<T: Any>(&mut self, obj: Obj) -> Option<&mut T> {
         self.obj_mut(obj)?.widget.get_mut::<T>()
     }

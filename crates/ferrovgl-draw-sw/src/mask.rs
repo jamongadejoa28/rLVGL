@@ -126,6 +126,7 @@ pub struct MaskAngleParam {
 /// Upstream's `buf` (the single allocation backing the three arrays) is
 /// omitted: each array owns its `Vec`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct RadiusCircleDsc {
     /// `cir_opa`: opacity of the anti-aliased pixels.
     pub cir_opa: Vec<Opa>,
@@ -143,6 +144,7 @@ pub struct RadiusCircleDsc {
 
 /// `lv_draw_sw_mask_radius_circle_dsc_arr_t`: the circle cache.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct CircleCache {
     /// The entries.
     pub entries: [RadiusCircleDsc; CIRCLE_CACHE_SIZE],
@@ -190,12 +192,21 @@ pub struct MaskFadeParam {
 }
 
 /// `lv_draw_sw_mask_map_param_t`
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MaskMapParam<'a> {
     /// `cfg.coords`
     pub coords: Area,
     /// `cfg.map`: one opacity byte per pixel of `coords`.
     pub map: &'a [Opa],
+}
+
+impl core::fmt::Debug for MaskMapParam<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MaskMapParam")
+            .field("coords", &self.coords)
+            .field("map", &crate::blend::ByteLen(self.map.len()))
+            .finish()
+    }
 }
 
 /// Any mask parameter (`void * p` with its `lv_draw_sw_mask_common_dsc_t`).
@@ -215,6 +226,7 @@ pub enum MaskParam<'a> {
 
 impl MaskParam<'_> {
     /// `dsc.type`
+    #[must_use]
     pub const fn mask_type(&self) -> MaskType {
         match self {
             MaskParam::Line(_) => MaskType::Line,
@@ -247,6 +259,7 @@ pub fn deinit(cache: &mut CircleCache) {
 
 /// `lv_draw_sw_mask_apply()`: apply every mask in `masks` to `mask_buf`
 /// (`len` pixels starting at absolute `(abs_x, abs_y)`).
+#[must_use]
 pub fn apply(
     cache: &mut CircleCache,
     masks: &mut [MaskParam<'_>],
@@ -525,6 +538,7 @@ fn memzero(buf: &mut [Opa], from: i32, count: i32) {
 }
 
 /// `lv_draw_sw_mask_line()` (`lv_draw_mask_line`)
+#[must_use]
 pub fn mask_line(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut MaskLineParam) -> MaskRes {
     /*Make to points relative to the vertex*/
     let abs_y = abs_y - p.origo.y;
@@ -942,6 +956,7 @@ fn angle_split(
 }
 
 /// `lv_draw_sw_mask_angle()` (`lv_draw_mask_angle`)
+#[must_use]
 pub fn mask_angle(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut MaskAngleParam) -> MaskRes {
     let rel_y = abs_y - p.vertex_p.y;
     let rel_x = abs_x - p.vertex_p.x;
@@ -1048,6 +1063,7 @@ pub fn mask_angle(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mu
 }
 
 /// `lv_draw_sw_mask_radius()` (`lv_draw_mask_radius`)
+#[must_use]
 pub fn mask_radius(
     cache: &CircleCache,
     mask_buf: &mut [Opa],
@@ -1177,6 +1193,7 @@ pub fn mask_radius(
 }
 
 /// `lv_draw_sw_mask_fade()` (`lv_draw_mask_fade`)
+#[must_use]
 pub fn mask_fade(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut MaskFadeParam) -> MaskRes {
     if abs_y < p.coords.y1 {
         return MaskRes::FullCover;
@@ -1239,6 +1256,7 @@ pub fn mask_fade(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut
 }
 
 /// `lv_draw_sw_mask_map()` (`lv_draw_mask_map`)
+#[must_use]
 pub fn mask_map(mask_buf: &mut [Opa], abs_x: i32, abs_y: i32, len: i32, p: &mut MaskMapParam<'_>) -> MaskRes {
     /*Handle out of the mask cases*/
     if abs_y < p.coords.y1 {
@@ -2137,7 +2155,7 @@ mod tests {
             }
             // Top/bottom symmetry.
             let mut bm = full(40);
-            mask_radius(&cache, &mut bm, 0, 39 - y, 40, &mut inner);
+            let _ = mask_radius(&cache, &mut bm, 0, 39 - y, 40, &mut inner);
             assert_eq!(bi, bm, "row {y}");
             // Inner + outer == cover for every pixel.
             for x in 0..40 {
@@ -2159,7 +2177,7 @@ mod tests {
         }
         // Row 0 of a radius-10 corner: nearly everything is transparent.
         let mut b = full(40);
-        mask_radius(&cache, &mut b, 0, 0, 40, &mut inner);
+        let _ = mask_radius(&cache, &mut b, 0, 0, 40, &mut inner);
         assert!(b[..5].iter().all(|&o| o == 0));
     }
 

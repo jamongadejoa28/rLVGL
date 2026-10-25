@@ -122,6 +122,7 @@ pub struct DrawImageDsc {
 
 impl DrawImageDsc {
     /// `lv_draw_image_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             /*lv_memzero(dsc, sizeof(lv_draw_image_dsc_t))*/
@@ -167,6 +168,7 @@ impl Default for DrawImageDsc {
 /// out of that other layer for the duration of the callback), build `sup`
 /// from the palette and call the renderer's core callback with it.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct DecodedImage<'a> {
     /// `header`
     pub header: ImageHeader,
@@ -327,6 +329,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_image_dsc()`
+    #[must_use]
     pub fn task_get_image_dsc(&mut self, task: DrawTaskRef) -> Option<&mut DrawImageDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Image {
@@ -487,6 +490,7 @@ impl Ui {
 /// `LV_IMAGE_HEADER_LEGACY` (a freed or corrupted buffer) is
 /// `LV_IMAGE_SRC_UNKNOWN`. [`ImageSrc::Layer`] stands for the layer's
 /// `draw_buf` and is always `LV_IMAGE_SRC_VARIABLE`.
+#[must_use]
 pub fn image_src_get_type(src: &ImageSrc) -> ImageSrcType {
     let first_byte = match src {
         ImageSrc::None => return ImageSrcType::Unknown,
@@ -645,6 +649,7 @@ fn img_decode_and_draw(
 ///
 /// [`ImageSrc::Layer`] needs the [`DrawCtx`] and returns `None` here;
 /// [`ImageSrc::Path`] needs a file system and returns `None` too.
+#[must_use]
 pub fn image_header_of(src: &ImageSrc) -> Option<ImageHeader> {
     if src.is_none() {
         crate::misc::check_arg_failed("src != NULL");
@@ -691,6 +696,7 @@ pub fn image_header_of(src: &ImageSrc) -> Option<ImageHeader> {
 }
 
 /// Borrow the in-memory descriptor behind a variable image source.
+#[must_use]
 pub fn image_dsc_of(src: &ImageSrc) -> Option<&ImageDsc> {
     match src {
         ImageSrc::Static(d) => Some(d),
@@ -742,6 +748,7 @@ fn variable_parts(src: &ImageSrc) -> Option<(ImageHeader, &[u8])> {
 ///
 /// Resolves in-memory descriptors and live layer buffers. File paths still need
 /// a decoder registry and return `None`, as in [`image_header_of`].
+#[must_use]
 pub fn image_decoder_get_info(ctx: &DrawCtx, src: &ImageSrc) -> Option<ImageHeader> {
     match src {
         ImageSrc::Layer(l) => {

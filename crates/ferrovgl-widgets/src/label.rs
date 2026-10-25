@@ -53,8 +53,9 @@ const ANIM_OFFSET_X: u32 = 0x4c42_4c58;
 const ANIM_OFFSET_Y: u32 = 0x4c42_4c59;
 
 /// `lv_label_long_mode_t`, with the upstream discriminants.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum LabelLongMode {
     /// Wrap long lines and expand content height.
     #[default]
@@ -179,7 +180,7 @@ pub static LABEL_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable label handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Label(Obj);
 
 impl Label {
@@ -192,10 +193,12 @@ impl Label {
         Self(obj)
     }
     /// The base object for positioning and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
     /// Check that an existing object contains label state.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         state(ui, obj).map(|_| Self(obj))
     }
@@ -299,26 +302,32 @@ impl Label {
         mark_need_refr_text(ui, self.0);
     }
     /// `lv_label_get_text()`, including any currently displayed overflow dots.
+    #[must_use]
     pub fn text(self, ui: &Ui) -> &str {
         state(ui, self.0).map_or("", |s| s.text.as_str())
     }
     /// `lv_label_get_long_mode()`.
+    #[must_use]
     pub fn long_mode(self, ui: &Ui) -> LabelLongMode {
         state(ui, self.0).map_or(LabelLongMode::Wrap, |s| s.long_mode)
     }
     /// `lv_label_get_max_lines()`.
+    #[must_use]
     pub fn max_lines(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.max_lines)
     }
     /// `lv_label_get_recolor()`.
+    #[must_use]
     pub fn recolor(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|s| s.recolor)
     }
     /// `lv_label_get_text_selection_start()`.
+    #[must_use]
     pub fn text_selection_start(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(LABEL_TEXT_SELECTION_OFF, |s| s.sel_start)
     }
     /// `lv_label_get_text_selection_end()`.
+    #[must_use]
     pub fn text_selection_end(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(LABEL_TEXT_SELECTION_OFF, |s| s.sel_end)
     }
@@ -373,15 +382,18 @@ impl Label {
         mark_need_refr_text(ui, self.0);
     }
     /// `lv_label_get_letter_pos()`; coordinates are relative to the content area.
+    #[must_use]
     pub fn letter_pos(self, ui: &Ui, character: u32) -> Point {
         letter_pos(ui, self.0, character)
     }
     /// `lv_label_get_letter_on()`. `bidi` processes the line with BiDi
     /// first (ignored without `LV_USE_BIDI`).
+    #[must_use]
     pub fn letter_on(self, ui: &Ui, position: Point, bidi: bool) -> u32 {
         letter_on(ui, self.0, position, bidi)
     }
     /// `lv_label_is_char_under_pos()`.
+    #[must_use]
     pub fn is_char_under_pos(self, ui: &Ui, position: Point) -> bool {
         char_under_pos(ui, self.0, position)
     }

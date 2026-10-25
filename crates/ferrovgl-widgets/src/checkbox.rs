@@ -53,7 +53,7 @@ pub static CHECKBOX_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable checkbox handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Checkbox(Obj);
 
 impl Checkbox {
@@ -67,11 +67,13 @@ impl Checkbox {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the checkbox class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         check_obj(ui, obj).then_some(Self(obj))
     }
@@ -102,6 +104,7 @@ impl Checkbox {
     }
 
     /// `lv_checkbox_get_text()`. A missing text (`NULL`) is returned as `""`.
+    #[must_use]
     pub fn text(self, ui: &Ui) -> &str {
         state(ui, self.0).and_then(|cb| cb.txt.as_deref()).unwrap_or("")
     }

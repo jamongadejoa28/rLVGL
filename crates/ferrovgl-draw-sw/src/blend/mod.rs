@@ -9,6 +9,9 @@
 //! alpha-aware ARGB8888 kernel, which is guarded by `ARGB8888` only. Only
 //! the rgb888 kernel takes a `dest_px_size`.
 
+// Hidden: byte <-> word views used by the kernels (and exercised directly by
+// the Miri job); not part of the stable API.
+#[doc(hidden)]
 pub mod words;
 
 #[cfg(feature = "cf-a8")]
@@ -136,6 +139,71 @@ pub struct BlendImageDsc<'a> {
     pub relative_area: Area,
     /// `src_area`
     pub src_area: Area,
+}
+
+/// `Debug` stand-in for a pixel or mask buffer: its length, not its bytes
+/// (a full layer would print millions of numbers), like `BufStorage`.
+pub(crate) struct ByteLen(pub(crate) usize);
+
+impl core::fmt::Debug for ByteLen {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "<{} bytes>", self.0)
+    }
+}
+
+impl core::fmt::Debug for BlendDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendDsc")
+            .field("blend_area", &self.blend_area)
+            .field("src_buf", &self.src_buf.map(|b| ByteLen(b.len())))
+            .field("src_stride", &self.src_stride)
+            .field("src_color_format", &self.src_color_format)
+            .field("src_area", &self.src_area)
+            .field("opa", &self.opa)
+            .field("color", &self.color)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_res", &self.mask_res)
+            .field("mask_area", &self.mask_area)
+            .field("mask_stride", &self.mask_stride)
+            .field("blend_mode", &self.blend_mode)
+            .finish()
+    }
+}
+
+impl core::fmt::Debug for BlendFillDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendFillDsc")
+            .field("dest_buf", &ByteLen(self.dest_buf.len()))
+            .field("dest_w", &self.dest_w)
+            .field("dest_h", &self.dest_h)
+            .field("dest_stride", &self.dest_stride)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_stride", &self.mask_stride)
+            .field("color", &self.color)
+            .field("opa", &self.opa)
+            .field("relative_area", &self.relative_area)
+            .finish()
+    }
+}
+
+impl core::fmt::Debug for BlendImageDsc<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BlendImageDsc")
+            .field("dest_buf", &ByteLen(self.dest_buf.len()))
+            .field("dest_w", &self.dest_w)
+            .field("dest_h", &self.dest_h)
+            .field("dest_stride", &self.dest_stride)
+            .field("mask_buf", &self.mask_buf.map(|b| ByteLen(b.len())))
+            .field("mask_stride", &self.mask_stride)
+            .field("src_buf", &ByteLen(self.src_buf.len()))
+            .field("src_stride", &self.src_stride)
+            .field("src_color_format", &self.src_color_format)
+            .field("opa", &self.opa)
+            .field("blend_mode", &self.blend_mode)
+            .field("relative_area", &self.relative_area)
+            .field("src_area", &self.src_area)
+            .finish()
+    }
 }
 
 /// `lv_draw_sw_blend()`: blend `dsc` into the buffer of `layer`
@@ -405,18 +473,21 @@ fn blend_image(layer_cf: ColorFormat, image_dsc: &mut BlendImageDsc<'_>) {
 
 /// `lv_draw_sw_get_blend_handler()`: the custom handler registered for
 /// `dest_cf`, if any.
+#[must_use]
 pub fn get_blend_handler(handlers: &[CustomBlendHandler], dest_cf: ColorFormat) -> Option<BlendHandler> {
     handlers.iter().find(|h| h.dest_cf == dest_cf).map(|h| h.handler)
 }
 
 /// `LV_COLOR_MIX_16_PREPARE(c)`
 #[inline]
+#[must_use]
 pub const fn color_mix_16_prepare(c: u16) -> u32 {
     ((c as u32) | ((c as u32) << 16)) & 0x07E0_F81F
 }
 
 /// `lv_color_16_16_mix_inlined()`
 #[inline]
+#[must_use]
 pub const fn color_16_16_mix(c1: u16, c2: u16, mix: u8) -> u16 {
     if mix == 255 {
         return c1;
@@ -438,6 +509,7 @@ pub const fn color_16_16_mix(c1: u16, c2: u16, mix: u8) -> u16 {
 /// foreground ([`color_mix_16_prepare`]) into an RGB565 background.
 /// `mix` must be 1..254, the callers handle 0 and 255 themselves.
 #[inline]
+#[must_use]
 pub const fn color_mix_16_to_16_prepared(fg_prep: u32, bg: u16, mix: u8) -> u16 {
     let bg_prep = color_mix_16_prepare(bg);
     let mix5 = ((mix as u32) + 4) >> 3;
@@ -448,6 +520,7 @@ pub const fn color_mix_16_to_16_prepared(fg_prep: u32, bg: u16, mix: u8) -> u16 
 /// `lv_color32_unpremultiply()`: undo the alpha scaling of a premultiplied
 /// pixel, giving back straight channels.
 #[inline]
+#[must_use]
 pub const fn color32_unpremultiply(mut c: Color32) -> Color32 {
     if c.alpha == 0 {
         c.red = 0;
@@ -468,6 +541,7 @@ pub const fn color32_unpremultiply(mut c: Color32) -> Color32 {
 /// `lv_color32_lumi_of()`: luminance of an image pixel for the grayscale and
 /// indexed outputs; a premultiplied source is unscaled first.
 #[inline]
+#[must_use]
 pub const fn color32_lumi_of(c: Color32, premultiplied: bool) -> u8 {
     if !premultiplied || c.alpha == 0 || c.alpha == OPA_COVER {
         return c.luminance();
@@ -482,6 +556,7 @@ pub const fn color32_lumi_of(c: Color32, premultiplied: bool) -> u8 {
 
 /// `LV_COLOR_24_TO_16(c)`: `c` is `[b, g, r]`.
 #[inline]
+#[must_use]
 pub const fn color_24_to_16(c: [u8; 3]) -> u16 {
     (((c[2] & 0xF8) as u16) << 8) + (((c[1] & 0xFC) as u16) << 3) + (((c[0] & 0xF8) as u16) >> 3)
 }

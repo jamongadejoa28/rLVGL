@@ -143,6 +143,7 @@ impl LabelDsc {
     ///
     /// `font` is `LV_FONT_DEFAULT` upstream; it starts as `None` here (see
     /// the module docs).
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -224,6 +225,7 @@ impl LetterDsc {
     ///
     /// `font` is `LV_FONT_DEFAULT` upstream; it starts as `None` here (see
     /// the module docs).
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -258,6 +260,7 @@ impl Default for LetterDsc {
 /// set it after fetching the bitmap lazily, exactly like
 /// `lv_draw_sw_letter.c` does.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub enum GlyphData {
     /// `NULL`: nothing to draw (placeholder or missing glyph).
     #[default]
@@ -273,6 +276,7 @@ pub enum GlyphData {
 }
 
 /// `lv_draw_glyph_dsc_t`: per-glyph data handed to the renderer callback.
+#[derive(Debug)]
 pub struct DrawGlyphDsc {
     /// `glyph_data`: the rendered glyph, see [`GlyphData`].
     pub glyph_data: GlyphData,
@@ -310,6 +314,7 @@ pub struct DrawGlyphDsc {
 
 impl DrawGlyphDsc {
     /// `lv_draw_glyph_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             glyph_data: GlyphData::None,
@@ -1195,6 +1200,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_label_dsc()`
+    #[must_use]
     pub fn task_get_label_dsc(&mut self, task: DrawTaskRef) -> Option<&mut LabelDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Label {

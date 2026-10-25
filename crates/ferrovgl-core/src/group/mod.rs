@@ -13,8 +13,8 @@ use crate::misc::event::{EventCode, EventParam, LvResult};
 use crate::misc::style::State;
 
 /// Handle of a group (`lv_group_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GroupId(pub ArenaKey);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GroupId(#[doc(hidden)] pub ArenaKey);
 
 /// `lv_key_t`: key codes understood by widgets. Any other `u32` is a
 /// character.
@@ -87,6 +87,31 @@ pub struct GroupData {
     removing: Vec<Obj>,
 }
 
+impl core::fmt::Debug for GroupData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("GroupData")
+            .field("objs", &self.objs)
+            .field("focus", &self.focus)
+            .field(
+                "focus_cb",
+                &self.focus_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field(
+                "edge_cb",
+                &self.edge_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field("user_data", &self.user_data)
+            .field("frozen", &self.frozen)
+            .field("editing", &self.editing)
+            .field("refocus_policy", &self.refocus_policy)
+            .field("wrap", &self.wrap)
+            .field("deleting", &self.deleting)
+            .field("clearing", &self.clearing)
+            .field("removing", &self.removing)
+            .finish()
+    }
+}
+
 impl Ui {
     /// `lv_group_create()`
     pub fn group_create(&mut self) -> GroupId {
@@ -149,6 +174,7 @@ impl Ui {
     }
 
     /// `lv_group_get_default()`
+    #[must_use]
     pub fn group_get_default(&self) -> Option<GroupId> {
         self.group_default
     }
@@ -394,6 +420,7 @@ impl Ui {
     }
 
     /// `lv_group_get_focused()`
+    #[must_use]
     pub fn group_get_focused(&self, group: GroupId) -> Option<Obj> {
         let g = self.group(group)?;
         g.objs
@@ -403,41 +430,49 @@ impl Ui {
     }
 
     /// `lv_group_get_focus_cb()`
+    #[must_use]
     pub fn group_get_focus_cb(&self, group: GroupId) -> Option<GroupFocusCallback> {
         self.group(group)?.focus_cb.clone()
     }
 
     /// `lv_group_get_edge_cb()`
+    #[must_use]
     pub fn group_get_edge_cb(&self, group: GroupId) -> Option<GroupEdgeCallback> {
         self.group(group)?.edge_cb.clone()
     }
 
     /// `lv_group_get_editing()`
+    #[must_use]
     pub fn group_get_editing(&self, group: GroupId) -> bool {
         self.group(group).is_some_and(|g| g.editing)
     }
 
     /// `lv_group_get_wrap()`
+    #[must_use]
     pub fn group_get_wrap(&self, group: GroupId) -> bool {
         self.group(group).is_some_and(|g| g.wrap)
     }
 
     /// `lv_group_get_obj_count()`
+    #[must_use]
     pub fn group_get_obj_count(&self, group: GroupId) -> u32 {
         self.group(group).map_or(0, |g| g.objs.len() as u32)
     }
 
     /// `lv_group_get_obj_by_index()`
+    #[must_use]
     pub fn group_get_obj_by_index(&self, group: GroupId, index: u32) -> Option<Obj> {
         self.group(group)?.objs.get(index as usize).copied()
     }
 
     /// `lv_group_get_count()`
+    #[must_use]
     pub fn group_get_count(&self) -> u32 {
         self.groups.len() as u32
     }
 
     /// `lv_group_by_index()`
+    #[must_use]
     pub fn group_by_index(&self, index: u32) -> Option<GroupId> {
         self.group_order.iter().rev().nth(index as usize).copied()
     }
@@ -450,18 +485,21 @@ impl Ui {
     }
 
     /// `lv_group_get_user_data()`
+    #[must_use]
     pub fn group_get_user_data(&self, group: GroupId) -> Option<Rc<dyn Any>> {
         self.group(group)?.user_data.clone()
     }
 
     /// Borrow a group.
     #[inline]
+    #[must_use]
     pub fn group(&self, group: GroupId) -> Option<&GroupData> {
         self.groups.get(group.0)
     }
 
     /// Mutably borrow a group.
     #[inline]
+    #[must_use]
     pub fn group_mut(&mut self, group: GroupId) -> Option<&mut GroupData> {
         self.groups.get_mut(group.0)
     }

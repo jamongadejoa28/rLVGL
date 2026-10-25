@@ -146,6 +146,15 @@ pub enum AsyncJob {
     Call(Rc<dyn Fn(&mut Ui)>),
 }
 
+impl core::fmt::Debug for AsyncJob {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::DeleteObj(obj) => f.debug_tuple("DeleteObj").field(obj).finish(),
+            Self::Call(_) => f.debug_tuple("Call").field(&crate::misc::OpaqueCallback).finish(),
+        }
+    }
+}
+
 impl AsyncJob {
     /// The `info->cb == async_xcb && info->user_data == user_data` match of
     /// `lv_async_call_cancel()`: a closure is its own `cb` + `user_data`,
@@ -176,87 +185,147 @@ struct AsyncInfo {
 pub struct Ui {
     config: UiConfig,
     /// All objects.
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::obj`] / [`Ui::obj_mut`].
+    #[doc(hidden)]
     pub objs: Arena<ObjData>,
     /// `disp_ll`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::display`] /
+    /// [`Ui::display_mut`] and [`Ui::display_get_next`].
+    #[doc(hidden)]
     pub displays: Arena<DisplayData>,
     /// Order of `disp_ll` (head first; `lv_display_create` is `ins_head`).
-    pub display_order: Vec<DisplayId>,
+    pub(crate) display_order: Vec<DisplayId>,
     /// `disp_default`
-    pub disp_default: Option<DisplayId>,
+    pub(crate) disp_default: Option<DisplayId>,
     /// `disp_refresh`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::refr_get_disp_refreshing`].
+    #[doc(hidden)]
     pub disp_refresh: Option<DisplayId>,
     /// `indev_ll`
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::indev`] / [`Ui::indev_mut`].
+    #[doc(hidden)]
     pub indevs: Arena<IndevData>,
     /// Order of `indev_ll` (head first; `lv_indev_create` is `ins_head`).
-    pub indev_order: Vec<IndevId>,
+    pub(crate) indev_order: Vec<IndevId>,
     /// `indev_active`
-    pub indev_active: Option<IndevId>,
+    pub(crate) indev_active: Option<IndevId>,
     /// `indev_obj_active`
-    pub indev_obj_active: Option<Obj>,
+    pub(crate) indev_obj_active: Option<Obj>,
     /// `group_ll`
-    pub groups: Arena<GroupData>,
+    pub(crate) groups: Arena<GroupData>,
     /// Order of `group_ll` (head first; `lv_group_create` is `ins_head`).
-    pub group_order: Vec<GroupId>,
+    pub(crate) group_order: Vec<GroupId>,
     /// `group_default`
-    pub group_default: Option<GroupId>,
+    pub(crate) group_default: Option<GroupId>,
     /// Themes (`lv_theme_create()`).
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::theme`] / [`Ui::theme_mut`].
+    #[doc(hidden)]
     pub themes: Arena<Theme>,
     /// `timer_state`
-    pub timers: TimerState,
+    pub(crate) timers: TimerState,
     /// `anim_state`
-    pub anims: AnimState,
+    pub(crate) anims: AnimState,
     /// `tick_state`
-    pub tick: TickState,
+    pub(crate) tick: TickState,
     /// Shared styles (`lv_style_t` the application keeps and shares).
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::style`] / [`Ui::style_mut`].
+    #[doc(hidden)]
     pub styles: Arena<Style>,
     /// Event descriptors of every event list.
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::obj_get_event_dsc`]
+    /// and the other `*_get_event_dsc` methods.
+    #[doc(hidden)]
     pub event_dscs: Arena<EventDsc>,
     /// `event_header`: the stack of in-flight events (`lv_event_t.prev` chain).
-    pub event_stack: Vec<EventFrame>,
+    pub(crate) event_stack: Vec<EventFrame>,
     /// `event_last_register_id` (starts at `LV_EVENT_LAST`).
-    pub event_last_register_id: u32,
+    pub(crate) event_last_register_id: u32,
     /// `style_refresh`
-    pub style_refresh: bool,
+    pub(crate) style_refresh: bool,
     /// `style_trans_ll`: running style transitions (`trans_t` nodes), addressed
     /// by [`StyleTransId`] from `AnimTarget::StyleTrans`.
-    pub style_trans: Arena<StyleTrans>,
+    pub(crate) style_trans: Arena<StyleTrans>,
     /// Order of `style_trans_ll` (head first; `ins_head`).
-    pub style_trans_order: Vec<StyleTransId>,
+    pub(crate) style_trans_order: Vec<StyleTransId>,
     /// `style_custom_prop_flag_lookup_table`
-    pub style_custom_prop_flags: Vec<u8>,
+    pub(crate) style_custom_prop_flags: Vec<u8>,
     /// `style_last_custom_prop_id`
-    pub style_last_custom_prop_id: u32,
+    pub(crate) style_last_custom_prop_id: u32,
     /// `blur_obj_cnt`
-    pub blur_obj_cnt: u32,
+    pub(crate) blur_obj_cnt: u32,
     /// `layout_list`
-    pub layouts: Vec<LayoutDsc>,
+    pub(crate) layouts: Vec<LayoutDsc>,
     /// `layout_update_mutex`
-    pub layout_update_mutex: bool,
+    pub(crate) layout_update_mutex: bool,
     /// `draw_info` (layers, tasks, dispatch state).
     pub draw: DrawCtx,
     /// `draw_info.unit_head`: registered draw units in order. Kept beside
     /// [`Ui::draw`] (not inside it) so `unit.dispatch(&mut ui.draw, layer)`
     /// borrows disjoint fields.
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use [`Ui::draw_create_unit`] / [`Ui::draw_get_unit_count`].
+    #[doc(hidden)]
     pub draw_units: Vec<Box<dyn DrawUnit>>,
     /// `math_rand_seed`
-    pub rand: Rand,
+    pub(crate) rand: Rand,
     /// `subject_ll` and the observers of every subject (`LV_USE_OBSERVER`).
+    ///
+    /// Hidden: an implementation detail that other ferrovgl crates and tests
+    /// reach into; it may change in any release. Use the `subject_*` / `observer_*` methods.
+    #[doc(hidden)]
     #[cfg(feature = "observer")]
     pub observer: crate::core::observer::ObserverState,
     /// `objid_array` (+ `objid_count`, its length): the per-class object
     /// counters of the builtin object id generator (`LV_USE_OBJ_ID_BUILTIN`).
     #[cfg(feature = "obj-id")]
-    pub objid_array: Vec<crate::core::obj_id::ClassInfo>,
+    pub(crate) objid_array: Vec<crate::core::obj_id::ClassInfo>,
     /// File-scope `static` variables of widget modules (for example
     /// `ta_insert_replace` of `lv_textarea.c`), one value per type. See
     /// [`Ui::widget_static_mut`].
-    pub widget_statics: Vec<(core::any::TypeId, Box<dyn Any>)>,
+    pub(crate) widget_statics: Vec<(core::any::TypeId, Box<dyn Any>)>,
     /// Application state reachable from callbacks (`lv_global_t::user_data`).
-    pub app: Option<Box<dyn Any>>,
+    pub(crate) app: Option<Box<dyn Any>>,
     /// `inited`
-    pub inited: bool,
+    pub(crate) inited: bool,
     /// `deinit_in_progress`
-    pub deinit_in_progress: bool,
+    pub(crate) deinit_in_progress: bool,
+}
+
+/// A summary: the configuration, how many objects, displays, input devices,
+/// groups, timers, animations and shared styles the context holds, and the
+/// registered draw units. Use the arenas for the full contents.
+impl core::fmt::Debug for Ui {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Ui")
+            .field("config", &self.config)
+            .field("objs", &self.objs.len())
+            .field("displays", &self.displays.len())
+            .field("disp_default", &self.disp_default)
+            .field("indevs", &self.indevs.len())
+            .field("groups", &self.groups.len())
+            .field("group_default", &self.group_default)
+            .field("timers", &self.timers.timers.len())
+            .field("anims", &self.anims.anims.len())
+            .field("styles", &self.styles.len())
+            .field("draw_units", &self.draw_units)
+            .field("inited", &self.inited)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Ui {
@@ -266,6 +335,7 @@ impl Ui {
     /// The struct literal is `lv_global_init()` (zeroed state, `style_refresh`,
     /// the register id counters, `lv_rand_set_seed(0x1234ABCD)`); the
     /// subsystem initialisers then run in `lv_init()` order.
+    #[must_use]
     pub fn new(config: UiConfig) -> Self {
         /*Initialize members of static variable lv_global */
         let mut ui = Self {
@@ -338,12 +408,14 @@ impl Ui {
 
     /// The configuration this context was created with.
     #[inline]
+    #[must_use]
     pub fn config(&self) -> &UiConfig {
         &self.config
     }
 
     /// `lv_is_initialized()`
     #[inline]
+    #[must_use]
     pub fn is_initialized(&self) -> bool {
         self.inited
     }
@@ -443,6 +515,7 @@ impl Ui {
     /// created with `T::default()` (C's zero-initialized static) on first
     /// use. Like a C `static`, it lives as long as this `Ui` and is not reset
     /// by [`Ui::deinit`].
+    #[must_use]
     pub fn widget_static_mut<T: Any + Default>(&mut self) -> &mut T {
         let id = core::any::TypeId::of::<T>();
         let index = match self.widget_statics.iter().position(|(t, _)| *t == id) {
@@ -460,6 +533,7 @@ impl Ui {
 
     /// The file-scope `static` variable of type `T` of a widget module, or
     /// `None` if it was never written (C: still zero-initialized).
+    #[must_use]
     pub fn widget_static<T: Any>(&self) -> Option<&T> {
         let id = core::any::TypeId::of::<T>();
         self.widget_statics
@@ -474,11 +548,13 @@ impl Ui {
     }
 
     /// Borrow the application state as `T`.
+    #[must_use]
     pub fn app<T: Any>(&self) -> Option<&T> {
         self.app.as_deref()?.downcast_ref::<T>()
     }
 
     /// Mutably borrow the application state as `T`.
+    #[must_use]
     pub fn app_mut<T: Any>(&mut self) -> Option<&mut T> {
         self.app.as_deref_mut()?.downcast_mut::<T>()
     }
@@ -565,6 +641,7 @@ impl Ui {
 
     /// `lv_rand()`
     #[inline]
+    #[must_use]
     pub fn rand(&mut self, min: u32, max: u32) -> u32 {
         self.rand.next(min, max)
     }
@@ -577,6 +654,7 @@ impl Ui {
 
     /// `lv_style_register_prop()`: register a custom property and return its
     /// id (`>= StyleProp::NUM_BUILT_IN`), or `StyleProp::INV` on failure.
+    #[must_use]
     pub fn style_register_prop(&mut self, flag: u8) -> StyleProp {
         crate::misc::style::register_prop(
             &mut self.style_custom_prop_flags,
@@ -586,6 +664,7 @@ impl Ui {
     }
 
     /// `lv_style_get_num_custom_props()`
+    #[must_use]
     pub fn style_get_num_custom_props(&self) -> u32 {
         crate::misc::style::get_num_custom_props(self.style_last_custom_prop_id)
     }
@@ -593,6 +672,7 @@ impl Ui {
     /// `lv_style_prop_lookup_flags()` including custom properties: the same
     /// `ANY` / `INV` early returns as [`crate::misc::style::lookup_flags`],
     /// then the built-in table, then `style_custom_prop_flags`.
+    #[must_use]
     pub fn style_prop_lookup_flags(&self, prop: StyleProp) -> u8 {
         crate::misc::style::lookup_flags_with_custom(prop, &self.style_custom_prop_flags)
     }
@@ -612,12 +692,14 @@ impl Ui {
 
     /// `lv_draw_get_unit_count()`: `unit_cnt`.
     #[inline]
-    pub fn draw_unit_count(&self) -> u32 {
+    #[must_use]
+    pub fn draw_get_unit_count(&self) -> u32 {
         self.draw.unit_cnt
     }
 
     /// Resolve an object id to a live handle (`None` if deleted).
     #[inline]
+    #[must_use]
     pub fn resolve(&self, id: ObjId) -> Option<Obj> {
         if self.objs.contains(id.0) {
             Some(Obj(id))
@@ -681,7 +763,7 @@ mod tests {
         assert_eq!(ui.style_last_custom_prop_id, 177);
         assert!(ui.event_stack.is_empty());
         assert!(ui.style_trans.is_empty());
-        assert_eq!(ui.draw_unit_count(), 0);
+        assert_eq!(ui.draw_get_unit_count(), 0);
     }
 
     /// Records the async callbacks in the order they ran.
@@ -911,7 +993,7 @@ mod tests {
         }));
         // new_unit->idx = ++unit_cnt
         assert_eq!((a, b), (1, 2));
-        assert_eq!(ui.draw_unit_count(), 2);
+        assert_eq!(ui.draw_get_unit_count(), 2);
         assert_eq!(ui.draw.unit_cnt, 2);
         /*new_unit->next = unit_head; unit_head = new_unit*/
         let names: Vec<_> = ui.draw_units.iter().map(|u| u.name()).collect();
@@ -928,7 +1010,7 @@ mod tests {
         let mut ui = ui();
         let log: Log = Rc::default();
         ui.async_call(logger(&log, 1));
-        ui.style_register_prop(0x5);
+        let _ = ui.style_register_prop(0x5);
         ui.theme_create_for_test();
         ui.deinit();
         assert!(!ui.is_initialized());
@@ -954,7 +1036,7 @@ mod tests {
     impl Ui {
         /// Insert a theme without `lv_theme_create()` (ported elsewhere).
         fn theme_create_for_test(&mut self) {
-            self.themes.insert(Theme::new());
+            let _ = self.themes.insert(Theme::new());
         }
     }
 

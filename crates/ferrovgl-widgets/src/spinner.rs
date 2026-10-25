@@ -67,7 +67,7 @@ fn state_mut(ui: &mut Ui, obj: Obj) -> Option<&mut SpinnerState> {
 }
 
 /// A copyable spinner handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Spinner(Obj);
 
 impl Spinner {
@@ -81,11 +81,13 @@ impl Spinner {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the spinner class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &SPINNER_CLASS)).then_some(Self(obj))
     }
@@ -113,11 +115,13 @@ impl Spinner {
     }
 
     /// `lv_spinner_get_anim_duration()`
+    #[must_use]
     pub fn anim_duration(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |spinner| spinner.duration)
     }
 
     /// `lv_spinner_get_arc_sweep()`
+    #[must_use]
     pub fn arc_sweep(self, ui: &Ui) -> u32 {
         state(ui, self.0).map_or(0, |spinner| spinner.angle)
     }

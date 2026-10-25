@@ -1348,7 +1348,8 @@ fn blend_non_normal_pixel(
             res.blue = (db - sb).unsigned_abs() as u8;
         }
         /* LV_LOG_WARN("Not supported blend mode") */
-        BlendMode::Normal => return,
+        /*`default:`, which is also where `BlendMode::Normal` lands*/
+        _ => return,
     }
     res.alpha = src.alpha;
     set_px(dest, i, color_32_32_mix(res, d, cache));

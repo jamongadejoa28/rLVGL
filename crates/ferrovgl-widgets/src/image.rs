@@ -24,8 +24,9 @@ use ferrovgl_core::misc::types::coord;
 use ferrovgl_core::{Align, Area, ColorFormat, Event, EventCode, LvResult, Obj, ObjClass, Part, Point, Ui};
 
 /// `lv_image_align_t`, preserving upstream's numeric values.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ImageAlign {
     /// Default alignment (same as top left).
     #[default]
@@ -167,7 +168,7 @@ pub static IMAGE_CLASS: ObjClass = ObjClass {
 };
 
 /// Copyable image handle. Its source and widget state belong to the [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Image(Obj);
 
 impl Image {
@@ -180,10 +181,12 @@ impl Image {
         Self(obj)
     }
     /// The base object used for positioning, styles and events.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
     /// Check that an existing object contains image widget state.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         state(ui, obj).map(|_| Self(obj))
     }
@@ -234,6 +237,7 @@ impl Image {
         }
     }
     /// `lv_image_get_src()`; the returned clone keeps owned sources alive.
+    #[must_use]
     pub fn src(self, ui: &Ui) -> ImageSrc {
         state(ui, self.0).map_or(ImageSrc::None, |s| s.src.clone())
     }
@@ -252,10 +256,12 @@ impl Image {
         }
     }
     /// `lv_image_get_offset_x()`.
+    #[must_use]
     pub fn offset_x(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.offset.x)
     }
     /// `lv_image_get_offset_y()`.
+    #[must_use]
     pub fn offset_y(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.offset.y)
     }
@@ -274,6 +280,7 @@ impl Image {
         }
     }
     /// `lv_image_get_rotation()`.
+    #[must_use]
     pub fn rotation(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.rotation)
     }
@@ -304,6 +311,7 @@ impl Image {
         }
     }
     /// `lv_image_get_pivot()`: resolve percentages against source width/height - 1.
+    #[must_use]
     pub fn pivot(self, ui: &Ui) -> Point {
         state(ui, self.0).map_or(Point::new(0, 0), ImageState::pivot_px)
     }
@@ -336,14 +344,17 @@ impl Image {
         }
     }
     /// `lv_image_get_scale()`, which returns the X scale.
+    #[must_use]
     pub fn scale(self, ui: &Ui) -> i32 {
         self.scale_x(ui)
     }
     /// `lv_image_get_scale_x()`.
+    #[must_use]
     pub fn scale_x(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.scale_x as i32)
     }
     /// `lv_image_get_scale_y()`.
+    #[must_use]
     pub fn scale_y(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |s| s.scale_y as i32)
     }
@@ -357,6 +368,7 @@ impl Image {
         }
     }
     /// `lv_image_get_blend_mode()`.
+    #[must_use]
     pub fn blend_mode(self, ui: &Ui) -> BlendMode {
         state(ui, self.0).map_or(BlendMode::Normal, |s| s.blend_mode)
     }
@@ -370,6 +382,7 @@ impl Image {
         }
     }
     /// `lv_image_get_antialias()`.
+    #[must_use]
     pub fn antialias(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(|s| s.antialias)
     }
@@ -395,6 +408,7 @@ impl Image {
         }
     }
     /// `lv_image_get_inner_align()`.
+    #[must_use]
     pub fn inner_align(self, ui: &Ui) -> ImageAlign {
         state(ui, self.0).map_or(ImageAlign::Default, |s| s.align)
     }
@@ -406,25 +420,30 @@ impl Image {
         }
     }
     /// `lv_image_get_bitmap_map_src()`.
+    #[must_use]
     pub fn bitmap_map_src(self, ui: &Ui) -> ImageSrc {
         state(ui, self.0).map_or(ImageSrc::None, |s| s.bitmap_mask_src.clone())
     }
     /// `lv_image_get_src_width()`: refresh automatic alignment and return source width.
+    #[must_use]
     pub fn src_width(self, ui: &mut Ui) -> i32 {
         update_align(ui, self.0);
         state(ui, self.0).map_or(0, |s| s.w)
     }
     /// `lv_image_get_src_height()`.
+    #[must_use]
     pub fn src_height(self, ui: &mut Ui) -> i32 {
         update_align(ui, self.0);
         state(ui, self.0).map_or(0, |s| s.h)
     }
     /// `lv_image_get_transformed_width()`.
+    #[must_use]
     pub fn transformed_width(self, ui: &mut Ui) -> i32 {
         update_align(ui, self.0);
         state(ui, self.0).map_or(0, |s| s.transformed_area(s.w, s.h).width())
     }
     /// `lv_image_get_transformed_height()`.
+    #[must_use]
     pub fn transformed_height(self, ui: &mut Ui) -> i32 {
         update_align(ui, self.0);
         state(ui, self.0).map_or(0, |s| s.transformed_area(s.w, s.h).height())

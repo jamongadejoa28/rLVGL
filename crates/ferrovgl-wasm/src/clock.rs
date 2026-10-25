@@ -15,6 +15,7 @@ pub struct FrameClock {
 
 impl FrameClock {
     /// A clock that starts at the first [`Self::advance`] call.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             last_ms: None,
@@ -48,6 +49,7 @@ impl FrameClock {
     }
 
     /// Total milliseconds handed out by [`Self::advance`].
+    #[must_use]
     pub fn total_ms(&self) -> u64 {
         self.total_ms
     }

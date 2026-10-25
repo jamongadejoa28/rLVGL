@@ -64,6 +64,22 @@ against upstream's reference images.
   embedded-hal adapters (no API yet).
 - **`ferrovgl`**: umbrella crate re-exporting the above behind the `draw-sw`,
   `fonts`, `widgets` (default), `sdl`, `embedded` and `std` features.
+- **API conventions** (policy: [docs/src/api-guidelines.md](docs/src/api-guidelines.md)):
+  the public API follows the Rust API Guidelines where they do not conflict
+  with LVGL's names and numeric values. `#[must_use]` marks pure getters
+  and queries, value constructors, reference accessors, registrations whose
+  returned id is the only handle, and results whose neglect is a bug;
+  object, widget, timer and animation creators are not marked.
+  `#[non_exhaustive]` marks the enums that grow with LVGL, the data enums
+  mirroring them, the error enums and the library-owned structs (`ObjData`,
+  `DisplayData`, `Layer`, `Event`, `DrawBuf`, `IndevReadData`, `GlyphDsc`,
+  ...), so these can grow in 0.1.x; structs built with struct literals
+  (`UiConfig`, the draw descriptors, `ObjClass`, `Theme`, `Anim`) stay
+  exhaustive. Every public type implements `Debug`, every handle `Ord`,
+  error types `Display` and `core::error::Error`. Items that only other
+  ferrovgl crates and the test harness use are `#[doc(hidden)]` and not
+  covered by semver. `ferrovgl::prelude` exports the context, the handles,
+  events, styles, layout and animation types and the coordinate helpers.
 
 ### Verified
 
@@ -105,6 +121,9 @@ against upstream's reference images.
   textures or custom draw-buffer allocator/cache handlers.
 - Some packed ARGB formats accepted by snapshots are not yet rendered by the
   software renderer.
+- The SDL and browser backends report errors as `String`
+  (`SdlDisplay::new`, `Backend::new`, `Backend::frame`, ...); typed errors
+  replace them in 0.2.0.
 - The SDL backend has a fixed-size single buffer (no resizing, rotation,
   offsets or other pixel formats); the browser backend does not resize the
   display or support rotation/offsets.

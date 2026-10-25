@@ -20,12 +20,14 @@ pub struct Point {
 impl Point {
     /// `lv_point_set()`
     #[inline]
+    #[must_use]
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
 
     /// `lv_point_to_precise()`
     #[inline]
+    #[must_use]
     pub fn to_precise(self) -> PointPrecise {
         PointPrecise {
             x: self.x as ValuePrecise,
@@ -59,6 +61,7 @@ pub struct PointPrecise {
 impl PointPrecise {
     /// `lv_point_precise_set()`
     #[inline]
+    #[must_use]
     pub const fn new(x: ValuePrecise, y: ValuePrecise) -> Self {
         Self { x, y }
     }
@@ -66,6 +69,7 @@ impl PointPrecise {
     /// `lv_point_from_precise()`: truncate towards zero like a C cast.
     #[inline]
     #[allow(clippy::unnecessary_cast)] // `ValuePrecise` is `i32` without the `float` feature
+    #[must_use]
     pub fn to_point(self) -> Point {
         Point {
             x: self.x as i32,
@@ -168,12 +172,14 @@ impl Dir {
 impl Area {
     /// `lv_area_set()`
     #[inline]
+    #[must_use]
     pub const fn new(x1: i32, y1: i32, x2: i32, y2: i32) -> Self {
         Self { x1, y1, x2, y2 }
     }
 
     /// Area from a position and a size (`x2 = x + w - 1`).
     #[inline]
+    #[must_use]
     pub const fn from_size(x: i32, y: i32, w: i32, h: i32) -> Self {
         Self {
             x1: x,
@@ -191,12 +197,14 @@ impl Area {
 
     /// `lv_area_get_width()`
     #[inline]
+    #[must_use]
     pub const fn width(&self) -> i32 {
         self.x2 - self.x1 + 1
     }
 
     /// `lv_area_get_height()`
     #[inline]
+    #[must_use]
     pub const fn height(&self) -> i32 {
         self.y2 - self.y1 + 1
     }
@@ -225,6 +233,7 @@ impl Area {
 
     /// `lv_area_get_size()`: number of pixels.
     #[inline]
+    #[must_use]
     pub const fn size(&self) -> u32 {
         ((self.x2 - self.x1 + 1) as u32).wrapping_mul((self.y2 - self.y1 + 1) as u32)
     }
@@ -250,6 +259,7 @@ impl Area {
 
     /// `lv_area_intersect()`: the common part of two areas, or `None` if they
     /// do not overlap.
+    #[must_use]
     pub fn intersect(a1: &Area, a2: &Area) -> Option<Area> {
         let res = Area {
             x1: a1.x1.max(a2.x1),
@@ -265,6 +275,7 @@ impl Area {
     }
 
     /// `lv_area_join()`: the smallest area containing both.
+    #[must_use]
     pub fn join(a1: &Area, a2: &Area) -> Area {
         Area {
             x1: a1.x1.min(a2.x1),
@@ -277,6 +288,7 @@ impl Area {
     /// `lv_area_diff()`: the parts of `self` not covered by `remove`, as up to
     /// four areas. Returns `None` when the areas do not touch at all
     /// (upstream returns -1) and `Some(0)` when `self` is fully covered.
+    #[must_use]
     pub fn diff(&self, remove: &Area, res: &mut [Area; 4]) -> Option<usize> {
         if !self.is_on(remove) {
             return None;
@@ -340,6 +352,7 @@ impl Area {
     }
 
     /// `lv_area_is_point_on()`: is `p` inside, taking a corner `radius` into account.
+    #[must_use]
     pub fn is_point_on(&self, p: Point, radius: i32) -> bool {
         let is_on_rect = p.x >= self.x1 && p.x <= self.x2 && p.y >= self.y1 && p.y <= self.y2;
         if !is_on_rect {
@@ -394,11 +407,13 @@ impl Area {
 
     /// `lv_area_is_on()`: do the two areas overlap or touch?
     #[inline]
+    #[must_use]
     pub const fn is_on(&self, other: &Area) -> bool {
         self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
     }
 
     /// `lv_area_is_in()`: is `self` fully inside `holder` (whose corners may be rounded)?
+    #[must_use]
     pub fn is_in(&self, holder: &Area, radius: i32) -> bool {
         let is_in =
             self.x1 >= holder.x1 && self.y1 >= holder.y1 && self.x2 <= holder.x2 && self.y2 <= holder.y2;
@@ -415,6 +430,7 @@ impl Area {
     }
 
     /// `lv_area_is_out()`: is `self` fully outside `holder` (whose corners may be rounded)?
+    #[must_use]
     pub fn is_out(&self, holder: &Area, radius: i32) -> bool {
         if self.x2 < holder.x1 || self.y2 < holder.y1 || self.x1 > holder.x2 || self.y1 > holder.y2 {
             return true;
@@ -430,6 +446,7 @@ impl Area {
 
     /// `lv_area_is_equal()`
     #[inline]
+    #[must_use]
     pub const fn is_equal(&self, other: &Area) -> bool {
         self.x1 == other.x1 && self.x2 == other.x2 && self.y1 == other.y1 && self.y2 == other.y2
     }

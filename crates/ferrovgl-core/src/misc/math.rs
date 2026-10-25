@@ -14,6 +14,7 @@ pub const BEZIER_VAL_MAX: i32 = 1 << BEZIER_VAL_SHIFT;
 
 /// `LV_BEZIER_VAL_FLOAT(f)`: convert a float control value to fixed point.
 #[inline]
+#[must_use]
 pub const fn bezier_val_float(f: f32) -> i32 {
     (f * BEZIER_VAL_MAX as f32) as i32
 }
@@ -31,6 +32,7 @@ static SIN0_90_TABLE: [u16; 91] = [
 ];
 
 /// `lv_trigo_sin()`: sine of `angle` in degrees, scaled to [`TRIGO_SIN_MAX`].
+#[must_use]
 pub fn trigo_sin(angle: i16) -> i32 {
     let mut angle = angle as i32;
     while angle < 0 {
@@ -59,6 +61,7 @@ pub fn trigo_sin(angle: i16) -> i32 {
 
 /// `lv_trigo_cos()`
 #[inline]
+#[must_use]
 pub fn trigo_cos(angle: i16) -> i32 {
     trigo_sin(angle.wrapping_add(90))
 }
@@ -74,6 +77,7 @@ fn do_cubic_bezier(t: i32, a: i32, b: i32, c: i32) -> i32 {
 
 /// `lv_cubic_bezier()`: cubic Bézier easing with control points `(x1, y1)`,
 /// `(x2, y2)` in [`BEZIER_VAL_MAX`] fixed point. Returns `y` for the given `x`.
+#[must_use]
 pub fn cubic_bezier(x: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
     if !(0..=BEZIER_VAL_MAX).contains(&x1) || !(0..=BEZIER_VAL_MAX).contains(&x2) {
         crate::misc::check_arg_failed("cubic_bezier: control x out of range");
@@ -144,6 +148,7 @@ pub fn cubic_bezier(x: i32, x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
 
 /// `lv_bezier3()`: legacy wrapper, equivalent to `cubic_bezier(t, 341, u1, 683, u2)`.
 #[inline]
+#[must_use]
 pub fn bezier3(t: i32, _u0: i32, u1: i32, u2: i32, _u3: i32) -> i32 {
     cubic_bezier(t, 341, u1, 683, u2)
 }
@@ -161,6 +166,7 @@ pub struct SqrtRes {
 ///
 /// `mask` is the starting bit for the search, e.g. `0x8000` for a full 32-bit
 /// input or `0x800` when the input is known to be below `0x10000`.
+#[must_use]
 pub fn sqrt(x: u32, mask: u32) -> SqrtRes {
     let x = x << 8; // 4 bit precision: sqrt(256) = 16 = 4 bit
     let mut root: u32 = 0;
@@ -197,6 +203,7 @@ static SQQ_TABLE: [u8; 256] = [
 ];
 
 /// `lv_sqrt32()`: integer square root.
+#[must_use]
 pub fn sqrt32(x: u32) -> i32 {
     let t = |i: u32| SQQ_TABLE[i as usize] as i32;
     let mut xn: i32;
@@ -271,6 +278,7 @@ pub fn sqrt32(x: u32) -> i32 {
 ///
 /// Inputs should be within -1456..=1456 so the 16-bit multiply does not
 /// overflow (same constraint as upstream).
+#[must_use]
 pub fn atan2(x: i32, y: i32) -> u16 {
     let mut negflag: u8 = 0;
     let ux: u32 = if x < 0 {
@@ -337,6 +345,7 @@ pub fn atan2(x: i32, y: i32) -> u16 {
 }
 
 /// `lv_pow()`: integer power with wrapping multiplication.
+#[must_use]
 pub fn pow(base: i64, exp: i8) -> i64 {
     if exp < 0 {
         return match base {
@@ -366,6 +375,7 @@ pub fn pow(base: i64, exp: i8) -> i64 {
 }
 
 /// `lv_map()`: linearly map `x` from `[min_in, max_in]` to `[min_out, max_out]`, clamped.
+#[must_use]
 pub fn map(x: i32, min_in: i32, max_in: i32, min_out: i32, max_out: i32) -> i32 {
     if max_in == min_in {
         return min_out;
@@ -402,6 +412,7 @@ impl Default for Rand {
 
 impl Rand {
     /// Create a generator with the given seed (`lv_rand_set_seed`).
+    #[must_use]
     pub const fn new(seed: u32) -> Self {
         Self { seed }
     }
@@ -410,6 +421,7 @@ impl Rand {
         self.seed = seed;
     }
     /// `lv_rand()`: a pseudo-random number in `min..=max`.
+    #[must_use]
     pub fn next(&mut self, min: u32, max: u32) -> u32 {
         if min > max {
             crate::misc::check_arg_failed("rand: min > max");
@@ -426,12 +438,14 @@ impl Rand {
 
 /// `LV_UDIV255(x)`: fast division by 255 for values up to 0xFFFF.
 #[inline]
+#[must_use]
 pub const fn udiv255(x: u32) -> u32 {
     (x * 0x8081) >> 0x17
 }
 
 /// `LV_ALIGN_UP(x, align)`
 #[inline]
+#[must_use]
 pub const fn align_up(x: u32, align: u32) -> u32 {
     (x + (align - 1)) & !(align - 1)
 }
@@ -439,6 +453,7 @@ pub const fn align_up(x: u32, align: u32) -> u32 {
 /// `LV_ROUND_UP(x, round)`
 #[inline]
 #[allow(clippy::manual_div_ceil)] // keep the upstream expression
+#[must_use]
 pub const fn round_up(x: u32, round: u32) -> u32 {
     ((x + (round - 1)) / round) * round
 }

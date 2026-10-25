@@ -13,6 +13,7 @@ use ferrovgl_core::{DisplayId, Point, Ui};
 /// One browser input event, already mapped to display coordinates and
 /// LVGL keys (see [`crate::geometry`] and [`crate::keys`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum InputEvent {
     /// Primary button / touch / pen down at a display position
     /// (`SDL_MOUSEBUTTONDOWN` with `SDL_BUTTON_LEFT`).
@@ -88,7 +89,7 @@ impl IndevDriver for Driver {
 }
 
 /// The three input devices of a browser display.
-pub struct Inputs {
+pub(crate) struct Inputs {
     /// Pointer device (mouse, touch, pen).
     pub pointer: IndevId,
     /// Keyboard device.
@@ -100,8 +101,19 @@ pub struct Inputs {
     wheel: Rc<RefCell<Sample>>,
 }
 
+impl core::fmt::Debug for Inputs {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Inputs")
+            .field("pointer", &self.pointer)
+            .field("keypad", &self.keypad)
+            .field("encoder", &self.encoder)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Inputs {
     /// Creates the event-mode pointer, keypad and encoder devices on `display`.
+    #[must_use]
     pub fn new(ui: &mut Ui, display: DisplayId) -> Self {
         fn create(ui: &mut Ui, display: DisplayId, ty: IndevType) -> (IndevId, Rc<RefCell<Sample>>) {
             let sample = Rc::new(RefCell::new(Sample::default()));

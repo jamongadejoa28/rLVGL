@@ -296,7 +296,8 @@ fn draw_letter_image(
             Some(buf) => ImageSrc::DrawBuf(Rc::new(buf)),
             None => ImageSrc::None,
         },
-        GlyphData::None | GlyphData::StaticBitmap => ImageSrc::None,
+        /*`GlyphData::None`, `GlyphData::StaticBitmap`*/
+        _ => ImageSrc::None,
     };
 
     let mut img_dsc = DrawImageDsc::new();
@@ -370,20 +371,19 @@ pub(crate) mod tests {
             if !empty && letter != u32::from('A') {
                 return false;
             }
-            *out = GlyphDsc {
-                adv_w: 4,
-                box_w: if empty { 0 } else { 3 },
-                box_h: if empty { 0 } else { 4 },
-                ofs_x: 0,
-                ofs_y: 0,
-                format: if self.static_a8 {
-                    GlyphFormat::A8
-                } else {
-                    GlyphFormat::A4
-                },
-                stride: if self.static_a8 { 3 } else { 0 },
-                ..GlyphDsc::default()
+            let mut dsc = GlyphDsc::default();
+            dsc.adv_w = 4;
+            dsc.box_w = if empty { 0 } else { 3 };
+            dsc.box_h = if empty { 0 } else { 4 };
+            dsc.ofs_x = 0;
+            dsc.ofs_y = 0;
+            dsc.format = if self.static_a8 {
+                GlyphFormat::A8
+            } else {
+                GlyphFormat::A4
             };
+            dsc.stride = if self.static_a8 { 3 } else { 0 };
+            *out = dsc;
             true
         }
         fn glyph_bitmap_a8(&self, g: &GlyphDsc, out: &mut [u8], stride: usize) -> bool {

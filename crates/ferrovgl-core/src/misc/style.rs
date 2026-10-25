@@ -55,6 +55,7 @@ pub const GRAD_CENTER: i32 = coord::pct(50);
 /// `lv_blend_mode_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum BlendMode {
     /// `LV_BLEND_MODE_NORMAL`: simply mix according to the opacity value.
     #[default]
@@ -71,6 +72,7 @@ pub enum BlendMode {
 
 impl BlendMode {
     /// Convert a raw style number back to a blend mode (`Normal` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> BlendMode {
         match v {
             1 => BlendMode::Additive,
@@ -109,6 +111,7 @@ impl BorderSide {
 /// `lv_blur_quality_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum BlurQuality {
     /// `LV_BLUR_QUALITY_AUTO`
     #[default]
@@ -121,6 +124,7 @@ pub enum BlurQuality {
 
 impl BlurQuality {
     /// Convert a raw style number back to a quality (`Auto` if unknown).
+    #[must_use]
     pub const fn from_u8(v: u8) -> BlurQuality {
         match v {
             1 => BlurQuality::Speed,
@@ -425,24 +429,28 @@ impl StyleProp {
 
     /// Raw property number.
     #[inline]
+    #[must_use]
     pub const fn as_u8(self) -> u8 {
         self.0
     }
 
     /// Wrap a raw property number (the `(lv_style_prop_t)` cast).
     #[inline]
+    #[must_use]
     pub const fn from_u8(v: u8) -> StyleProp {
         StyleProp(v)
     }
 
     /// `true` for `LV_STYLE_WIDTH ..= LV_STYLE_LAST_BUILT_IN_PROP`.
     #[inline]
+    #[must_use]
     pub const fn is_built_in(self) -> bool {
         self.0 != 0 && self.0 < Self::NUM_BUILT_IN
     }
 
     /// `true` for an id handed out by `lv_style_register_prop()`.
     #[inline]
+    #[must_use]
     pub const fn is_custom(self) -> bool {
         self.0 >= Self::NUM_BUILT_IN && self.0 != Self::ANY.0
     }
@@ -458,6 +466,7 @@ pub const CONST_PROP_ID_INV: StyleProp = StyleProp::INV;
 /// group is set in a style the `(1 << group)` bit of `has_group` is set.
 /// Returns 0..=31; 31 marks all custom properties.
 #[inline]
+#[must_use]
 pub const fn get_prop_group(prop: u8) -> u32 {
     let group = (prop as u32) >> 2;
     if group > 30 { 31 } else { group }
@@ -466,6 +475,7 @@ pub const fn get_prop_group(prop: u8) -> u32 {
 /// Flags of a built-in property as in `lv_style_builtin_prop_flag_lookup_table`
 /// (`src/misc/lv_style.c`). Values outside the table yield 0; callers go
 /// through [`lookup_flags`] for the `ANY` / `INV` / custom handling.
+#[must_use]
 pub const fn builtin_prop_flags(prop: StyleProp) -> u8 {
     use StyleProp as P;
     const L: u8 = STYLE_PROP_FLAG_LAYOUT_UPDATE;
@@ -539,6 +549,7 @@ pub const BUILTIN_PROP_FLAG_LOOKUP_TABLE: [u8; NUM_BUILT_IN_PROPS] = {
 /// [`crate::core::Ui::style_prop_lookup_flags`], which has the same early
 /// returns and then consults the custom table.
 #[inline]
+#[must_use]
 pub const fn lookup_flags(prop: StyleProp) -> u8 {
     if prop.0 == StyleProp::ANY.0 {
         return STYLE_PROP_FLAG_ALL; /*Any prop can have any flags*/
@@ -554,6 +565,7 @@ pub const fn lookup_flags(prop: StyleProp) -> u8 {
 
 /// `lv_style_prop_has_flag()`
 #[inline]
+#[must_use]
 pub const fn prop_has_flag(prop: StyleProp, flag: u8) -> bool {
     lookup_flags(prop) & flag != 0
 }
@@ -566,13 +578,14 @@ pub const fn prop_has_flag(prop: StyleProp, flag: u8) -> bool {
 /// explicitly: `custom_table` is `style_custom_prop_flag_lookup_table` (its
 /// length is `style_custom_table_size`; an empty table is the C `NULL`) and
 /// `last_custom_prop_id` is `style_last_custom_prop_id`. They live in the
-/// context as [`crate::core::Ui::style_custom_prop_flags`] and
-/// [`crate::core::Ui::style_last_custom_prop_id`], and
+/// context as `crate::core::Ui::style_custom_prop_flags` and
+/// `crate::core::Ui::style_last_custom_prop_id`, and
 /// `Ui::style_register_prop` is a thin wrapper around this function.
 ///
 /// The table grows in 32-entry steps exactly like the C `lv_realloc` path
 /// (`test_custom_prop_ids` checks that) and the returned id is the
 /// `(lv_style_prop_t)` (8-bit) truncation of the counter, as upstream.
+#[must_use]
 pub fn register_prop(custom_table: &mut Vec<u8>, last_custom_prop_id: &mut u32, flag: u8) -> StyleProp {
     if custom_table.is_empty() {
         /*lv_style_custom_prop_flag_lookup_table == NULL: size 0, restart the ids*/
@@ -603,6 +616,7 @@ pub fn register_prop(custom_table: &mut Vec<u8>, last_custom_prop_id: &mut u32, 
 /// once more than 255 custom properties exist. The narrowed value is handed
 /// back in a `u32` to keep `Ui::style_get_num_custom_props` unchanged.
 #[inline]
+#[must_use]
 pub const fn get_num_custom_props(last_custom_prop_id: u32) -> u32 {
     last_custom_prop_id.wrapping_sub(StyleProp::LAST_BUILT_IN.0 as u32) as u8 as u32
 }
@@ -611,6 +625,7 @@ pub const fn get_num_custom_props(last_custom_prop_id: u32) -> u32 {
 /// `ANY` / `INV` early returns as [`lookup_flags`], then the built-in table,
 /// then `custom_table` (the `style_custom_prop_flag_lookup_table` slice kept
 /// in the `Ui`; an empty slice is the C `NULL` table). Unknown ids yield 0.
+#[must_use]
 pub const fn lookup_flags_with_custom(prop: StyleProp, custom_table: &[u8]) -> u8 {
     if prop.0 == StyleProp::ANY.0 {
         return STYLE_PROP_FLAG_ALL; /*Any prop can have any flags*/
@@ -632,6 +647,7 @@ pub const fn lookup_flags_with_custom(prop: StyleProp, custom_table: &[u8]) -> u
 /// `lv_style_prop_has_flag()` including custom properties, see
 /// [`lookup_flags_with_custom`].
 #[inline]
+#[must_use]
 pub const fn prop_has_flag_with_custom(prop: StyleProp, flag: u8, custom_table: &[u8]) -> bool {
     lookup_flags_with_custom(prop, custom_table) & flag != 0
 }
@@ -650,6 +666,7 @@ pub enum SharedRef<T: ?Sized + 'static> {
 impl<T: ?Sized> SharedRef<T> {
     /// Address of the data.
     #[inline]
+    #[must_use]
     pub fn addr(&self) -> usize {
         match self {
             SharedRef::Static(p) => (*p as *const T).cast::<u8>() as usize,
@@ -709,6 +726,7 @@ pub type SharedStr = SharedRef<str>;
 /// Equality is pointer identity for descriptors (like comparing `src`
 /// pointers in C) and string equality for paths and symbols.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub enum ImageSrc {
     /// No image (`NULL`).
     #[default]
@@ -749,6 +767,7 @@ impl Eq for ImageSrc {}
 
 impl ImageSrc {
     /// `lv_image_src_get_type()`
+    #[must_use]
     pub fn src_type(&self) -> ImageSrcType {
         match self {
             ImageSrc::None => ImageSrcType::Unknown,
@@ -762,6 +781,7 @@ impl ImageSrc {
 
     /// `true` for [`ImageSrc::None`].
     #[inline]
+    #[must_use]
     pub const fn is_none(&self) -> bool {
         matches!(self, ImageSrc::None)
     }
@@ -788,6 +808,7 @@ pub enum ImageSrcType {
 /// enums, opacities and booleans are stored as `Num` exactly like the C
 /// union. Pointer kinds compare by identity.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub enum StyleValue {
     /// `.ptr = NULL`: an unset pointer value.
     #[default]
@@ -824,6 +845,7 @@ impl StyleValue {
     /// the C union does. `NULL` and the pointer kinds, whose addresses have
     /// no Rust equivalent, read as 0.
     #[inline]
+    #[must_use]
     pub const fn num(&self) -> i32 {
         match self {
             StyleValue::Num(n) => *n,
@@ -838,6 +860,7 @@ impl StyleValue {
     /// memory order (blue, green, red), as the C union does. `NULL` and the
     /// pointer kinds read as black.
     #[inline]
+    #[must_use]
     pub const fn color(&self) -> Color {
         match self {
             StyleValue::Color(c) => *c,
@@ -852,6 +875,7 @@ impl StyleValue {
 
     /// `true` for the C `.ptr == NULL` case.
     #[inline]
+    #[must_use]
     pub const fn is_null(&self) -> bool {
         matches!(self, StyleValue::Null)
     }
@@ -868,6 +892,7 @@ pub struct StyleEntry {
 
 impl StyleEntry {
     /// Build an entry (`{ .prop = prop, .value = value }`).
+    #[must_use]
     pub const fn new(prop: StyleProp, value: StyleValue) -> Self {
         Self { prop, value }
     }
@@ -876,17 +901,22 @@ impl StyleEntry {
 /// `lv_style_t`: a collection of properties and values.
 ///
 /// `has_group` has bit `lv_style_get_prop_group(prop)` set for every stored
-/// property so that lookups can skip the style early.
+/// property so that lookups can skip the style early. Both fields are
+/// private because that invariant must hold: change a style with
+/// [`Style::set_prop`], [`Style::remove_prop`], [`Style::reset`] and
+/// [`Style::copy_from`], read it with [`Style::props`] and
+/// [`Style::get_prop`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Style {
     /// `values_and_props`
-    pub props: Vec<StyleEntry>,
+    pub(crate) props: Vec<StyleEntry>,
     /// `has_group`
-    pub has_group: u32,
+    pub(crate) has_group: u32,
 }
 
 /// Image source usable in a `static` constant style.
 #[derive(Copy, Clone, Debug)]
+#[non_exhaustive]
 pub enum ConstImageSrc {
     /// `NULL`
     None,
@@ -900,6 +930,7 @@ pub enum ConstImageSrc {
 
 impl ConstImageSrc {
     /// Convert to a runtime [`ImageSrc`] (no allocation).
+    #[must_use]
     pub fn to_image_src(self) -> ImageSrc {
         match self {
             ConstImageSrc::None => ImageSrc::None,
@@ -914,6 +945,7 @@ impl ConstImageSrc {
 /// (`Sync`) constant style. Transitions and animation templates hold
 /// reference-counted data and are therefore not const-constructible.
 #[derive(Copy, Clone)]
+#[non_exhaustive]
 pub enum ConstStyleValue {
     /// `.ptr = NULL`
     Null,
@@ -955,6 +987,7 @@ impl core::fmt::Debug for ConstStyleValue {
 
 impl ConstStyleValue {
     /// Convert to a runtime [`StyleValue`] (no allocation).
+    #[must_use]
     pub fn to_value(self) -> StyleValue {
         match self {
             ConstStyleValue::Null => StyleValue::Null,
@@ -982,11 +1015,13 @@ pub struct ConstStyleEntry {
 
 impl ConstStyleEntry {
     /// Build an entry.
+    #[must_use]
     pub const fn new(prop: StyleProp, value: ConstStyleValue) -> Self {
         Self { prop, value }
     }
 
     /// Convert to a runtime [`StyleEntry`].
+    #[must_use]
     pub fn to_entry(&self) -> StyleEntry {
         StyleEntry {
             prop: self.prop,
@@ -996,7 +1031,7 @@ impl ConstStyleEntry {
 }
 
 /// A constant style (`LV_STYLE_CONST_INIT`): properties in static memory.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ConstStyle {
     /// The property array (`LV_STYLE_CONST_PROPS_END` is not needed).
     pub props: &'static [ConstStyleEntry],
@@ -1010,6 +1045,7 @@ impl PartialEq for ConstStyle {
 
 impl ConstStyle {
     /// `LV_STYLE_CONST_INIT(name, props)`
+    #[must_use]
     pub const fn new(props: &'static [ConstStyleEntry]) -> Self {
         Self { props }
     }
@@ -1023,6 +1059,7 @@ impl ConstStyle {
     /// Number of entries in [`ConstStyle::props`] (for iteration). This is
     /// not `prop_cnt`, which is always [`ConstStyle::PROP_CNT`].
     #[inline]
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.props.len()
     }
@@ -1030,12 +1067,14 @@ impl ConstStyle {
     /// `lv_style_is_empty()`: `prop_cnt == 0`, so always `false` for a const
     /// style (`prop_cnt` is 255), even when the array holds no property.
     #[inline]
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         Self::PROP_CNT == 0
     }
 
     /// `lv_style_is_const()`: always `true`.
     #[inline]
+    #[must_use]
     pub const fn is_const(&self) -> bool {
         true
     }
@@ -1044,6 +1083,7 @@ impl ConstStyle {
     /// style: a linear search from the first entry. An `LV_STYLE_PROP_INV`
     /// entry (`LV_STYLE_CONST_PROPS_END`) terminates the array like in C, so
     /// nothing after it is visible and `INV` itself is never found.
+    #[must_use]
     pub fn get_prop(&self, prop: StyleProp) -> Option<StyleValue> {
         for entry in self.props {
             if entry.prop == StyleProp::INV {
@@ -1087,6 +1127,7 @@ pub type TracksLike = SharedRef<[StyleProp]>;
 
 impl StyleTransitionDsc {
     /// `lv_style_transition_dsc_init()`
+    #[must_use]
     pub fn new(props: TracksLike, path: AnimPath, time: u32, delay: u32) -> Self {
         Self {
             props,
@@ -1099,6 +1140,7 @@ impl StyleTransitionDsc {
 
     /// `lv_style_transition_dsc_init()` for a static property list, usable in
     /// `static` initialisers.
+    #[must_use]
     pub const fn new_static(props: &'static [StyleProp], path: AnimPath, time: u32, delay: u32) -> Self {
         Self {
             props: SharedRef::Static(props),
@@ -1209,18 +1251,21 @@ impl Part {
 
     /// `LV_PART_CUSTOM_FIRST + (n << 16)`: the `n`-th custom part.
     #[inline]
+    #[must_use]
     pub const fn custom(n: u32) -> Part {
         Part(Self::CUSTOM_FIRST.0 + (n << 16))
     }
 
     /// Wrap a raw part value (`selector & 0xFF0000`).
     #[inline]
+    #[must_use]
     pub const fn from_u32(v: u32) -> Part {
         Part(v & 0xFF0000)
     }
 
     /// Raw value.
     #[inline]
+    #[must_use]
     pub const fn as_u32(self) -> u32 {
         self.0
     }
@@ -1237,24 +1282,28 @@ impl StyleSelector {
 
     /// Build a selector from a part and a state.
     #[inline]
+    #[must_use]
     pub const fn new(part: Part, state: State) -> Self {
         StyleSelector(part.0 | state.bits() as u32)
     }
 
     /// `lv_obj_style_get_selector_part()`: `selector & 0xFF0000`, unchanged.
     #[inline]
+    #[must_use]
     pub const fn part(self) -> Part {
         Part(self.0 & 0xFF0000)
     }
 
     /// `selector & 0xFF0000` without decoding.
     #[inline]
+    #[must_use]
     pub const fn part_raw(self) -> u32 {
         self.0 & 0xFF0000
     }
 
     /// `lv_obj_style_get_selector_state()`
     #[inline]
+    #[must_use]
     pub const fn state(self) -> State {
         State::from_bits_retain((self.0 & 0xFFFF) as u16)
     }
@@ -1288,6 +1337,7 @@ impl core::ops::BitOr<Part> for State {
 
 impl Style {
     /// `lv_style_init()`: an empty style.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             props: Vec::new(),
@@ -1344,6 +1394,7 @@ impl Style {
 
     /// `lv_style_is_const()`: always `false`; constant styles are [`ConstStyle`].
     #[inline]
+    #[must_use]
     pub const fn is_const(&self) -> bool {
         false
     }
@@ -1392,6 +1443,7 @@ impl Style {
 
     /// `lv_style_get_prop()` / `lv_style_get_prop_internal()`: the entry with
     /// `prop`, searched from the start (`None` is `LV_STYLE_RES_NOT_FOUND`).
+    #[must_use]
     pub fn get_prop(&self, prop: StyleProp) -> Option<&StyleValue> {
         self.props
             .iter()
@@ -1401,18 +1453,36 @@ impl Style {
 
     /// `lv_style_is_empty()`
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.props.is_empty()
     }
 
     /// `prop_cnt`
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.props.len()
     }
 
+    /// `values_and_props`: the stored properties in their list order.
+    #[inline]
+    #[must_use]
+    pub fn props(&self) -> &[StyleEntry] {
+        &self.props
+    }
+
+    /// `has_group`: bit `lv_style_get_prop_group(prop)` is set for every
+    /// property that was ever set (removal leaves it set, like upstream).
+    #[inline]
+    #[must_use]
+    pub const fn has_group(&self) -> u32 {
+        self.has_group
+    }
+
     /// `lv_style_prop_get_default()`. `default_font` stands in for
     /// `LV_FONT_DEFAULT` (it is not a compile-time constant in Rust).
+    #[must_use]
     pub fn prop_get_default(prop: StyleProp, default_font: Option<&FontRef>) -> StyleValue {
         use StyleProp as P;
         match prop {
@@ -1784,7 +1854,7 @@ mod tests {
         assert_eq!(lookup_flags_with_custom(StyleProp(254), &table), 0);
         // The 33rd registration grows the table to 64 (32-byte rounding).
         for _ in 0..31 {
-            register_prop(&mut table, &mut last, 0);
+            let _ = register_prop(&mut table, &mut last, 0);
         }
         assert_eq!(table.len(), 32);
         let p33 = register_prop(&mut table, &mut last, 9);

@@ -58,6 +58,7 @@ const ANIM_VAR_BASE: u32 = 0x8000_0000;
 /// `lv_bar_mode_t`, with the upstream discriminants.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum BarMode {
     /// `LV_BAR_MODE_NORMAL`
     #[default]
@@ -179,7 +180,7 @@ pub static BAR_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable bar handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bar(Obj);
 
 impl Bar {
@@ -193,11 +194,13 @@ impl Bar {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the bar class (sliders do).
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &BAR_CLASS)).then_some(Self(obj))
     }
@@ -282,11 +285,13 @@ impl Bar {
     }
 
     /// `lv_bar_get_value()`: the target value of a running animation.
+    #[must_use]
     pub fn value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |bar| bar.cur_value_anim.get_anim_value(bar.cur_value))
     }
 
     /// `lv_bar_get_start_value()`
+    #[must_use]
     pub fn start_value(self, ui: &Ui) -> i32 {
         let Some(bar) = state(ui, self.0) else {
             return 0; /*LV_CHECK_OBJ*/
@@ -300,6 +305,7 @@ impl Bar {
     }
 
     /// `lv_bar_get_min_value()`
+    #[must_use]
     pub fn min_value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |bar| {
             if bar.val_reversed {
@@ -311,6 +317,7 @@ impl Bar {
     }
 
     /// `lv_bar_get_max_value()`
+    #[must_use]
     pub fn max_value(self, ui: &Ui) -> i32 {
         state(ui, self.0).map_or(0, |bar| {
             if bar.val_reversed {
@@ -322,22 +329,30 @@ impl Bar {
     }
 
     /// `lv_bar_get_mode()`
+    #[must_use]
     pub fn mode(self, ui: &Ui) -> BarMode {
         state(ui, self.0).map_or(BarMode::Normal, |bar| bar.mode)
     }
 
     /// `lv_bar_get_orientation()`
+    #[must_use]
     pub fn orientation(self, ui: &Ui) -> BarOrientation {
         state(ui, self.0).map_or(BarOrientation::Auto, |bar| bar.orientation)
     }
 
     /// `lv_bar_is_symmetrical()`: whether the bar is in symmetrical mode.
+    #[must_use]
     pub fn is_symmetrical(self, ui: &Ui) -> bool {
         state(ui, self.0).is_some_and(is_symmetrical)
     }
 
     /// `lv_bar_t::indic_area`: the indicator area computed by the last
     /// `draw_indic()` of `lv_bar.c` (upstream tests read the field directly).
+    ///
+    /// Hidden: a test hook for the ported upstream tests, which read this
+    /// private field; it may change in any release.
+    #[doc(hidden)]
+    #[must_use]
     pub fn indic_area(self, ui: &Ui) -> Area {
         state(ui, self.0).map_or(Area::new(0, 0, 0, 0), |bar| bar.indic_area)
     }
@@ -968,7 +983,7 @@ pub(crate) fn bar_bind_value(ui: &mut Ui, obj: Obj, subject: SubjectId) -> Optio
     if !ui.obj_is_valid(obj) {
         return None; /*LV_CHECK_OBJ*/
     }
-    let Some(type_) = ui.observer.subjects.get(subject.0).map(|s| s.type_) else {
+    let Some(type_) = ui.subject(subject).map(|s| s.type_) else {
         ferrovgl_core::misc::check_arg_failed("lv_bar_bind_value: subject != NULL");
         return None;
     };
@@ -986,7 +1001,7 @@ fn bar_value_observer_cb(ui: &mut Ui, observer: ObserverId, subject: SubjectId) 
     let Some(obj) = ui.observer_get_target_obj(observer) else {
         return;
     };
-    let Some(s) = ui.observer.subjects.get(subject.0) else {
+    let Some(s) = ui.subject(subject) else {
         return;
     };
     let (type_, num, float_v) = (s.type_, s.value.num(), s.value.float_v_as_i32());

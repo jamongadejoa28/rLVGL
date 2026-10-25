@@ -22,8 +22,8 @@ const IDLE_MEAS_PERIOD: u32 = 500;
 const DEF_PERIOD: u32 = 500;
 
 /// Handle of a timer (`lv_timer_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TimerId(pub Key);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TimerId(#[doc(hidden)] pub Key);
 
 /// `lv_timer_cb_t`
 pub type TimerCallback = Rc<dyn Fn(&mut Ui, TimerId)>;
@@ -36,7 +36,7 @@ pub type TimerExtDataFreeCb = fn(Option<Rc<dyn Any>>);
 
 /// `lv_ext_data_t` of a timer (`LV_USE_EXT_DATA`), set by
 /// `lv_timer_set_external_data()`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TimerExtData {
     /// `data`; independent of the timer's application `user_data`.
     pub data: Option<Rc<dyn Any>>,
@@ -46,6 +46,7 @@ pub struct TimerExtData {
 }
 
 /// `lv_timer_t`
+#[non_exhaustive]
 pub struct TimerData {
     /// `ext_data` (`LV_USE_EXT_DATA`).
     pub ext_data: TimerExtData,
@@ -65,8 +66,23 @@ pub struct TimerData {
     pub auto_delete: bool,
 }
 
+impl core::fmt::Debug for TimerData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TimerData")
+            .field("ext_data", &self.ext_data)
+            .field("period", &self.period)
+            .field("last_run", &self.last_run)
+            .field("cb", &self.cb.as_ref().map(|_| crate::misc::OpaqueCallback))
+            .field("user_data", &self.user_data)
+            .field("repeat_count", &self.repeat_count)
+            .field("paused", &self.paused)
+            .field("auto_delete", &self.auto_delete)
+            .finish()
+    }
+}
+
 /// `lv_timer_state_t`
-pub struct TimerState {
+pub(crate) struct TimerState {
     /// `timer_ll`
     pub timers: Arena<TimerData>,
     /// Order of `timer_ll` (head first): `lv_timer_create_basic` is
@@ -103,8 +119,33 @@ pub struct TimerState {
     pub resume_cb: Option<TimerHandlerResumeCallback>,
 }
 
+impl core::fmt::Debug for TimerState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TimerState")
+            .field("timers", &self.timers)
+            .field("order", &self.order)
+            .field("run", &self.run)
+            .field("idle_last", &self.idle_last)
+            .field("deleted", &self.deleted)
+            .field("created", &self.created)
+            .field("time_until_next", &self.time_until_next)
+            .field("already_running", &self.already_running)
+            .field("periodic_last_tick", &self.periodic_last_tick)
+            .field("run_in_period_last_tick", &self.run_in_period_last_tick)
+            .field("busy_time", &self.busy_time)
+            .field("idle_period_start", &self.idle_period_start)
+            .field("run_cnt", &self.run_cnt)
+            .field(
+                "resume_cb",
+                &self.resume_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .finish()
+    }
+}
+
 impl TimerState {
     /// `lv_timer_core_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             timers: Arena::new(),
@@ -203,6 +244,7 @@ impl Ui {
     }
 
     /// `lv_timer_get_time_to_next()`: time till the soonest timer (ms).
+    #[must_use]
     pub fn timer_get_time_to_next(&mut self) -> u32 {
         let mut time_until_next = NO_TIMER_READY;
         let mut next = self.timers.order.first().copied();
@@ -409,16 +451,19 @@ impl Ui {
     }
 
     /// `lv_timer_get_idle()`: idle percentage.
+    #[must_use]
     pub fn timer_get_idle(&self) -> u32 {
         u32::from(self.timers.idle_last)
     }
 
     /// `lv_timer_get_time_until_next()`
+    #[must_use]
     pub fn timer_get_time_until_next(&self) -> u32 {
         self.timers.time_until_next
     }
 
     /// `lv_timer_get_next()`: iterate the timers (`None` starts).
+    #[must_use]
     pub fn timer_get_next(&self, timer: Option<TimerId>) -> Option<TimerId> {
         match timer {
             None => self.timers.order.first().copied(),
@@ -443,6 +488,7 @@ impl Ui {
     }
 
     /// `lv_timer_get_user_data()`
+    #[must_use]
     pub fn timer_get_user_data(&self, timer: TimerId) -> Option<Rc<dyn Any>> {
         let Some(data) = self.timer(timer) else {
             crate::misc::check_arg_failed("timer_get_user_data: invalid timer");
@@ -452,6 +498,7 @@ impl Ui {
     }
 
     /// `lv_timer_get_paused()`
+    #[must_use]
     pub fn timer_get_paused(&self, timer: TimerId) -> bool {
         let Some(data) = self.timer(timer) else {
             crate::misc::check_arg_failed("timer_get_paused: invalid timer");
@@ -478,12 +525,14 @@ impl Ui {
 
     /// Borrow a timer's data.
     #[inline]
+    #[must_use]
     pub fn timer(&self, timer: TimerId) -> Option<&TimerData> {
         self.timers.timers.get(timer.0)
     }
 
     /// Mutably borrow a timer's data.
     #[inline]
+    #[must_use]
     pub fn timer_mut(&mut self, timer: TimerId) -> Option<&mut TimerData> {
         self.timers.timers.get_mut(timer.0)
     }
@@ -1194,7 +1243,7 @@ mod tests {
         let mut ui = ui();
         let t = ui.timer_create_basic();
         ui.timer_delete(t);
-        ui.set_tick_cb(Some(counting_tick));
+        ui.tick_set_cb(Some(counting_tick));
         let before = TICK.load(Ordering::Relaxed);
         ui.timer_ready(t);
         ui.timer_reset(t);
@@ -1204,6 +1253,6 @@ mod tests {
             before,
             "stale handle must not read the tick"
         );
-        ui.set_tick_cb(None);
+        ui.tick_set_cb(None);
     }
 }

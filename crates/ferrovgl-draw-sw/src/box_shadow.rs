@@ -39,6 +39,7 @@ const SHADOW_CACHE_BYTES: u32 = SHADOW_CACHE_SIZE * SHADOW_CACHE_SIZE;
 
 /// `lv_draw_sw_shadow_cache_t`
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct ShadowCache {
     /// `cache`: the cached corner (`cache_size * cache_size` bytes).
     pub cache: Vec<u8>,
@@ -519,7 +520,7 @@ pub fn box_shadow(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &
 
 /// `shadow_draw_corner_buf()`: render the up-sampled 16-bit corner into
 /// the caller-provided `sh_buf`, blur it in place with
-/// [`shadow_blur_corner`] and down-convert to 8 bit inside (the cache
+/// `shadow_blur_corner()` and down-convert to 8 bit inside (the cache
 /// lookup stays in [`box_shadow`], as upstream).
 ///
 /// `sh_buf` must hold at least `(sw + r)^2` elements. On return each of the
@@ -538,7 +539,7 @@ pub fn shadow_draw_corner_buf(coords: &Area, sh_buf: &mut [u16], sw: i32, r: i32
 /// `shadow_blur_corner()`
 ///
 /// `sh_ups_buf` must hold at least `size^2` elements.
-pub fn shadow_blur_corner(size: i32, sw: i32, sh_ups_buf: &mut [u16]) {
+pub(crate) fn shadow_blur_corner(size: i32, sw: i32, sh_ups_buf: &mut [u16]) {
     /* `sw <= 0` divides by zero / indexes out of bounds upstream; it is never
      * reached (`shadow_width == 0` is skipped by `lv_draw_box_shadow`). */
     if size <= 0 || sw <= 0 {

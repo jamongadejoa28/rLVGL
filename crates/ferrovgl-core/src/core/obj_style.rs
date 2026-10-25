@@ -11,8 +11,8 @@
 //! the `bidi` cargo feature.
 //!
 //! `trans_t *` pointers become [`StyleTransId`] handles into
-//! [`Ui::style_trans`]; `style_trans_ll` order is kept in
-//! [`Ui::style_trans_order`] (head first, `lv_ll_ins_head` = insert at 0).
+//! `Ui::style_trans`; `style_trans_ll` order is kept in
+//! `Ui::style_trans_order` (head first, `lv_ll_ins_head` = insert at 0).
 //! Style identity (`obj->styles[i].style == style`) is a private `StyleKey`:
 //! the [`StyleId`] of a shared style, the address of a constant style, or the
 //! address of the boxed local / transition style.
@@ -40,14 +40,14 @@ use crate::misc::text::{BaseDir, TextAlign};
 use crate::misc::types::coord;
 
 /// Handle of a shared style stored in [`Ui::styles`] (`lv_style_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StyleId(pub Key);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct StyleId(#[doc(hidden)] pub Key);
 
-/// Handle of a running style transition stored in [`Ui::style_trans`]
+/// Handle of a running style transition stored in `Ui::style_trans`
 /// (`trans_t *` of `lv_obj_style.c`); the `var` of transition animations
 /// (`AnimTarget::StyleTrans`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StyleTransId(pub Key);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct StyleTransId(#[doc(hidden)] pub Key);
 
 /// `const lv_style_t * style` of an `lv_obj_style_t`.
 pub enum ObjStyleSrc {
@@ -77,6 +77,7 @@ impl core::fmt::Debug for ObjStyleSrc {
 /// The C `is_local` / `is_trans` bits are implied by [`ObjStyle::src`]
 /// (single source of truth), see [`ObjStyle::is_local`] / [`ObjStyle::is_trans`].
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ObjStyle {
     /// `style`
     pub src: ObjStyleSrc,
@@ -91,12 +92,14 @@ pub struct ObjStyle {
 impl ObjStyle {
     /// `is_local`
     #[inline]
+    #[must_use]
     pub fn is_local(&self) -> bool {
         matches!(self.src, ObjStyleSrc::Local(_))
     }
 
     /// `is_trans`
     #[inline]
+    #[must_use]
     pub fn is_trans(&self) -> bool {
         matches!(self.src, ObjStyleSrc::Trans(_))
     }
@@ -114,6 +117,7 @@ impl ObjStyle {
 /// `lv_style_state_cmp_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum StyleStateCmp {
     /// `LV_STYLE_STATE_CMP_SAME`: the style properties in the 2 states are identical.
     #[default]
@@ -127,6 +131,7 @@ pub enum StyleStateCmp {
 }
 
 /// `lv_obj_style_transition_dsc_t`
+#[derive(Debug)]
 pub struct ObjStyleTransitionDsc {
     /// `path_cb`
     pub path: AnimPath,
@@ -143,8 +148,9 @@ pub struct ObjStyleTransitionDsc {
 }
 
 /// `trans_t` of `lv_obj_style.c`: a running style transition (a node of
-/// `style_trans_ll`, stored in [`Ui::style_trans`]).
-pub struct StyleTrans {
+/// `style_trans_ll`, stored in `Ui::style_trans`).
+#[derive(Debug)]
+pub(crate) struct StyleTrans {
     /// `obj`
     pub obj: Obj,
     /// `prop`
@@ -178,13 +184,15 @@ const SELECTOR_ANY: StyleSelector = StyleSelector(Part::ANY.0 | State::ANY.bits(
 
 /// `lv_obj_style_get_selector_state()`
 #[inline]
-pub const fn obj_style_get_selector_state(selector: StyleSelector) -> State {
+#[must_use]
+pub const fn get_selector_state(selector: StyleSelector) -> State {
     selector.state()
 }
 
 /// `lv_obj_style_get_selector_part()`
 #[inline]
-pub const fn obj_style_get_selector_part(selector: StyleSelector) -> Part {
+#[must_use]
+pub const fn get_selector_part(selector: StyleSelector) -> Part {
     selector.part()
 }
 
@@ -545,6 +553,7 @@ macro_rules! gen_obj_style_accessors {
                 }
 
                 #[doc = concat!("`lv_", stringify!($oget), "()`: the resolved `LV_STYLE_", stringify!($c), "` value.")]
+                #[must_use]
                 pub fn $oget(&self, obj: Obj, part: Part) -> obj_style_ret!($kind, $t) {
                     /*LV_CHECK_OBJ: `return 0` / `lv_color_black()` / `NULL` / `false`*/
                     let v = if self.obj_is_valid(obj) {
@@ -564,40 +573,6 @@ macro_rules! gen_obj_style_accessors {
     };
 }
 
-/// Short aliases (`ui.set_style_<prop>()` / `ui.get_style_<prop>()`) named
-/// after the `obj_set_ident` / `obj_get_ident` columns of
-/// [`style_props!`](crate::style_props).
-macro_rules! gen_obj_style_aliases {
-    ($( ($c:ident, $s:ident, $set:ident, $oset:ident, $oget:ident, $var:ident, $kind:ident, $t:ty) ),* $(,)?) => {
-        impl Ui {
-            $(
-                #[doc = concat!("`lv_obj_", stringify!($oset), "()` (alias of `obj_", stringify!($oset), "`).")]
-                #[inline]
-                pub fn $oset(&mut self, obj: Obj, value: $t, selector: StyleSelector) {
-                    if !self.obj_is_valid(obj) {
-                        return; /*LV_CHECK_OBJ*/
-                    }
-                    let v = $crate::style_value_pack!($kind, value);
-                    self.obj_set_local_style_prop(obj, StyleProp::$c, v, selector);
-                }
-
-                #[doc = concat!("`lv_obj_", stringify!($oget), "()` (alias of `obj_", stringify!($oget), "`).")]
-                #[inline]
-                pub fn $oget(&self, obj: Obj, part: Part) -> obj_style_ret!($kind, $t) {
-                    /*LV_CHECK_OBJ: `return 0` / `lv_color_black()` / `NULL` / `false`*/
-                    let v = if self.obj_is_valid(obj) {
-                        self.obj_get_style_prop(obj, part, StyleProp::$c)
-                    } else {
-                        check_arg_failed("obj != NULL");
-                        StyleValue::Null
-                    };
-                    obj_style_unpack!($kind, $t, v)
-                }
-            )*
-        }
-    };
-}
-
 /// The `lv_obj_get_style_<prop>_filtered()` getters of the colour properties:
 /// `lv_obj_style_apply_color_filter_internal(obj, part, lv_obj_get_style_prop(obj, part, PROP)).color`.
 macro_rules! gen_obj_style_filtered_getters {
@@ -605,6 +580,7 @@ macro_rules! gen_obj_style_filtered_getters {
         impl Ui {
             $(
                 #[doc = concat!("`lv_", stringify!($name), "()`")]
+                #[must_use]
                 pub fn $name(&self, obj: Obj, part: Part) -> Color {
                     if !self.obj_is_valid(obj) {
                         check_arg_failed("obj != NULL");
@@ -750,8 +726,6 @@ gen_obj_style_accessors! {
     (GRID_CELL_ROW_SPAN, obj_set_style_grid_cell_row_span, obj_get_style_grid_cell_row_span, num, i32),
 }
 
-crate::style_props!(gen_obj_style_aliases);
-
 gen_obj_style_filtered_getters! {
     (BG_COLOR, obj_get_style_bg_color_filtered),
     (BG_GRAD_COLOR, obj_get_style_bg_grad_color_filtered),
@@ -847,6 +821,7 @@ impl Ui {
     }
 
     /// `lv_style_init()` for a shared style: store it in the context.
+    #[must_use]
     pub fn style_create(&mut self, style: Style) -> StyleId {
         StyleId(self.styles.insert(style))
     }
@@ -873,6 +848,7 @@ impl Ui {
 
     /// Borrow a shared style.
     #[inline]
+    #[must_use]
     pub fn style(&self, style: StyleId) -> Option<&Style> {
         self.styles.get(style.0)
     }
@@ -880,6 +856,7 @@ impl Ui {
     /// Mutably borrow a shared style. Call
     /// [`obj_report_style_change`](Self::obj_report_style_change) afterwards.
     #[inline]
+    #[must_use]
     pub fn style_mut(&mut self, style: StyleId) -> Option<&mut Style> {
         self.styles.get_mut(style.0)
     }
@@ -1117,6 +1094,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_style_enabled()`
+    #[must_use]
     pub fn obj_get_style_enabled(&self, obj: Obj, style: StyleId, selector: StyleSelector) -> bool {
         let Some(od) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1143,6 +1121,7 @@ impl Ui {
 
     /// `lv_obj_style_get_disabled()` (deprecated upstream: use
     /// [`obj_get_style_enabled`](Self::obj_get_style_enabled) with inverted logic).
+    #[must_use]
     pub fn obj_style_get_disabled(&self, obj: Obj, style: StyleId, selector: StyleSelector) -> bool {
         let Some(od) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1163,6 +1142,7 @@ impl Ui {
 
     /// `lv_obj_get_style_prop()`: the resolved value (local, shared, theme,
     /// inherited or default).
+    #[must_use]
     pub fn obj_get_style_prop(&self, obj: Obj, part: Part, prop: StyleProp) -> StyleValue {
         if !self.obj_is_valid(obj) {
             check_arg_failed("obj != NULL");
@@ -1173,6 +1153,7 @@ impl Ui {
 
     /// `lv_obj_get_style_prop_internal()`: like `obj_get_style_prop` but
     /// also reports whether the value was found.
+    #[must_use]
     pub fn obj_get_style_prop_internal(
         &self,
         obj: Obj,
@@ -1194,12 +1175,14 @@ impl Ui {
     ///
     /// `LV_USE_COLOR_FILTER` is 0 in the parity configuration, so the value
     /// is returned unchanged.
+    #[must_use]
     pub fn obj_style_apply_color_filter(&self, obj: Obj, part: Part, v: StyleValue) -> StyleValue {
         let _ = (obj, part);
         v
     }
 
     /// `lv_obj_has_style_prop()`
+    #[must_use]
     pub fn obj_has_style_prop(&self, obj: Obj, selector: StyleSelector, prop: StyleProp) -> bool {
         let Some(od) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1253,6 +1236,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_local_style_prop()`
+    #[must_use]
     pub fn obj_get_local_style_prop(
         &self,
         obj: Obj,
@@ -1391,6 +1375,7 @@ impl Ui {
 
     /// `lv_obj_style_state_compare()`: returns the comparison and the
     /// changed part.
+    #[must_use]
     pub fn obj_style_state_compare(&self, obj: Obj, state1: State, state2: State) -> (StyleStateCmp, Part) {
         let Some(od) = self.obj(obj) else {
             check_arg_failed("obj != NULL");
@@ -1485,6 +1470,7 @@ impl Ui {
     }
 
     /// `lv_obj_calculate_style_text_align()`
+    #[must_use]
     pub fn obj_calculate_style_text_align(&self, obj: Obj, part: Part, txt: &str) -> TextAlign {
         if !self.obj_is_valid(obj) {
             check_arg_failed("obj != NULL");
@@ -1497,6 +1483,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_style_opa_recursive()`
+    #[must_use]
     pub fn obj_get_style_opa_recursive(&self, obj: Obj, part: Part) -> Opa {
         if !self.obj_is_valid(obj) {
             check_arg_failed("obj != NULL");
@@ -1589,6 +1576,7 @@ impl Ui {
     }
 
     /// `lv_obj_style_apply_recolor()`
+    #[must_use]
     pub fn obj_style_apply_recolor(&self, obj: Obj, part: Part, color: Color32) -> Color32 {
         if !self.obj_is_valid(obj) {
             check_arg_failed("obj != NULL");
@@ -1606,6 +1594,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_style_recolor_recursive()`
+    #[must_use]
     pub fn obj_get_style_recolor_recursive(&self, obj: Obj, part: Part) -> Color32 {
         if !self.obj_is_valid(obj) {
             check_arg_failed("obj != NULL");
@@ -1719,26 +1708,31 @@ impl Ui {
     }
 
     /// `lv_obj_get_style_space_left()` / `lv_obj_get_style_space_left_internal()`
+    #[must_use]
     pub fn obj_get_style_space_left(&self, obj: Obj, part: Part) -> i32 {
         self.style_space(obj, part, StyleProp::PAD_LEFT, BorderSide::LEFT)
     }
 
     /// `lv_obj_get_style_space_right()` / `lv_obj_get_style_space_right_internal()`
+    #[must_use]
     pub fn obj_get_style_space_right(&self, obj: Obj, part: Part) -> i32 {
         self.style_space(obj, part, StyleProp::PAD_RIGHT, BorderSide::RIGHT)
     }
 
     /// `lv_obj_get_style_space_top()` / `lv_obj_get_style_space_top_internal()`
+    #[must_use]
     pub fn obj_get_style_space_top(&self, obj: Obj, part: Part) -> i32 {
         self.style_space(obj, part, StyleProp::PAD_TOP, BorderSide::TOP)
     }
 
     /// `lv_obj_get_style_space_bottom()` / `lv_obj_get_style_space_bottom_internal()`
+    #[must_use]
     pub fn obj_get_style_space_bottom(&self, obj: Obj, part: Part) -> i32 {
         self.style_space(obj, part, StyleProp::PAD_BOTTOM, BorderSide::BOTTOM)
     }
 
     /// `lv_obj_get_style_transform_scale_x_safe()`
+    #[must_use]
     pub fn obj_get_style_transform_scale_x_safe(&self, obj: Obj, part: Part) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0; /*LV_CHECK_OBJ*/
@@ -1748,6 +1742,7 @@ impl Ui {
     }
 
     /// `lv_obj_get_style_transform_scale_y_safe()`
+    #[must_use]
     pub fn obj_get_style_transform_scale_y_safe(&self, obj: Obj, part: Part) -> i32 {
         if !self.obj_is_valid(obj) {
             return 0; /*LV_CHECK_OBJ*/
@@ -2756,12 +2751,9 @@ mod tests {
             1 << (StyleProp::BG_COLOR.0 >> 3)
         );
         assert_eq!(SELECTOR_ANY.0, 0x0F_FFFF);
+        assert_eq!(get_selector_part(sel(Part::KNOB, State::PRESSED)), Part::KNOB);
         assert_eq!(
-            obj_style_get_selector_part(sel(Part::KNOB, State::PRESSED)),
-            Part::KNOB
-        );
-        assert_eq!(
-            obj_style_get_selector_state(sel(Part::KNOB, State::PRESSED)),
+            get_selector_state(sel(Part::KNOB, State::PRESSED)),
             State::PRESSED
         );
     }
@@ -2789,7 +2781,7 @@ mod tests {
         /*Failed replacement (already replaced)*/
         let replaced = ui.obj_replace_style(obj, style_red, style_blue, StyleSelector::DEFAULT);
         assert!(!replaced);
-        assert_eq!(ui.get_style_bg_color(obj, Part::MAIN), Color::hex(0x0000ff));
+        assert_eq!(ui.obj_get_style_bg_color(obj, Part::MAIN), Color::hex(0x0000ff));
     }
 
     /// Port of `test_style.c: test_const_style`.

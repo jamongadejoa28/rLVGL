@@ -21,6 +21,7 @@ use ferrovgl_core::misc::types::coord::pct_to_px;
 
 /// `lv_draw_sw_grad_calc_t` (`lv_grad_t`): a computed gradient colour map.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradCalc {
     /// `color_map`
     pub color_map: Vec<Color>,
@@ -32,6 +33,7 @@ pub struct GradCalc {
 
 /// `lv_grad_linear_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradLinearState {
     /// `a` of `w = a * xp + b * yp + c`
     pub a: i32,
@@ -45,6 +47,7 @@ pub struct GradLinearState {
 
 /// `lv_grad_radial_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradRadialState {
     /// `x0`: center of the start circle.
     pub x0: i32,
@@ -74,6 +77,7 @@ pub struct GradRadialState {
 
 /// `lv_grad_conical_state_t`
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct GradConicalState {
     /// `x0`
     pub x0: i32,
@@ -110,7 +114,8 @@ fn allocate_item(g: &GradDsc, w: i32, h: i32) -> GradCalc {
     let size: i32 = match g.dir {
         GradDir::Hor | GradDir::Linear | GradDir::Radial | GradDir::Conical => w,
         GradDir::Ver => h,
-        GradDir::None => 64,
+        /*`GradDir::None` and any other direction*/
+        _ => 64,
     };
     // `item->size` is `uint32_t`, assigned from the `int32_t` size.
     let size = size as u32;
@@ -174,6 +179,7 @@ fn conical_params(dsc: &GradDsc) -> (Point, i16, i16) {
 /// The map has `w` entries for horizontal / linear / radial / conical
 /// gradients and `h` entries for vertical ones. Upstream returns `NULL` for
 /// `LV_GRAD_DIR_NONE`; here that is an empty map (`size == 0`).
+#[must_use]
 pub fn get(gradient: &GradDsc, w: i32, h: i32) -> GradCalc {
     /* No gradient, no cache */
     if gradient.dir == GradDir::None {
@@ -196,6 +202,7 @@ pub fn get(gradient: &GradDsc, w: i32, h: i32) -> GradCalc {
 ///
 /// Gradients are specified in a virtual `0..=255` range, so this scales the
 /// virtual range to the given `range` (`frac` is in `0..=range`).
+#[must_use]
 pub fn color_calculate(dsc: &GradDsc, range: i32, frac: i32) -> (Color, Opa) {
     let stops = &dsc.stops;
     let last = dsc.stops_count as usize - 1;
@@ -298,6 +305,7 @@ pub fn cleanup(grad: GradCalc) {
 /// `lv_draw_sw_grad_radial_setup()`: precalculate the constants used while
 /// rendering a radial gradient in `coords`.
 #[cfg(feature = "complex-gradients")]
+#[must_use]
 pub fn radial_setup(dsc: &GradDsc, coords: &Area) -> GradRadialState {
     let (mut start, mut end, mut start_extent, mut end_extent) = radial_params(dsc);
     let mut state = GradRadialState::default();
@@ -547,6 +555,7 @@ pub fn radial_get_line(
 /// `lv_draw_sw_grad_linear_setup()`: precalculate the constants used while
 /// rendering a linear gradient in `coords`.
 #[cfg(feature = "complex-gradients")]
+#[must_use]
 pub fn linear_setup(dsc: &GradDsc, coords: &Area) -> GradLinearState {
     let (mut start, mut end) = linear_params(dsc);
 
@@ -631,6 +640,7 @@ pub fn linear_get_line(
 /// `lv_draw_sw_grad_conical_setup()`: precalculate the constants used while
 /// rendering a conical gradient in `coords`.
 #[cfg(feature = "complex-gradients")]
+#[must_use]
 pub fn conical_setup(dsc: &GradDsc, coords: &Area) -> GradConicalState {
     let (mut c0, start_angle, end_angle) = conical_params(dsc);
     let alpha = start_angle as i32 % 360;

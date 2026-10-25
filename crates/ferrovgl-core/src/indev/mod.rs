@@ -32,8 +32,8 @@ use crate::misc::timer::TimerId;
 pub const INDEV_VECT_HIST_SIZE: usize = 8;
 
 /// Handle of an input device (`lv_indev_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IndevId(pub Key);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct IndevId(#[doc(hidden)] pub Key);
 
 /// `lv_indev_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -79,6 +79,7 @@ pub enum IndevMode {
 /// `lv_indev_gesture_type_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum IndevGestureType {
     /// `LV_INDEV_GESTURE_NONE`
     #[default]
@@ -100,6 +101,7 @@ pub enum IndevGestureType {
 /// `lv_indev_gesture_state_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum IndevGestureState {
     /// `LV_INDEV_GESTURE_STATE_NONE`
     #[default]
@@ -119,6 +121,7 @@ pub type IndevGestureDir = Dir;
 
 /// `lv_indev_data_t`: what the driver reports in `read_cb`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct IndevReadData {
     /// `state`
     pub state: IndevState,
@@ -152,11 +155,18 @@ pub trait IndevDriver {
     }
 }
 
+impl core::fmt::Debug for dyn IndevDriver {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IndevDriver").finish_non_exhaustive()
+    }
+}
+
 /// `lv_indev_key_remap_cb_t`: `(ui, indev, key) -> key`.
 pub type IndevKeyRemapCallback = Rc<dyn Fn(&mut Ui, IndevId, u32) -> u32>;
 
 /// `pointer` sub-struct of `lv_indev_t`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct IndevPointer {
     /// `act_point`
     pub act_point: Point,
@@ -214,6 +224,7 @@ pub struct IndevPointer {
 
 /// `keypad` sub-struct of `lv_indev_t`.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct IndevKeypad {
     /// `last_state`
     pub last_state: IndevState,
@@ -294,6 +305,52 @@ pub struct IndevData {
     driver_revision: u64,
 }
 
+impl core::fmt::Debug for IndevData {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IndevData")
+            .field("ty", &self.ty)
+            .field("driver", &self.driver)
+            .field("state", &self.state)
+            .field("prev_state", &self.prev_state)
+            .field("mode", &self.mode)
+            .field("long_pr_sent", &self.long_pr_sent)
+            .field("reset_query", &self.reset_query)
+            .field("enabled", &self.enabled)
+            .field("wait_until_release", &self.wait_until_release)
+            .field("stop_processing_query", &self.stop_processing_query)
+            .field("timestamp", &self.timestamp)
+            .field("pr_timestamp", &self.pr_timestamp)
+            .field("longpr_rep_timestamp", &self.longpr_rep_timestamp)
+            .field("driver_data", &self.driver_data)
+            .field("user_data", &self.user_data)
+            .field("disp", &self.disp)
+            .field("read_timer", &self.read_timer)
+            .field("scroll_limit", &self.scroll_limit)
+            .field("scroll_throw", &self.scroll_throw)
+            .field("gesture_min_velocity", &self.gesture_min_velocity)
+            .field("gesture_min_distance", &self.gesture_min_distance)
+            .field("long_press_time", &self.long_press_time)
+            .field("double_click_time", &self.double_click_time)
+            .field("long_press_repeat_time", &self.long_press_repeat_time)
+            .field("rotary_sensitivity", &self.rotary_sensitivity)
+            .field("pointer", &self.pointer)
+            .field("keypad", &self.keypad)
+            .field("cursor", &self.cursor)
+            .field("group", &self.group)
+            .field("btn_points", &self.btn_points)
+            .field("event_list", &self.event_list)
+            .field("scroll_throw_anim", &self.scroll_throw_anim)
+            .field(
+                "key_remap_cb",
+                &self.key_remap_cb.as_ref().map(|_| crate::misc::OpaqueCallback),
+            )
+            .field("deleting", &self.deleting)
+            .field("reading", &self.reading)
+            .field("driver_revision", &self.driver_revision)
+            .finish()
+    }
+}
+
 impl Ui {
     /// `lv_indev_create()`
     pub fn indev_create(&mut self) -> IndevId {
@@ -372,6 +429,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_next()`
+    #[must_use]
     pub fn indev_get_next(&self, indev: Option<IndevId>) -> Option<IndevId> {
         match indev {
             None => self.indev_order.first().copied(),
@@ -427,6 +485,7 @@ impl Ui {
     }
 
     /// `lv_indev_active()`
+    #[must_use]
     pub fn indev_active(&self) -> Option<IndevId> {
         self.indev_active
     }
@@ -518,36 +577,43 @@ impl Ui {
     }
 
     /// `lv_indev_get_type()`
+    #[must_use]
     pub fn indev_get_type(&self, indev: IndevId) -> IndevType {
         self.indev(indev).map_or(IndevType::None, |d| d.ty)
     }
 
     /// `lv_indev_get_state()`
+    #[must_use]
     pub fn indev_get_state(&self, indev: IndevId) -> IndevState {
         self.indev(indev).map_or(IndevState::Released, |d| d.state)
     }
 
     /// `lv_indev_get_group()`
+    #[must_use]
     pub fn indev_get_group(&self, indev: IndevId) -> Option<GroupId> {
         self.indev(indev).and_then(|d| d.group)
     }
 
     /// `lv_indev_get_display()`
+    #[must_use]
     pub fn indev_get_display(&self, indev: IndevId) -> Option<DisplayId> {
         self.indev(indev).and_then(|d| d.disp)
     }
 
     /// `lv_indev_get_user_data()`
+    #[must_use]
     pub fn indev_get_user_data(&self, indev: IndevId) -> Option<Rc<dyn Any>> {
         self.indev(indev).and_then(|d| d.user_data.clone())
     }
 
     /// `lv_indev_get_driver_data()`
+    #[must_use]
     pub fn indev_get_driver_data(&mut self, indev: IndevId) -> Option<&mut dyn Any> {
         self.indev_mut(indev)?.driver_data.as_deref_mut()
     }
 
     /// `lv_indev_get_read_cb()`: the installed driver.
+    #[must_use]
     pub fn indev_driver_mut(&mut self, indev: IndevId) -> Option<&mut dyn IndevDriver> {
         match self.indev_mut(indev)?.driver.as_mut() {
             Some(driver) => Some(driver.as_mut()),
@@ -556,6 +622,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_press_moved()`
+    #[must_use]
     pub fn indev_get_press_moved(&self, indev: IndevId) -> bool {
         self.indev(indev).is_some_and(|d| d.pointer.press_moved)
     }
@@ -632,6 +699,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_point()`
+    #[must_use]
     pub fn indev_get_point(&self, indev: IndevId) -> Point {
         self.indev(indev).map_or(Point::default(), |d| {
             if matches!(d.ty, IndevType::Pointer | IndevType::Button) {
@@ -643,11 +711,13 @@ impl Ui {
     }
 
     /// `lv_indev_get_gesture_dir()`
+    #[must_use]
     pub fn indev_get_gesture_dir(&self, indev: IndevId) -> Dir {
         self.indev(indev).map_or(Dir::NONE, |d| d.pointer.gesture_dir)
     }
 
     /// `lv_indev_get_key()`
+    #[must_use]
     pub fn indev_get_key(&self, indev: IndevId) -> u32 {
         self.indev(indev)
             .filter(|d| d.ty == IndevType::Keypad)
@@ -655,11 +725,13 @@ impl Ui {
     }
 
     /// `lv_indev_get_short_click_streak()`
+    #[must_use]
     pub fn indev_get_short_click_streak(&self, indev: IndevId) -> u8 {
         self.indev(indev).map_or(0, |d| d.pointer.short_click_streak)
     }
 
     /// `lv_indev_get_scroll_dir()`
+    #[must_use]
     pub fn indev_get_scroll_dir(&self, indev: IndevId) -> Dir {
         self.indev(indev)
             .filter(|d| matches!(d.ty, IndevType::Pointer | IndevType::Button))
@@ -667,6 +739,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_scroll_obj()`
+    #[must_use]
     pub fn indev_get_scroll_obj(&self, indev: IndevId) -> Option<Obj> {
         self.indev(indev)
             .filter(|d| matches!(d.ty, IndevType::Pointer | IndevType::Button))
@@ -674,6 +747,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_vect()`
+    #[must_use]
     pub fn indev_get_vect(&self, indev: IndevId) -> Point {
         self.indev(indev)
             .filter(|d| matches!(d.ty, IndevType::Pointer | IndevType::Button))
@@ -681,6 +755,7 @@ impl Ui {
     }
 
     /// `lv_indev_get_cursor()`
+    #[must_use]
     pub fn indev_get_cursor(&self, indev: IndevId) -> Option<Obj> {
         self.indev(indev).and_then(|d| d.cursor)
     }
@@ -693,11 +768,13 @@ impl Ui {
     }
 
     /// `lv_indev_get_active_obj()`
+    #[must_use]
     pub fn indev_get_active_obj(&self) -> Option<Obj> {
         self.indev_obj_active
     }
 
     /// `lv_indev_get_read_timer()`
+    #[must_use]
     pub fn indev_get_read_timer(&self, indev: IndevId) -> Option<TimerId> {
         self.indev(indev).and_then(|d| d.read_timer)
     }
@@ -724,11 +801,13 @@ impl Ui {
     }
 
     /// `lv_indev_get_mode()`
+    #[must_use]
     pub fn indev_get_mode(&self, indev: IndevId) -> IndevMode {
         self.indev(indev).map_or(IndevMode::None, |d| d.mode)
     }
 
     /// `lv_indev_search_obj()`: the topmost clickable object at `point`.
+    #[must_use]
     pub fn indev_search_obj(&mut self, obj: Obj, point: Point) -> Option<Obj> {
         if !self.obj_is_valid(obj) || self.obj_has_flag(obj, ObjFlags::HIDDEN) {
             return None;
@@ -789,11 +868,13 @@ impl Ui {
     }
 
     /// `lv_indev_get_event_count()`
+    #[must_use]
     pub fn indev_get_event_count(&self, indev: IndevId) -> u32 {
         self.indev(indev).map_or(0, |d| d.event_list.len() as u32)
     }
 
     /// `lv_indev_get_event_dsc()`
+    #[must_use]
     pub fn indev_get_event_dsc(&self, indev: IndevId, index: u32) -> Option<&EventDsc> {
         self.event_get_dsc(&self.indev(indev)?.event_list, index as usize)
     }
@@ -857,12 +938,14 @@ impl Ui {
     }
 
     /// `lv_indev_get_ccw()`
+    #[must_use]
     pub fn indev_get_ccw(&self, indev: IndevId) -> bool {
         self.indev(indev)
             .is_some_and(|d| d.ty == IndevType::Pointer && d.pointer.ccw_rotation)
     }
 
     /// Remap a key through the device's `key_remap_cb`.
+    #[must_use]
     pub fn indev_remap_key(&mut self, indev: IndevId, key: LvKey) -> LvKey {
         let cb = self.indev(indev).and_then(|d| d.key_remap_cb.clone());
         cb.map_or(key, |cb| cb(self, indev, key))
@@ -870,12 +953,14 @@ impl Ui {
 
     /// Borrow an input device.
     #[inline]
+    #[must_use]
     pub fn indev(&self, indev: IndevId) -> Option<&IndevData> {
         self.indevs.get(indev.0)
     }
 
     /// Mutably borrow an input device.
     #[inline]
+    #[must_use]
     pub fn indev_mut(&mut self, indev: IndevId) -> Option<&mut IndevData> {
         self.indevs.get_mut(indev.0)
     }

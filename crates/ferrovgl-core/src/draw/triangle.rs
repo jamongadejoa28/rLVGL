@@ -26,6 +26,7 @@ pub struct TriangleDsc {
 
 impl TriangleDsc {
     /// `lv_draw_triangle_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         let mut grad = GradDsc::new();
         grad.stops[0].color = Color::WHITE;
@@ -55,6 +56,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_triangle_dsc()`
+    #[must_use]
     pub fn task_get_triangle_dsc(&mut self, task: DrawTaskRef) -> Option<&mut TriangleDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Triangle {

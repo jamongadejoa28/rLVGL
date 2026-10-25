@@ -66,8 +66,8 @@ const ANIM_TAG_SET_Y: u32 = 0x4C56_4459;
 const ANIM_TAG_OPA_SCALE: u32 = 0x4C56_444F;
 
 /// Handle of a display (`lv_display_t *`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DisplayId(pub Key);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct DisplayId(#[doc(hidden)] pub Key);
 
 /// The `LV_USE_THEME_DEFAULT` block of `lv_display_create()`:
 ///
@@ -88,6 +88,7 @@ pub type DisplayThemeInit = fn(&mut Ui, DisplayId) -> Option<ThemeId>;
 pub type ExtDataFreeCb = fn(Option<Box<dyn Any>>);
 
 /// `lv_ext_data_t` (`LV_USE_EXT_DATA`)
+#[derive(Debug)]
 pub struct ExtData {
     /// `data`
     pub data: Option<Box<dyn Any>>,
@@ -127,6 +128,7 @@ pub enum RenderMode {
 /// `lv_screen_load_anim_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ScreenLoadAnim {
     /// `LV_SCREEN_LOAD_ANIM_NONE`
     #[default]
@@ -188,6 +190,7 @@ pub trait DisplayDriver {
     /// Whether the backend provides `sync_cb`. Override this together with
     /// [`Self::sync`] to enable driver-managed synchronization; otherwise
     /// direct double buffering uses the internal copy path.
+    #[must_use]
     fn has_sync(&self) -> bool {
         false
     }
@@ -203,7 +206,15 @@ pub trait DisplayDriver {
     fn on_event(&mut self, _code: EventCode) {}
 }
 
+impl core::fmt::Debug for dyn DisplayDriver {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DisplayDriver").finish_non_exhaustive()
+    }
+}
+
 /// `lv_display_t`
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct DisplayData {
     /// `hor_res`
     pub hor_res: i32,
@@ -682,11 +693,13 @@ impl Ui {
     }
 
     /// `lv_display_get_default()`
+    #[must_use]
     pub fn display_get_default(&self) -> Option<DisplayId> {
         self.disp_default
     }
 
     /// `lv_display_get_next()`: `None` returns the head of the display list.
+    #[must_use]
     pub fn display_get_next(&self, disp: Option<DisplayId>) -> Option<DisplayId> {
         match disp {
             None => self.display_order.first().copied(),
@@ -800,6 +813,7 @@ impl Ui {
     }
 
     /// `lv_display_get_horizontal_resolution()`
+    #[must_use]
     pub fn display_get_horizontal_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_horizontal_resolution: disp != NULL") else {
             return 0;
@@ -812,6 +826,7 @@ impl Ui {
     }
 
     /// `lv_display_get_vertical_resolution()`
+    #[must_use]
     pub fn display_get_vertical_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_vertical_resolution: disp != NULL") else {
             return 0;
@@ -823,6 +838,7 @@ impl Ui {
     }
 
     /// `lv_display_get_original_horizontal_resolution()`
+    #[must_use]
     pub fn display_get_original_horizontal_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_original_horizontal_resolution: disp != NULL")
         else {
@@ -833,6 +849,7 @@ impl Ui {
     }
 
     /// `lv_display_get_original_vertical_resolution()`
+    #[must_use]
     pub fn display_get_original_vertical_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_original_vertical_resolution: disp != NULL")
         else {
@@ -843,6 +860,7 @@ impl Ui {
     }
 
     /// `lv_display_get_physical_horizontal_resolution()`
+    #[must_use]
     pub fn display_get_physical_horizontal_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_physical_horizontal_resolution: disp != NULL")
         else {
@@ -868,6 +886,7 @@ impl Ui {
     }
 
     /// `lv_display_get_physical_vertical_resolution()`
+    #[must_use]
     pub fn display_get_physical_vertical_resolution(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_physical_vertical_resolution: disp != NULL")
         else {
@@ -892,6 +911,7 @@ impl Ui {
     }
 
     /// `lv_display_get_offset_x()`
+    #[must_use]
     pub fn display_get_offset_x(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_offset_x: disp != NULL") else {
             return 0;
@@ -909,6 +929,7 @@ impl Ui {
     }
 
     /// `lv_display_get_offset_y()`
+    #[must_use]
     pub fn display_get_offset_y(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_offset_y: disp != NULL") else {
             return 0;
@@ -926,6 +947,7 @@ impl Ui {
     }
 
     /// `lv_display_get_rotation()`
+    #[must_use]
     pub fn display_get_rotation(&self, disp: Option<DisplayId>) -> Rotation {
         let Some(d) = self.disp_checked(disp, "display_get_rotation: disp != NULL") else {
             return Rotation::R0;
@@ -934,6 +956,7 @@ impl Ui {
     }
 
     /// `lv_display_get_matrix_rotation()`
+    #[must_use]
     pub fn display_get_matrix_rotation(&self, disp: Option<DisplayId>) -> bool {
         let Some(d) = self.disp_checked(disp, "display_get_matrix_rotation: disp != NULL") else {
             return false;
@@ -946,6 +969,7 @@ impl Ui {
     }
 
     /// `lv_display_get_dpi()`
+    #[must_use]
     pub fn display_get_dpi(&self, disp: Option<DisplayId>) -> i32 {
         let Some(d) = self.disp_checked(disp, "display_get_dpi: disp != NULL") else {
             return self.config().dpi_def;
@@ -1116,6 +1140,7 @@ impl Ui {
     }
 
     /// `lv_display_get_flush_cb()`: borrow the driver.
+    #[must_use]
     pub fn display_driver_mut(&mut self, disp: DisplayId) -> Option<&mut dyn DisplayDriver> {
         let d = self.displays.get_mut(disp.0)?;
         match d.driver.as_deref_mut() {
@@ -1165,6 +1190,7 @@ impl Ui {
     }
 
     /// `lv_display_get_color_format()`
+    #[must_use]
     pub fn display_get_color_format(&self, disp: Option<DisplayId>) -> ColorFormat {
         let Some(d) = self.disp_checked(disp, "display_get_color_format: disp != NULL") else {
             return ColorFormat::Unknown;
@@ -1187,6 +1213,7 @@ impl Ui {
     }
 
     /// `lv_display_get_tile_cnt()`
+    #[must_use]
     pub fn display_get_tile_cnt(&self, disp: DisplayId) -> u32 {
         let Some(d) = self.disp_checked(Some(disp), "display_get_tile_cnt: disp != NULL") else {
             return 0;
@@ -1209,6 +1236,7 @@ impl Ui {
     }
 
     /// `lv_display_get_antialiasing()`
+    #[must_use]
     pub fn display_get_antialiasing(&self, disp: Option<DisplayId>) -> bool {
         let Some(d) = self.disp_checked(disp, "display_get_antialiasing: disp != NULL") else {
             return false;
@@ -1218,6 +1246,7 @@ impl Ui {
     }
 
     /// `lv_display_get_render_mode()`
+    #[must_use]
     pub fn display_get_render_mode(&self, disp: DisplayId) -> RenderMode {
         let Some(d) = self.disp_checked(Some(disp), "display_get_render_mode: disp != NULL") else {
             return RenderMode::Partial;
@@ -1235,6 +1264,7 @@ impl Ui {
     }
 
     /// `lv_display_flush_is_last()`
+    #[must_use]
     pub fn display_flush_is_last(&self, disp: DisplayId) -> bool {
         let Some(d) = self.disp_checked(Some(disp), "display_flush_is_last: disp != NULL") else {
             return false;
@@ -1251,6 +1281,7 @@ impl Ui {
     }
 
     /// `lv_display_sync_is_last()`
+    #[must_use]
     pub fn display_sync_is_last(&self, disp: DisplayId) -> bool {
         let Some(d) = self.disp_checked(Some(disp), "display_sync_is_last: disp != NULL") else {
             return false;
@@ -1259,6 +1290,7 @@ impl Ui {
     }
 
     /// `lv_display_is_double_buffered()`
+    #[must_use]
     pub fn display_is_double_buffered(&self, disp: DisplayId) -> bool {
         let Some(d) = self.disp_checked(Some(disp), "display_is_double_buffered: disp != NULL") else {
             return false;
@@ -1271,6 +1303,7 @@ impl Ui {
      *--------------------*/
 
     /// `lv_display_get_screen_active()`
+    #[must_use]
     pub fn display_get_screen_active(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_screen_active: disp != NULL")?;
 
@@ -1278,6 +1311,7 @@ impl Ui {
     }
 
     /// `lv_display_get_screen_loading()`
+    #[must_use]
     pub fn display_get_screen_loading(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_screen_loading: disp != NULL")?;
 
@@ -1285,6 +1319,7 @@ impl Ui {
     }
 
     /// `lv_display_get_screen_prev()`
+    #[must_use]
     pub fn display_get_screen_prev(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_screen_prev: disp != NULL")?;
 
@@ -1292,6 +1327,7 @@ impl Ui {
     }
 
     /// `lv_display_get_layer_top()`
+    #[must_use]
     pub fn display_get_layer_top(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_layer_top: disp != NULL")?;
 
@@ -1299,6 +1335,7 @@ impl Ui {
     }
 
     /// `lv_display_get_layer_sys()`
+    #[must_use]
     pub fn display_get_layer_sys(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_layer_sys: disp != NULL")?;
 
@@ -1306,6 +1343,7 @@ impl Ui {
     }
 
     /// `lv_display_get_layer_bottom()`
+    #[must_use]
     pub fn display_get_layer_bottom(&self, disp: Option<DisplayId>) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_layer_bottom: disp != NULL")?;
 
@@ -1313,6 +1351,7 @@ impl Ui {
     }
 
     /// `lv_display_get_screen_by_name()` (`LV_USE_OBJ_NAME`)
+    #[must_use]
     pub fn display_get_screen_by_name(&self, disp: Option<DisplayId>, screen_name: &str) -> Option<Obj> {
         let d = self.disp_checked(disp, "display_get_screen_by_name: disp != NULL")?;
 
@@ -1582,6 +1621,7 @@ impl Ui {
     }
 
     /// `lv_display_get_event_count()`
+    #[must_use]
     pub fn display_get_event_count(&self, disp: DisplayId) -> u32 {
         let Some(d) = self.disp_checked(Some(disp), "display_get_event_count: disp != NULL") else {
             return 0;
@@ -1590,6 +1630,7 @@ impl Ui {
     }
 
     /// `lv_display_get_event_dsc()`
+    #[must_use]
     pub fn display_get_event_dsc(&self, disp: DisplayId, index: u32) -> Option<&EventDsc> {
         let d = self.disp_checked(Some(disp), "display_get_event_dsc: disp != NULL")?;
         self.event_get_dsc(&d.event_list, index as usize)
@@ -1706,6 +1747,7 @@ impl Ui {
     }
 
     /// `lv_display_get_theme()`
+    #[must_use]
     pub fn display_get_theme(&self, disp: Option<DisplayId>) -> Option<ThemeId> {
         let d = self.disp_checked(disp, "display_get_theme: disp != NULL")?;
         d.theme
@@ -1713,6 +1755,7 @@ impl Ui {
 
     /// `lv_display_get_inactive_time()`: `None` returns the smallest inactive
     /// time of all displays.
+    #[must_use]
     pub fn display_get_inactive_time(&self, disp: Option<DisplayId>) -> u32 {
         if let Some(disp) = disp {
             return match self.display(disp) {
@@ -1756,6 +1799,7 @@ impl Ui {
     }
 
     /// `lv_display_is_invalidation_enabled()`
+    #[must_use]
     pub fn display_is_invalidation_enabled(&self, disp: Option<DisplayId>) -> bool {
         let Some(d) = self.disp_checked(disp, "display_is_invalidation_enabled: disp != NULL") else {
             return false;
@@ -1764,6 +1808,7 @@ impl Ui {
     }
 
     /// `lv_display_get_refr_timer()`
+    #[must_use]
     pub fn display_get_refr_timer(&self, disp: Option<DisplayId>) -> Option<TimerId> {
         let d = self.disp_checked(disp, "display_get_refr_timer: disp != NULL")?;
         d.refr_timer
@@ -1869,6 +1914,7 @@ impl Ui {
     }
 
     /// `lv_display_get_user_data()`
+    #[must_use]
     pub fn display_get_user_data(&self, disp: DisplayId) -> Option<Rc<dyn Any>> {
         let d = self.disp_checked(Some(disp), "display_get_user_data: disp != NULL")?;
 
@@ -1876,6 +1922,7 @@ impl Ui {
     }
 
     /// `lv_display_get_driver_data()`
+    #[must_use]
     pub fn display_get_driver_data(&mut self, disp: DisplayId) -> Option<&mut dyn Any> {
         let d = self.disp_checked_mut(Some(disp), "display_get_driver_data: disp != NULL")?;
 
@@ -1886,6 +1933,7 @@ impl Ui {
     }
 
     /// `lv_display_get_buf_active()`
+    #[must_use]
     pub fn display_get_buf_active(&self, disp: DisplayId) -> Option<&DrawBuf> {
         let d = self.disp_checked(Some(disp), "display_get_buf_active: disp != NULL")?;
         d.buf_act_ref()
@@ -1992,6 +2040,7 @@ impl Ui {
     }
 
     /// `lv_display_get_draw_buf_size()`
+    #[must_use]
     pub fn display_get_draw_buf_size(&self, disp: DisplayId) -> u32 {
         let Some(d) = self.disp_checked(Some(disp), "display_get_draw_buf_size: disp != NULL") else {
             return 0;
@@ -2004,6 +2053,7 @@ impl Ui {
     }
 
     /// `lv_display_get_invalidated_draw_buf_size()`
+    #[must_use]
     pub fn display_get_invalidated_draw_buf_size(&self, disp: DisplayId, width: u32, height: u32) -> u32 {
         let Some(d) = self.disp_checked(Some(disp), "display_get_invalidated_draw_buf_size: disp != NULL")
         else {
@@ -2029,31 +2079,37 @@ impl Ui {
     }
 
     /// `lv_screen_active()`
+    #[must_use]
     pub fn screen_active(&self) -> Option<Obj> {
         self.display_get_screen_active(self.display_get_default())
     }
 
     /// `lv_layer_top()`
+    #[must_use]
     pub fn layer_top(&self) -> Option<Obj> {
         self.display_get_layer_top(self.display_get_default())
     }
 
     /// `lv_layer_sys()`
+    #[must_use]
     pub fn layer_sys(&self) -> Option<Obj> {
         self.display_get_layer_sys(self.display_get_default())
     }
 
     /// `lv_layer_bottom()`
+    #[must_use]
     pub fn layer_bottom(&self) -> Option<Obj> {
         self.display_get_layer_bottom(self.display_get_default())
     }
 
     /// `lv_dpx()`: `LV_DPX(n)` with the default display's DPI.
+    #[must_use]
     pub fn dpx(&self, n: i32) -> i32 {
         dpx_calc(self.display_get_dpi(None), n)
     }
 
     /// `lv_display_dpx()`
+    #[must_use]
     pub fn display_dpx(&self, disp: Option<DisplayId>, n: i32) -> i32 {
         if self.disp_checked(disp, "display_dpx: disp != NULL").is_none() {
             return self.config().dpi_def;
@@ -2079,12 +2135,14 @@ impl Ui {
 
     /// Borrow a display.
     #[inline]
+    #[must_use]
     pub fn display(&self, disp: DisplayId) -> Option<&DisplayData> {
         self.displays.get(disp.0)
     }
 
     /// Mutably borrow a display.
     #[inline]
+    #[must_use]
     pub fn display_mut(&mut self, disp: DisplayId) -> Option<&mut DisplayData> {
         self.displays.get_mut(disp.0)
     }
@@ -2480,6 +2538,7 @@ fn disp_event_cb(ui: &mut Ui, e: &mut Event<'_>) {
 
 /// `LV_DPX_CALC(dpi, n)`
 #[inline]
+#[must_use]
 pub const fn dpx_calc(dpi: i32, n: i32) -> i32 {
     if n == 0 {
         0

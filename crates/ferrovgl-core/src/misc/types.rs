@@ -43,31 +43,37 @@ pub mod coord {
 
     /// `LV_COORD_TYPE(x)`: extract the type tag.
     #[inline]
+    #[must_use]
     pub const fn type_of(x: i32) -> i32 {
         x & TYPE_MASK
     }
     /// `LV_COORD_PLAIN(x)`: remove the type tag.
     #[inline]
+    #[must_use]
     pub const fn plain(x: i32) -> i32 {
         x & !TYPE_MASK
     }
     /// `LV_COORD_IS_PX(x)`
     #[inline]
+    #[must_use]
     pub const fn is_px(x: i32) -> bool {
         type_of(x) == TYPE_PX || type_of(x) == TYPE_PX_NEG
     }
     /// `LV_COORD_IS_SPEC(x)`
     #[inline]
+    #[must_use]
     pub const fn is_spec(x: i32) -> bool {
         type_of(x) == TYPE_SPEC
     }
     /// `LV_COORD_SET_SPEC(x)`
     #[inline]
+    #[must_use]
     pub const fn set_spec(x: i32) -> i32 {
         x | TYPE_SPEC
     }
     /// `LV_PCT(x)` / `lv_pct()`: encode a percentage.
     #[inline]
+    #[must_use]
     pub const fn pct(x: i32) -> i32 {
         let v = if x < 0 {
             PCT_POS_MAX - (if x > -PCT_POS_MAX { x } else { -PCT_POS_MAX })
@@ -80,11 +86,13 @@ pub mod coord {
     }
     /// `LV_COORD_IS_PCT(x)`
     #[inline]
+    #[must_use]
     pub const fn is_pct(x: i32) -> bool {
         is_spec(x) && plain(x) <= PCT_STORED_MAX
     }
     /// `LV_COORD_GET_PCT(x)`: decode a percentage.
     #[inline]
+    #[must_use]
     pub const fn get_pct(x: i32) -> i32 {
         if plain(x) > PCT_POS_MAX {
             PCT_POS_MAX - plain(x)
@@ -94,6 +102,7 @@ pub mod coord {
     }
     /// `lv_pct_to_px()`: resolve a percentage against `base`, pass pixels through.
     #[inline]
+    #[must_use]
     pub const fn pct_to_px(v: i32, base: i32) -> i32 {
         if is_pct(v) { (get_pct(v) * base) / 100 } else { v }
     }

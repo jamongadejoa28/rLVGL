@@ -13,7 +13,7 @@
 //! are ported.
 //!
 //! Buffer ownership: upstream points `disp->layer_head->draw_buf` at
-//! `disp->buf_act`. Here a [`DrawBuf`] has one owner, so [`Ui::refr_area`]
+//! `disp->buf_act`. Here a [`DrawBuf`] has one owner, so `Ui::refr_area`
 //! moves the active display buffer (`buf_1` / `buf_2` / `buf_3` selected
 //! by `buf_act`) into the display layer's `draw_buf` and `draw_buf_flush()`
 //! moves it back into its slot *before* calling the driver (which gets
@@ -613,6 +613,7 @@ impl Ui {
     }
 
     /// `lv_refr_get_disp_refreshing()`: the display being refreshed.
+    #[must_use]
     pub fn refr_get_disp_refreshing(&self) -> Option<DisplayId> {
         self.disp_refresh
     }
@@ -739,6 +740,7 @@ impl Ui {
 
     /// `lv_refr_get_top_obj()`: the topmost object fully covering `area`,
     /// starting the search from `obj` (typically a screen).
+    #[must_use]
     pub fn refr_get_top_obj(&mut self, area: &Area, obj: Obj) -> Option<Obj> {
         if !self.obj_is_valid(obj) {
             crate::misc::check_arg_failed("refr_get_top_obj: obj is NULL");
@@ -1000,7 +1002,7 @@ impl Ui {
 
     /// `lv_refr_join_area()`: join the invalid areas which have common parts
     /// when the joined area is smaller than the two areas together.
-    pub fn refr_join_areas(&mut self, disp: DisplayId) {
+    pub(crate) fn refr_join_areas(&mut self, disp: DisplayId) {
         if let Some(d) = self.display_mut(disp) {
             join_areas(d);
         }
@@ -1107,7 +1109,7 @@ impl Ui {
     }
 
     /// `refr_invalid_areas()`: render and flush every unjoined invalid area.
-    pub fn refr_invalid_areas(&mut self, disp: DisplayId) {
+    pub(crate) fn refr_invalid_areas(&mut self, disp: DisplayId) {
         let Some(d) = self.display(disp) else {
             return;
         };
@@ -1205,7 +1207,7 @@ impl Ui {
 
     /// `refr_area()`: render `area` into the display buffer (`y_offset` is
     /// the row offset of this chunk in partial mode).
-    pub fn refr_area(&mut self, disp: DisplayId, area: &Area, y_offset: i32) {
+    pub(crate) fn refr_area(&mut self, disp: DisplayId, area: &Area, y_offset: i32) {
         let hor_res = self.display_get_horizontal_resolution(Some(disp));
         let ver_res = self.display_get_vertical_resolution(Some(disp));
 
@@ -1335,7 +1337,7 @@ impl Ui {
     /// `refr_configured_layer()`: draw the bottom layer (if nothing covers
     /// the area), the previous and active screens, the top and the system
     /// layer into `layer`.
-    pub fn refr_area_part(&mut self, disp: DisplayId, layer: LayerId) {
+    pub(crate) fn refr_area_part(&mut self, disp: DisplayId, layer: LayerId) {
         let Some(l) = self.draw.layers.get_mut(layer.0) else {
             return;
         };
@@ -1427,7 +1429,7 @@ impl Ui {
     /// `refr_obj_and_children()`: draw `top_obj`, its children and the
     /// younger siblings of it and of its parents, then the parents' post
     /// draw events.
-    pub fn refr_obj_and_children(&mut self, layer: LayerId, top_obj: Option<Obj>) {
+    pub(crate) fn refr_obj_and_children(&mut self, layer: LayerId, top_obj: Option<Obj>) {
         /*Normally always will be a top_obj (at least the screen)
          *but in special cases (e.g. if the screen has alpha) it won't.
          *In this case use the screen directly*/

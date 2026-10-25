@@ -459,7 +459,8 @@ fn blend_mode_lumi(mode: BlendMode, d: u16, lumi: u8) -> Option<u16> {
         }
         BlendMode::Multiply => pack_res((dc.red * rb) >> 5, (dc.green * g) >> 6, (dc.blue * rb) >> 5),
         BlendMode::Difference => pack_res(lv_abs(dc.red - rb), lv_abs(dc.green - g), lv_abs(dc.blue - rb)),
-        BlendMode::Normal => return None,
+        /*`default:`, which is also where `BlendMode::Normal` lands*/
+        _ => return None,
     })
 }
 
@@ -491,7 +492,8 @@ fn blend_mode_24(mode: BlendMode, d: u16, s: [u8; 3]) -> Option<u16> {
         ),
         BlendMode::Multiply => pack_res((dc.red * sr) >> 5, (dc.green * sg) >> 6, (dc.blue * sb) >> 5),
         BlendMode::Difference => pack_res(lv_abs(dc.red - sr), lv_abs(dc.green - sg), lv_abs(dc.blue - sb)),
-        BlendMode::Normal => return None,
+        /*`default:`, which is also where `BlendMode::Normal` lands*/
+        _ => return None,
     })
 }
 
@@ -550,7 +552,8 @@ fn blend_mode_565(mode: BlendMode, d: u16, raw: u16, px: Color16Fields) -> ModeR
             lv_abs(dc.green - px.green),
             lv_abs(dc.blue - px.blue),
         )),
-        BlendMode::Normal => ModeRes::Return,
+        /*`default:`, which is also where `BlendMode::Normal` lands*/
+        _ => ModeRes::Return,
     }
 }
 
@@ -668,7 +671,8 @@ fn i1_image_blend(dsc: &mut BlendImageDsc<'_>) {
                             | (((d & 0x1F) * (c & 0x1F)) >> 5)) as u16
                     }
                     BlendMode::Difference => lv_abs(d - c) as u16,
-                    BlendMode::Normal => {
+                    /*`default:`, which is also where `BlendMode::Normal` lands*/
+                    _ => {
                         /*LV_LOG_WARN("Not supported blend mode")*/
                         return;
                     }

@@ -96,6 +96,16 @@ pub struct SdlDisplay {
     running: bool,
 }
 
+impl core::fmt::Debug for SdlDisplay {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SdlDisplay")
+            .field("ui", &self.ui)
+            .field("display", &self.display)
+            .field("running", &self.running)
+            .finish_non_exhaustive()
+    }
+}
+
 impl SdlDisplay {
     /// Create a single-buffered XRGB8888 window and software draw unit.
     ///
@@ -174,11 +184,13 @@ impl SdlDisplay {
     }
 
     /// The display attached to the SDL window.
+    #[must_use]
     pub fn display(&self) -> DisplayId {
         self.display
     }
 
     /// The active screen, or `None` after the screen/display was deleted.
+    #[must_use]
     pub fn screen(&self) -> Option<Obj> {
         self.ui
             .display(self.display)?
@@ -187,16 +199,19 @@ impl SdlDisplay {
     }
 
     /// Mouse pointer device, owned by the UI.
+    #[must_use]
     pub fn pointer(&self) -> IndevId {
         self.inputs.pointer
     }
 
     /// Keyboard device, owned by the UI.
+    #[must_use]
     pub fn keypad(&self) -> IndevId {
         self.inputs.keypad
     }
 
     /// Mouse wheel / middle-button encoder, owned by the UI.
+    #[must_use]
     pub fn encoder(&self) -> IndevId {
         self.inputs.encoder
     }
@@ -208,6 +223,7 @@ impl SdlDisplay {
     }
 
     /// Number of successful SDL presentations, including separate dirty areas.
+    #[must_use]
     pub fn presented_frames(&self) -> u64 {
         self.presenter.borrow().frames
     }

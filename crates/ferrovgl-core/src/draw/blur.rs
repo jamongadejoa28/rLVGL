@@ -23,6 +23,7 @@ pub struct BlurDsc {
 
 impl BlurDsc {
     /// `lv_draw_blur_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -46,6 +47,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_blur_dsc()`
+    #[must_use]
     pub fn task_get_blur_dsc(&mut self, task: DrawTaskRef) -> Option<&mut BlurDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Blur {

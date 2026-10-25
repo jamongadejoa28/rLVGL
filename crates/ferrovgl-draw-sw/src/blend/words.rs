@@ -37,6 +37,7 @@ fn fits<T>(buf: &[u8]) -> bool {
 /// and `tail` the remaining 0..=3 bytes. Mirrors the upstream
 /// `while(dest < dest_end && ((lv_uintptr_t)dest & 0x3))` lead-in followed
 /// by `lv_draw_sw_word_t` stores.
+#[must_use]
 pub fn split_u32_mut(buf: &mut [u8]) -> (&mut [u8], &mut [u32], &mut [u8]) {
     let lead = lead_len(buf, align_of::<u32>());
     let (head, rest) = buf.split_at_mut(lead);
@@ -52,6 +53,7 @@ pub fn split_u32_mut(buf: &mut [u8]) -> (&mut [u8], &mut [u32], &mut [u8]) {
 
 /// Split `buf` into `(head, words, tail)` like [`split_u32_mut`] but for
 /// 2-byte `u16` words (`head` and `tail` are at most 1 byte each).
+#[must_use]
 pub fn split_u16_mut(buf: &mut [u8]) -> (&mut [u8], &mut [u16], &mut [u8]) {
     let lead = lead_len(buf, align_of::<u16>());
     let (head, rest) = buf.split_at_mut(lead);
@@ -65,6 +67,7 @@ pub fn split_u16_mut(buf: &mut [u8]) -> (&mut [u8], &mut [u16], &mut [u8]) {
 
 /// View `buf` as `u32` words if it is 4-byte aligned and its length is a
 /// multiple of 4, `None` otherwise (callers then use a byte path).
+#[must_use]
 pub fn as_u32_mut(buf: &mut [u8]) -> Option<&mut [u32]> {
     if !fits::<u32>(buf) {
         return None;
@@ -76,6 +79,7 @@ pub fn as_u32_mut(buf: &mut [u8]) -> Option<&mut [u32]> {
 }
 
 /// Read-only variant of [`as_u32_mut`].
+#[must_use]
 pub fn as_u32(buf: &[u8]) -> Option<&[u32]> {
     if !fits::<u32>(buf) {
         return None;
@@ -88,6 +92,7 @@ pub fn as_u32(buf: &[u8]) -> Option<&[u32]> {
 
 /// View `buf` as `u16` words if it is 2-byte aligned and of even length,
 /// `None` otherwise.
+#[must_use]
 pub fn as_u16_mut(buf: &mut [u8]) -> Option<&mut [u16]> {
     if !fits::<u16>(buf) {
         return None;
@@ -99,6 +104,7 @@ pub fn as_u16_mut(buf: &mut [u8]) -> Option<&mut [u16]> {
 }
 
 /// Read-only variant of [`as_u16_mut`].
+#[must_use]
 pub fn as_u16(buf: &[u8]) -> Option<&[u16]> {
     if !fits::<u16>(buf) {
         return None;
@@ -110,6 +116,7 @@ pub fn as_u16(buf: &[u8]) -> Option<&[u16]> {
 }
 
 /// View `u32` words as their bytes (always possible: `u8` has alignment 1).
+#[must_use]
 pub fn u32_as_bytes_mut(words: &mut [u32]) -> &mut [u8] {
     let n = size_of_val(words);
     // SAFETY: `u8` has alignment 1 and no invalid bit patterns, the byte
@@ -119,6 +126,7 @@ pub fn u32_as_bytes_mut(words: &mut [u32]) -> &mut [u8] {
 }
 
 /// Read-only variant of [`u32_as_bytes_mut`].
+#[must_use]
 pub fn u32_as_bytes(words: &[u32]) -> &[u8] {
     let n = size_of_val(words);
     // SAFETY: `u8` has alignment 1, the length covers exactly the memory of

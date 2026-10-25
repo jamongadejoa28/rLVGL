@@ -44,7 +44,7 @@ pub static LED_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable LED handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Led(Obj);
 
 impl Led {
@@ -58,11 +58,13 @@ impl Led {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the LED class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &LED_CLASS)).then_some(Self(obj))
     }
@@ -132,12 +134,14 @@ impl Led {
     }
 
     /// `lv_led_get_brightness()`: 0 (max. dark) .. 255 (max. light).
+    #[must_use]
     pub fn brightness(self, ui: &Ui) -> u8 {
         // LV_CHECK_OBJ(obj, MY_CLASS, return 0);
         state(ui, self.0).map_or(0, |led| led.bright)
     }
 
     /// `lv_led_get_color()`
+    #[must_use]
     pub fn color(self, ui: &Ui) -> Color {
         // LV_CHECK_OBJ(obj, MY_CLASS, return lv_color_black());
         state(ui, self.0).map_or(Color::BLACK, |led| led.color)

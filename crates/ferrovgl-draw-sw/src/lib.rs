@@ -67,6 +67,8 @@ pub const DRAW_UNIT_ID_SW: u8 = 1;
 const COLOR_FORMAT_PROPRIETARY_START: u8 = 0x30;
 
 /// `lv_draw_sw_unit_t`: the software draw unit (single threaded).
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct SwDrawUnit {
     /// `task_act`: the task being rendered.
     pub task_act: Option<DrawTaskRef>,
@@ -83,6 +85,7 @@ pub struct SwDrawUnit {
 
 impl SwDrawUnit {
     /// A fresh unit with empty caches.
+    #[must_use]
     pub fn new(idx: u32) -> Self {
         Self {
             task_act: None,
@@ -121,6 +124,7 @@ impl SwDrawUnit {
     }
 
     /// `lv_draw_sw_get_blend_handler()`
+    #[must_use]
     pub fn get_blend_handler(&self, dest_cf: ColorFormat) -> Option<BlendHandler> {
         blend::get_blend_handler(&self.blend_handlers, dest_cf)
     }
@@ -132,7 +136,7 @@ impl SwDrawUnit {
     /// A task whose descriptor does not match its type (impossible upstream,
     /// where `draw_dsc` is allocated for the type) is skipped like the
     /// `default:` case.
-    pub fn execute_drawing(&mut self, ctx: &mut DrawCtx, t: DrawTaskRef) {
+    pub(crate) fn execute_drawing(&mut self, ctx: &mut DrawCtx, t: DrawTaskRef) {
         let Some(task) = ctx.task(t).cloned() else {
             return;
         };
@@ -277,7 +281,7 @@ impl DrawUnit for SwDrawUnit {
 /// `idx` is the unit count after the registration: `lv_draw_create_unit()`
 /// increments `unit_cnt` before assigning it, so the first unit gets 1.
 pub fn init(ui: &mut Ui) {
-    let draw_sw_unit = SwDrawUnit::new(ui.draw_unit_count() + 1);
+    let draw_sw_unit = SwDrawUnit::new(ui.draw_get_unit_count() + 1);
     ui.draw_create_unit(Box::new(draw_sw_unit));
 }
 
@@ -290,6 +294,7 @@ pub fn deinit(ui: &mut Ui) {
 }
 
 /// Convenience: box a unit for `Ui::draw_create_unit`.
+#[must_use]
 pub fn boxed_unit(idx: u32) -> Box<dyn DrawUnit> {
     Box::new(SwDrawUnit::new(idx))
 }

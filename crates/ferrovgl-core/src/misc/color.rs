@@ -47,12 +47,14 @@ pub const COLOR_MIX_ROUND_OFS: u32 = 0;
 
 /// `LV_OPA_MIX2(a1, a2)`
 #[inline]
+#[must_use]
 pub const fn opa_mix2(a1: u8, a2: u8) -> Opa {
     ((a1 as i32 * a2 as i32) >> 8) as Opa
 }
 
 /// `LV_OPA_MIX3(a1, a2, a3)`
 #[inline]
+#[must_use]
 pub const fn opa_mix3(a1: u8, a2: u8, a3: u8) -> Opa {
     ((a1 as i32 * a2 as i32 * a3 as i32) >> 16) as Opa
 }
@@ -200,6 +202,7 @@ impl ColorFormat {
     pub const NATIVE_WITH_ALPHA: ColorFormat = ColorFormat::Argb8888;
 
     /// `lv_color_format_get_bpp()`: bits per pixel.
+    #[must_use]
     pub const fn bpp(self) -> u8 {
         use ColorFormat::*;
         match self {
@@ -218,11 +221,13 @@ impl ColorFormat {
 
     /// `lv_color_format_get_size()`: bytes per pixel, rounded up.
     #[inline]
+    #[must_use]
     pub const fn size(self) -> u8 {
         (self.bpp() + 7) >> 3
     }
 
     /// `lv_color_format_has_alpha()`
+    #[must_use]
     pub const fn has_alpha(self) -> bool {
         use ColorFormat::*;
         matches!(
@@ -247,6 +252,7 @@ impl ColorFormat {
 
     /// `LV_COLOR_FORMAT_IS_YUV(cf)`
     #[inline]
+    #[must_use]
     pub const fn is_yuv(self) -> bool {
         let v = self as u8;
         v >= ColorFormat::I420 as u8 && v <= ColorFormat::Uyvy as u8
@@ -254,6 +260,7 @@ impl ColorFormat {
 
     /// `LV_COLOR_FORMAT_IS_INDEXED(cf)`
     #[inline]
+    #[must_use]
     pub const fn is_indexed(self) -> bool {
         matches!(
             self,
@@ -263,6 +270,7 @@ impl ColorFormat {
 
     /// `LV_COLOR_FORMAT_IS_ALPHA_ONLY(cf)`
     #[inline]
+    #[must_use]
     pub const fn is_alpha_only(self) -> bool {
         matches!(
             self,
@@ -272,6 +280,7 @@ impl ColorFormat {
 
     /// `LV_COLOR_INDEXED_PALETTE_SIZE(cf)`: palette entries for indexed formats.
     #[inline]
+    #[must_use]
     pub const fn indexed_palette_size(self) -> u32 {
         match self {
             ColorFormat::I1 => 2,
@@ -283,6 +292,7 @@ impl ColorFormat {
     }
 
     /// Convert the upstream numeric value back into a format, if known.
+    #[must_use]
     pub const fn from_u8(v: u8) -> Option<ColorFormat> {
         use ColorFormat::*;
         Some(match v {
@@ -332,6 +342,7 @@ impl ColorFormat {
 impl Color {
     /// `lv_color_make()` / `LV_COLOR_MAKE()`
     #[inline]
+    #[must_use]
     pub const fn make(r: u8, g: u8, b: u8) -> Self {
         Self {
             blue: b,
@@ -342,6 +353,7 @@ impl Color {
 
     /// `lv_color_hex()`: from `0xRRGGBB`.
     #[inline]
+    #[must_use]
     pub const fn hex(c: u32) -> Self {
         Self {
             red: ((c >> 16) & 0xff) as u8,
@@ -352,6 +364,7 @@ impl Color {
 
     /// `lv_color_hex3()`: from `0xRGB`, each nibble doubled.
     #[inline]
+    #[must_use]
     pub const fn hex3(c: u32) -> Self {
         Self::make(
             (((c >> 4) & 0xF0) | ((c >> 8) & 0xF)) as u8,
@@ -367,18 +380,21 @@ impl Color {
 
     /// `lv_color_white()`
     #[inline]
+    #[must_use]
     pub const fn white() -> Self {
         Self::WHITE
     }
 
     /// `lv_color_black()`
     #[inline]
+    #[must_use]
     pub const fn black() -> Self {
         Self::BLACK
     }
 
     /// `lv_color_to_32()`
     #[inline]
+    #[must_use]
     pub const fn to_32(self, opa: Opa) -> Color32 {
         Color32 {
             blue: self.blue,
@@ -390,6 +406,7 @@ impl Color {
 
     /// `lv_color_to_u16()`: pack as RGB565.
     #[inline]
+    #[must_use]
     pub const fn to_u16(self) -> u16 {
         (((self.red & 0xF8) as u16) << 8)
             + (((self.green & 0xFC) as u16) << 3)
@@ -398,24 +415,28 @@ impl Color {
 
     /// `lv_color_to_u32()`: `0xFFRRGGBB`.
     #[inline]
+    #[must_use]
     pub const fn to_u32(self) -> u32 {
         (0xffu32 << 24) + ((self.red as u32) << 16) + ((self.green as u32) << 8) + self.blue as u32
     }
 
     /// `lv_color_to_int()`: the three bytes as stored in memory (`0xRRGGBB`).
     #[inline]
+    #[must_use]
     pub const fn to_int(self) -> u32 {
         self.blue as u32 + ((self.green as u32) << 8) + ((self.red as u32) << 16)
     }
 
     /// `lv_color_eq()`
     #[inline]
+    #[must_use]
     pub const fn eq(self, other: Color) -> bool {
         self.to_int() == other.to_int()
     }
 
     /// `lv_color_mix()`: `c1 * mix + c2 * (255 - mix)`.
     #[inline]
+    #[must_use]
     pub const fn mix(c1: Color, c2: Color, mix: u8) -> Color {
         let m = mix as u32;
         Color {
@@ -427,17 +448,20 @@ impl Color {
 
     /// `lv_color_lighten()`
     #[inline]
+    #[must_use]
     pub const fn lighten(self, lvl: Opa) -> Color {
         Color::mix(Color::WHITE, self, lvl)
     }
 
     /// `lv_color_darken()`
     #[inline]
+    #[must_use]
     pub const fn darken(self, lvl: Opa) -> Color {
         Color::mix(Color::BLACK, self, lvl)
     }
 
     /// `lv_color_hsv_to_rgb()`: `h` in 0..=359, `s` and `v` in 0..=100.
+    #[must_use]
     pub const fn from_hsv(h: u16, s: u8, v: u8) -> Color {
         let h = ((h as u32 * 255) / 360) as u8;
         let s = ((s as u16 * 255) / 100) as u8;
@@ -464,6 +488,7 @@ impl Color {
     }
 
     /// `lv_color_rgb_to_hsv()`
+    #[must_use]
     pub fn rgb_to_hsv(r8: u8, g8: u8, b8: u8) -> ColorHsv {
         let r = ((r8 as u32) << 10) / 255;
         let g = ((g8 as u32) << 10) / 255;
@@ -504,24 +529,28 @@ impl Color {
 
     /// `lv_color_to_hsv()`
     #[inline]
+    #[must_use]
     pub fn to_hsv(self) -> ColorHsv {
         Color::rgb_to_hsv(self.red, self.green, self.blue)
     }
 
     /// `lv_color_luminance()`
     #[inline]
+    #[must_use]
     pub const fn luminance(self) -> u8 {
         ((77u32 * self.red as u32 + 151u32 * self.green as u32 + 28u32 * self.blue as u32) >> 8) as u8
     }
 
     /// `lv_color_brightness()`
     #[inline]
+    #[must_use]
     pub const fn brightness(self) -> u8 {
         let bright = 3u32 * self.red as u32 + self.green as u32 + 4u32 * self.blue as u32;
         (bright >> 3) as u8
     }
 
     /// `lv_color_filter_shade` callback: lighten below 50% opacity, darken above.
+    #[must_use]
     pub const fn shade(self, opa: Opa) -> Color {
         if opa == OPA_50 {
             self
@@ -537,6 +566,7 @@ impl Color {
 impl Color32 {
     /// `lv_color32_make()`
     #[inline]
+    #[must_use]
     pub const fn make(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self {
             blue: b,
@@ -548,6 +578,7 @@ impl Color32 {
 
     /// The 24-bit colour part.
     #[inline]
+    #[must_use]
     pub const fn color(self) -> Color {
         Color {
             blue: self.blue,
@@ -558,12 +589,14 @@ impl Color32 {
 
     /// Pack as little-endian ARGB8888 (`0xAARRGGBB`).
     #[inline]
+    #[must_use]
     pub const fn to_u32(self) -> u32 {
         u32::from_le_bytes([self.blue, self.green, self.red, self.alpha])
     }
 
     /// Unpack from little-endian ARGB8888.
     #[inline]
+    #[must_use]
     pub const fn from_u32(v: u32) -> Self {
         let [blue, green, red, alpha] = v.to_le_bytes();
         Self {
@@ -576,11 +609,13 @@ impl Color32 {
 
     /// `lv_color32_eq()`
     #[inline]
+    #[must_use]
     pub const fn eq(self, other: Color32) -> bool {
         self.to_u32() == other.to_u32()
     }
 
     /// `lv_color_mix32()`: blend `fg` over an opaque `bg`, keeping `bg`'s alpha.
+    #[must_use]
     pub const fn mix32(fg: Color32, bg: Color32) -> Color32 {
         if fg.alpha >= OPA_MAX {
             return Color32 {
@@ -601,6 +636,7 @@ impl Color32 {
     }
 
     /// `lv_color_mix32_premultiplied()`
+    #[must_use]
     pub const fn mix32_premultiplied(fg: Color32, bg: Color32) -> Color32 {
         if fg.alpha >= OPA_MAX {
             return fg;
@@ -618,6 +654,7 @@ impl Color32 {
     }
 
     /// `lv_color_over32()`: Porter-Duff "over" with both alphas.
+    #[must_use]
     pub const fn over32(fg: Color32, bg: Color32) -> Color32 {
         if fg.alpha >= OPA_MAX || bg.alpha <= OPA_MIN {
             return fg;
@@ -635,6 +672,7 @@ impl Color32 {
     }
 
     /// `lv_color_premultiply()`
+    #[must_use]
     pub const fn premultiply(self) -> Color32 {
         if self.alpha == OPA_COVER {
             return self;
@@ -657,6 +695,7 @@ impl Color32 {
 
     /// `lv_color32_luminance()`
     #[inline]
+    #[must_use]
     pub const fn luminance(self) -> u8 {
         self.color().luminance()
     }
@@ -665,39 +704,46 @@ impl Color32 {
 impl Color16 {
     /// Pack from 5/6/5-bit channels.
     #[inline]
+    #[must_use]
     pub const fn new(red: u8, green: u8, blue: u8) -> Self {
         Self(((red as u16 & 0x1F) << 11) | ((green as u16 & 0x3F) << 5) | (blue as u16 & 0x1F))
     }
 
     /// From a 24-bit colour (`lv_color_to_u16`).
     #[inline]
+    #[must_use]
     pub const fn from_color(c: Color) -> Self {
         Self(c.to_u16())
     }
 
     /// 5-bit red channel.
     #[inline]
+    #[must_use]
     pub const fn red(self) -> u8 {
         (self.0 >> 11) as u8
     }
     /// 6-bit green channel.
     #[inline]
+    #[must_use]
     pub const fn green(self) -> u8 {
         ((self.0 >> 5) & 0x3F) as u8
     }
     /// 5-bit blue channel.
     #[inline]
+    #[must_use]
     pub const fn blue(self) -> u8 {
         (self.0 & 0x1F) as u8
     }
 
     /// `lv_color16_luminance()`
     #[inline]
+    #[must_use]
     pub const fn luminance(self) -> u8 {
         ((635u32 * self.red() as u32 + 613u32 * self.green() as u32 + 231u32 * self.blue() as u32) >> 8) as u8
     }
 
     /// `lv_color16_premultiply()`
+    #[must_use]
     pub const fn premultiply(self, a: Opa) -> Color16 {
         if a == OPA_COVER {
             return self;
@@ -713,6 +759,7 @@ impl Color16 {
     }
 
     /// `lv_color_16_16_mix()`: blend two RGB565 values, `mix` = weight of `c1`.
+    #[must_use]
     pub const fn mix(c1: u16, c2: u16, mix: u8) -> u16 {
         if mix == 255 {
             return c1;
@@ -734,6 +781,7 @@ impl Color16 {
 
 /// `lv_color24_luminance()`: luminance of a `[b, g, r]` byte triple.
 #[inline]
+#[must_use]
 pub const fn color24_luminance(c: [u8; 3]) -> u8 {
     ((77u32 * c[2] as u32 + 151u32 * c[1] as u32 + 28u32 * c[0] as u32) >> 8) as u8
 }
@@ -751,12 +799,14 @@ impl ColorFilter {
     pub const SHADE: ColorFilter = ColorFilter { filter: Color::shade };
 
     /// `lv_color_filter_dsc_init()`
+    #[must_use]
     pub const fn new(filter: fn(Color, Opa) -> Color) -> Self {
         Self { filter }
     }
 
     /// Apply the filter.
     #[inline]
+    #[must_use]
     pub fn apply(&self, c: Color, opa: Opa) -> Color {
         (self.filter)(c, opa)
     }

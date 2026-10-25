@@ -2,7 +2,7 @@
 //! `src/layouts/lv_layout.c`.
 //!
 //! The layout registry. `LAYOUT_FLEX` and `LAYOUT_GRID` are registered by
-//! [`builtin_layouts`] when the matching feature is on.
+//! `builtin_layouts()` when the matching feature is on.
 
 pub mod flex;
 pub mod grid;
@@ -47,6 +47,7 @@ pub struct LayoutDsc {
 
 impl LayoutDsc {
     /// Build a descriptor with no `get_min_size_cb`.
+    #[must_use]
     pub const fn new(update: LayoutUpdateCallback) -> Self {
         Self {
             callbacks: LayoutCallbacks {
@@ -60,7 +61,8 @@ impl LayoutDsc {
 
 /// `lv_layout_init()`: the registry with the built-in layouts at their
 /// fixed ids (`LAYOUT_NONE` is a placeholder at index 0).
-pub fn builtin_layouts() -> Vec<LayoutDsc> {
+#[must_use]
+pub(crate) fn builtin_layouts() -> Vec<LayoutDsc> {
     alloc::vec![
         LayoutDsc::new(layout_none_update),
         LayoutDsc {
@@ -84,6 +86,7 @@ fn layout_none_update(_ui: &mut Ui, _obj: Obj, _user_data: u32) {}
 
 impl Ui {
     /// `lv_layout_create()`: register a user layout and return its id.
+    #[must_use]
     pub fn layout_create(&mut self, callbacks: LayoutCallbacks, user_data: u32) -> u32 {
         let id = self.layouts.len() as u32;
         self.layouts.push(LayoutDsc { callbacks, user_data });
@@ -91,6 +94,7 @@ impl Ui {
     }
 
     /// `lv_layout_register()` (deprecated alias of `layout_create`).
+    #[must_use]
     pub fn layout_register(&mut self, cb: LayoutUpdateCallback, user_data: u32) -> u32 {
         self.layout_create(
             LayoutCallbacks {
@@ -149,7 +153,7 @@ mod tests {
                 update: |ui, _, tag| {
                     ui.set_app(tag);
                     // Registration from the callback may reallocate the registry.
-                    ui.layout_register(|_, _, _| {}, 0);
+                    let _ = ui.layout_register(|_, _, _| {}, 0);
                 },
                 get_min_size: Some(|_, _, size, width, tag| {
                     *size = if width { tag as i32 } else { -(tag as i32) };

@@ -38,6 +38,7 @@ pub struct ArcDsc {
 
 impl ArcDsc {
     /// `lv_draw_arc_dsc_init()`
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base: DrawDscBase::new(),
@@ -62,7 +63,7 @@ impl Default for ArcDsc {
 
 /// `lv_draw_arc_get_area()`: bounding area of an arc.
 #[allow(clippy::unnecessary_cast)] // ValuePrecise is f32 or i32.
-pub fn arc_get_area(
+pub fn get_area(
     x: i32,
     y: i32,
     radius: u16,
@@ -166,6 +167,7 @@ impl DrawCtx {
     }
 
     /// `lv_draw_task_get_arc_dsc()`
+    #[must_use]
     pub fn task_get_arc_dsc(&mut self, task: DrawTaskRef) -> Option<&mut ArcDsc> {
         let task = self.task_mut(task)?;
         if task.ty != DrawTaskType::Arc {
@@ -285,7 +287,7 @@ mod tests {
             (60, 30, false, Area::new(80, 180, 120, 220)),
         ] {
             let mut area = Area::default();
-            arc_get_area(
+            get_area(
                 100,
                 200,
                 20,
@@ -299,7 +301,7 @@ mod tests {
         }
         for width in [20, 21, 100] {
             let mut area = Area::default();
-            arc_get_area(
+            get_area(
                 100,
                 200,
                 20,
@@ -317,7 +319,7 @@ mod tests {
     #[test]
     fn arc_bounds_truncate_fractional_angles_like_c() {
         let mut area = Area::default();
-        arc_get_area(100, 200, 20, 30.99, 60.99, 4, false, &mut area);
+        get_area(100, 200, 20, 30.99, 60.99, 4, false, &mut area);
         assert_eq!(area, Area::new(108, 208, 117, 217));
     }
 }

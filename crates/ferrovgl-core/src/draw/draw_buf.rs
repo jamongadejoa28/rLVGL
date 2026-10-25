@@ -80,6 +80,7 @@ bitflags::bitflags! {
 /// `lv_image_compress_t`
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ImageCompress {
     /// `LV_IMAGE_COMPRESS_NONE`
     #[default]
@@ -114,6 +115,7 @@ impl ImageHeader {
     pub const SIZE: usize = 12;
 
     /// A header with the given geometry and `magic` set.
+    #[must_use]
     pub const fn new(cf: ColorFormat, w: u16, h: u16, stride: u16) -> Self {
         Self {
             magic: IMAGE_HEADER_MAGIC,
@@ -133,6 +135,7 @@ impl ImageHeader {
     /// Returns `None` if fewer than [`ImageHeader::SIZE`] bytes are given or
     /// the colour format byte is not a known `lv_color_format_t` value. The
     /// magic is not checked (the decoders do that).
+    #[must_use]
     pub fn from_bytes(bytes: &[u8]) -> Option<ImageHeader> {
         let b = bytes.get(..Self::SIZE)?;
         let cf = ColorFormat::from_u8(b[1])?;
@@ -148,6 +151,7 @@ impl ImageHeader {
     }
 
     /// Serialise to the packed little-endian layout.
+    #[must_use]
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         let mut out = [0u8; Self::SIZE];
         out[0] = self.magic;
@@ -162,6 +166,7 @@ impl ImageHeader {
 }
 
 /// Backing storage of a [`DrawBuf`].
+#[non_exhaustive]
 pub enum BufStorage {
     /// Allocated by the library; 8-byte aligned.
     Owned(Box<[u64]>),
@@ -296,7 +301,11 @@ fn convert_premultiply(header: &ImageHeader, data: &mut [u8]) -> LvResult {
 }
 
 /// `lv_draw_buf_t`
+///
+/// Built with [`DrawBuf::create`], [`DrawBuf::init`] or the other
+/// constructors; the fields mirror the C struct and may grow.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct DrawBuf {
     /// `header`
     pub header: ImageHeader,
@@ -311,6 +320,7 @@ pub struct DrawBuf {
 impl DrawBuf {
     /// `lv_draw_buf_width_to_stride()` (the default `width_to_stride` handler):
     /// `ceil(w * bpp / 8)` rounded up to [`DRAW_BUF_STRIDE_ALIGN`].
+    #[must_use]
     pub fn width_to_stride(w: u32, color_format: ColorFormat) -> u32 {
         let mut width_byte = w.wrapping_mul(color_format.bpp() as u32);
         width_byte = width_byte.wrapping_add(7) >> 3; /*Round up*/
@@ -320,6 +330,7 @@ impl DrawBuf {
 
     /// `lv_draw_buf_align()` / `buf_align()`: round a byte address (offset)
     /// up to [`DRAW_BUF_ALIGN`] (`LV_ROUND_UP`).
+    #[must_use]
     pub fn align(offset: usize, color_format: ColorFormat) -> usize {
         let _ = color_format;
         #[allow(clippy::manual_div_ceil)] // keep the upstream LV_ROUND_UP expression
@@ -329,6 +340,7 @@ impl DrawBuf {
 
     /// `LV_DRAW_BUF_SIZE(w, h, cf)`: size of a static buffer for
     /// `LV_DRAW_BUF_DEFINE_STATIC` (stride, plus alignment slack and palette).
+    #[must_use]
     pub fn size_for(w: u32, h: u32, cf: ColorFormat) -> u32 {
         let stride = round_up(
             w.wrapping_mul(cf.bpp() as u32).wrapping_add(7) / 8,
@@ -460,6 +472,7 @@ impl DrawBuf {
     ///
     /// Unlike `lv_malloc` the memory is zero-initialised (Rust requires
     /// initialised memory).
+    #[must_use]
     pub fn create(w: u32, h: u32, cf: ColorFormat, stride: u32) -> Option<DrawBuf> {
         let mut stride = stride;
         if stride == STRIDE_AUTO {
@@ -502,6 +515,7 @@ impl DrawBuf {
 
     /// `lv_draw_buf_dup()`: allocate a new buffer of the same shape and copy
     /// the smaller of the two `data_size`s worth of bytes.
+    #[must_use]
     pub fn dup(&self) -> Option<DrawBuf> {
         let header = &self.header;
         let mut new_buf = DrawBuf::create(header.w as u32, header.h as u32, header.cf, header.stride as u32)?;
@@ -526,6 +540,7 @@ impl DrawBuf {
     /// `lv_draw_buf_reshape()`: reinterpret the buffer with a new geometry
     /// if it fits. Returns `false` (and leaves the buffer unchanged) otherwise.
     /// [`ColorFormat::Unknown`] keeps the current colour format.
+    #[must_use]
     pub fn reshape(&mut self, cf: ColorFormat, w: u32, h: u32, stride: u32) -> bool {
         let mut cf = cf;
         let mut stride = stride;
@@ -567,6 +582,7 @@ impl DrawBuf {
     }
 
     /// `lv_draw_buf_is_position_valid()`
+    #[must_use]
     pub fn is_position_valid(&self, x: u32, y: u32) -> bool {
         x < self.header.w as u32 && y < self.header.h as u32
     }
@@ -576,6 +592,7 @@ impl DrawBuf {
     ///
     /// The offset is computed even when the position is out of range; use
     /// [`DrawBuf::goto_xy_checked`] for the upstream `NULL` return.
+    #[must_use]
     pub fn goto_xy(&self, x: u32, y: u32) -> usize {
         let cf = self.header.cf;
         /*Skip palette*/
@@ -591,6 +608,7 @@ impl DrawBuf {
 
     /// `lv_draw_buf_goto_xy()` with its argument checks: `None` (upstream
     /// `NULL`) if `(x, y)` is outside the buffer.
+    #[must_use]
     pub fn goto_xy_checked(&self, x: u32, y: u32) -> Option<usize> {
         /*"coordinates out of range, x: %d, y: %d, w: %d, h: %d"*/
         if !self.is_position_valid(x, y) {
@@ -732,6 +750,7 @@ impl DrawBuf {
     /// can be shared. Other storage returns `None`; pass runtime buffers as
     /// [`crate::misc::style::ImageSrc::DrawBuf`] instead. This explicit lifetime
     /// constraint replaces C's unrestricted borrowed descriptor.
+    #[must_use]
     pub fn to_image(&self) -> Option<ImageDsc> {
         let data: &'static [u8] = match &self.storage {
             BufStorage::Static(s) => {
@@ -750,6 +769,7 @@ impl DrawBuf {
 
     /// `lv_draw_buf_has_flag()`: `true` if any bit of `flag` is set.
     #[inline]
+    #[must_use]
     pub fn has_flag(&self, flag: ImageFlags) -> bool {
         self.header.flags.intersects(flag)
     }
@@ -768,6 +788,7 @@ impl DrawBuf {
 
     /// `data`: the pixel bytes (read), `data_size` bytes from `data_offset`
     /// (clamped to the storage).
+    #[must_use]
     pub fn data(&self) -> &[u8] {
         let bytes: &[u8] = match &self.storage {
             BufStorage::Owned(w) => words_as_bytes(w),
@@ -785,6 +806,7 @@ impl DrawBuf {
 
     /// `data`: the pixel bytes (write); `None` for read-only storage
     /// ([`BufStorage::Static`] and [`BufStorage::Shared`]).
+    #[must_use]
     pub fn data_mut(&mut self) -> Option<&mut [u8]> {
         let bytes: &mut [u8] = match &mut self.storage {
             BufStorage::Owned(w) => words_as_bytes_mut(w),
@@ -894,6 +916,7 @@ pub struct ImageDsc {
 
 impl ImageDsc {
     /// Build an image descriptor (usable in `static` initialisers).
+    #[must_use]
     pub const fn new(header: ImageHeader, data: &'static [u8]) -> Self {
         Self {
             header,

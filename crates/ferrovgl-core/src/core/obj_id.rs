@@ -3,7 +3,7 @@
 //!
 //! Also covers the `LV_USE_OBJ_ID` prototypes of `include/lvgl/core/lv_obj.h`
 //! and the `objid_array` / `objid_count` members of `lv_global_t`
-//! (`src/core/lv_global.h`), which live in [`Ui::objid_array`].
+//! (`src/core/lv_global.h`), which live in `Ui::objid_array`.
 //!
 //! The feature `obj-id` stands for `LV_USE_OBJ_ID`, `LV_USE_OBJ_ID_BUILTIN`
 //! and `LV_OBJ_ID_AUTO_ASSIGN` together (the `lv_conf_template.h` defaults
@@ -26,7 +26,7 @@ use crate::misc::check_arg_failed;
 
 /// `class_info_t`: the number of objects created so far of one class.
 #[derive(Clone, Copy, Debug)]
-pub struct ClassInfo {
+pub(crate) struct ClassInfo {
     /// `class_p`
     pub class_p: &'static ObjClass,
     /// `obj_count`
@@ -107,6 +107,7 @@ impl Ui {
     ///
     /// `None` is the C `NULL` return of a failed argument check (invalid
     /// object or `len == 0`).
+    #[must_use]
     pub fn obj_stringify_id(&self, obj: Obj, len: u32) -> Option<String> {
         let Some(d) = self.obj(obj) else {
             check_arg_failed("lv_obj_stringify_id: obj != NULL");
@@ -144,7 +145,8 @@ impl Ui {
 }
 
 /// `lv_obj_id_compare()`: 0 if the two ids are equal, 1 otherwise.
-pub fn obj_id_compare(id1: usize, id2: usize) -> i32 {
+#[must_use]
+pub fn compare(id1: usize, id2: usize) -> i32 {
     if id1 == id2 { 0 } else { 1 }
 }
 
@@ -250,8 +252,8 @@ mod tests {
 
         ui.obj_set_id(a, 0);
         assert_eq!(ui.obj_get_id(a), 0);
-        assert_eq!(obj_id_compare(5, 5), 0);
-        assert_eq!(obj_id_compare(5, 6), 1);
+        assert_eq!(compare(5, 5), 0);
+        assert_eq!(compare(5, 6), 1);
 
         ui.objid_builtin_destroy();
         assert!(ui.objid_array.is_empty());

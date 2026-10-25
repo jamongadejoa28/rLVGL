@@ -89,7 +89,7 @@ pub static LINE_CLASS: ObjClass = ObjClass {
 };
 
 /// A copyable line handle; widget state belongs to its [`Ui`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Line(Obj);
 
 impl Line {
@@ -103,11 +103,13 @@ impl Line {
     }
 
     /// The base object for positioning, flags and styles.
+    #[must_use]
     pub const fn obj(self) -> Obj {
         self.0
     }
 
     /// Check that an existing object derives from the line class.
+    #[must_use]
     pub fn from_obj(ui: &Ui, obj: Obj) -> Option<Self> {
         (ui.obj_is_valid(obj) && ui.obj_has_class(obj, &LINE_CLASS)).then_some(Self(obj))
     }
@@ -142,24 +144,28 @@ impl Line {
     }
 
     /// `lv_line_get_points()`: the point array, constant or mutable.
+    #[must_use]
     pub fn points(self, ui: &Ui) -> Option<LinePoints> {
         // LV_CHECK_OBJ(obj, MY_CLASS, return NULL);
         state(ui, self.0)?.point_array.clone()
     }
 
     /// `lv_line_get_point_count()`
+    #[must_use]
     pub fn point_count(self, ui: &Ui) -> u32 {
         // LV_CHECK_OBJ(obj, MY_CLASS, return 0);
         state(ui, self.0).map_or(0, |line| line.point_num)
     }
 
     /// `lv_line_is_point_array_mutable()`
+    #[must_use]
     pub fn is_point_array_mutable(self, ui: &Ui) -> bool {
         // LV_CHECK_OBJ(obj, MY_CLASS, return false);
         state(ui, self.0).is_some_and(|line| line.point_array_is_mutable)
     }
 
     /// `lv_line_get_points_mutable()`: `None` if the array is not mutable.
+    #[must_use]
     pub fn points_mutable(self, ui: &Ui) -> Option<LinePointsMut> {
         // LV_CHECK_OBJ(obj, MY_CLASS, return NULL);
         let line = state(ui, self.0)?;
@@ -176,6 +182,7 @@ impl Line {
     }
 
     /// `lv_line_get_y_invert()`
+    #[must_use]
     pub fn y_invert(self, ui: &Ui) -> bool {
         // LV_CHECK_OBJ(obj, MY_CLASS, return false);
         state(ui, self.0).is_some_and(|line| line.y_inv)
