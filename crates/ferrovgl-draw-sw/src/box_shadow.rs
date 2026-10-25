@@ -38,7 +38,7 @@ pub const SHADOW_CACHE_SIZE: u32 = 8;
 const SHADOW_CACHE_BYTES: u32 = SHADOW_CACHE_SIZE * SHADOW_CACHE_SIZE;
 
 /// `lv_draw_sw_shadow_cache_t`
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ShadowCache {
     /// `cache`: the cached corner (`cache_size * cache_size` bytes).
     pub cache: Vec<u8>,
@@ -46,6 +46,18 @@ pub struct ShadowCache {
     pub size: i32,
     /// `cache_r`
     pub r: i32,
+}
+
+impl Default for ShadowCache {
+    /// The state `lv_init()` sets up: `cache_size = -1` and `cache_r = -1`,
+    /// so the first `lv_draw_sw_box_shadow()` call always misses the cache.
+    fn default() -> Self {
+        Self {
+            cache: Vec::new(),
+            size: -1,
+            r: -1,
+        }
+    }
 }
 
 /// `lv_draw_sw_box_shadow()`
@@ -1094,7 +1106,7 @@ mod tests {
             255,
             false,
         );
-        assert_eq!(u.shadow_cache.size, 0);
+        assert_eq!((u.shadow_cache.size, u.shadow_cache.r), (-1, -1));
         assert!(u.shadow_cache.cache.is_empty());
         // corner_size = 4 + 3: 49 bytes fit.
         shadow(
@@ -1124,6 +1136,16 @@ mod tests {
         let mut u = SwDrawUnit::new(0);
         box_shadow(&mut u, &mut ctx, &t, &dsc, &Area::new(30, 25, 80, 60));
         assert_eq!(layer_hash(&ctx, id), before);
-        assert_eq!(u.shadow_cache.size, 0);
+        assert_eq!(u.shadow_cache.size, -1);
+    }
+
+    /// `lv_init()`: `sw_shadow_cache.cache_size = -1; cache_r = -1;`
+    #[test]
+    fn fresh_cache_key_is_minus_one() {
+        let c = ShadowCache::default();
+        assert_eq!((c.size, c.r), (-1, -1));
+        assert!(c.cache.is_empty());
+        let u = SwDrawUnit::new(0);
+        assert_eq!((u.shadow_cache.size, u.shadow_cache.r), (-1, -1));
     }
 }
