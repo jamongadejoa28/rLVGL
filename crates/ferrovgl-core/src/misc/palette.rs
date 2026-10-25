@@ -386,6 +386,22 @@ mod tests {
         assert_eq!(Palette::None as u8, 0xFF);
     }
 
+    #[test]
+    fn table_corners_match_lv_palette_c() {
+        // First / last entries of every table of src/misc/lv_palette.c.
+        assert_eq!(main(Palette::Pink), Color::hex(0xE91E63));
+        assert_eq!(main(Palette::BlueGrey), Color::hex(0x607D8B));
+        assert_eq!(lighten(Palette::Red, 1), Color::hex(0xEF5350));
+        assert_eq!(lighten(Palette::Grey, 5), Color::hex(0xFAFAFA));
+        assert_eq!(lighten(Palette::DeepOrange, 5), Color::hex(0xFBE9E7));
+        assert_eq!(darken(Palette::Red, 1), Color::hex(0xE53935));
+        assert_eq!(darken(Palette::Grey, 4), Color::hex(0x212121));
+        assert_eq!(darken(Palette::Amber, 4), Color::hex(0xFF6F00));
+        assert_eq!(MAIN.len(), Palette::Last as usize);
+        assert_eq!(LIGHTEN.len(), Palette::Last as usize);
+        assert_eq!(DARKEN.len(), Palette::Last as usize);
+    }
+
     #[cfg(not(feature = "check-arg-panic"))]
     #[test]
     fn invalid_arguments_yield_black() {
