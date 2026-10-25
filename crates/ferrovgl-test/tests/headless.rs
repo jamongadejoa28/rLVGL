@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use ferrovgl_core::draw::label::LabelDsc;
 use ferrovgl_core::{Area, Color, ColorFormat, EventCode, FontRef, RenderMode, StyleSelector};
-use ferrovgl_test::{DISPLAY_DPI, TestDisplay};
+use ferrovgl_test::{DISPLAY_DPI, RgbImage, TestDisplay};
 
 #[test]
 fn public_display_object_refresh_and_delete_render_pixels() {
@@ -142,35 +142,51 @@ fn wait_zero_flushes_pending_style_changes() {
 }
 
 #[test]
-fn changed_display_configuration_cannot_produce_a_partial_screenshot() {
+fn changed_display_configuration_reallocates_the_buffer_like_upstream() {
     let mut display = TestDisplay::with_resolution(8, 8).unwrap();
+    let disp = display.display();
+    let screen = display.screen().unwrap();
     display
         .ui
-        .display_set_render_mode(display.display(), RenderMode::Partial);
-    assert!(display.snapshot().is_err());
+        .obj_set_style_bg_opa(screen, 255, StyleSelector::DEFAULT);
     display
         .ui
-        .display_set_render_mode(display.display(), RenderMode::Direct);
-    display.ui.display_set_resolution(display.display(), 9, 8);
-    assert!(display.snapshot().is_err());
-    display.ui.display_set_resolution(display.display(), 8, 8);
-    display
-        .ui
-        .display_set_color_format(display.display(), ColorFormat::Rgb565);
-    assert!(display.snapshot().is_err());
-    display
-        .ui
-        .display_set_color_format(display.display(), ColorFormat::Xrgb8888);
-    display
-        .ui
-        .display_mut(display.display())
-        .unwrap()
-        .buf_1
-        .as_mut()
-        .unwrap()
-        .header
-        .stride = 1;
-    assert!(display.snapshot().is_err());
+        .obj_set_style_bg_color(screen, Color::hex(0xff0000), StyleSelector::DEFAULT);
+    // `lv_test_display_create()`: `4 * (hor_res + LV_DRAW_BUF_STRIDE_ALIGN - 1)
+    // * ver_res + LV_DRAW_BUF_ALIGN` bytes through `lv_draw_buf_init()`.
+    let buffer = display.ui.display_get_buf_active(disp).unwrap();
+    assert_eq!(buffer.data_size, 4 * 8 * 8 + 4);
+    assert!(buffer.header.flags.is_empty());
+
+    // `buf_changed_event_cb()` on `LV_EVENT_COLOR_FORMAT_CHANGED`.
+    display.ui.display_set_color_format(disp, ColorFormat::Rgb565);
+    let buffer = display.ui.display_get_buf_active(disp).unwrap();
+    assert_eq!(buffer.header.cf, ColorFormat::Rgb565);
+    assert_eq!(buffer.header.stride, 16);
+    assert_eq!(display.snapshot().unwrap().pixel(7, 7), Some([255, 0, 0]));
+
+    // ... and on `LV_EVENT_RESOLUTION_CHANGED`.
+    display.ui.display_set_resolution(disp, 9, 8);
+    let image = display.snapshot().unwrap();
+    assert_eq!((image.width(), image.height()), (9, 8));
+    assert_eq!(image.pixel(8, 7), Some([255, 0, 0]));
+    display.ui.display_set_resolution(disp, 8, 8);
+    display.ui.display_set_color_format(disp, ColorFormat::Xrgb8888);
+    assert_eq!(
+        display.ui.display_get_buf_active(disp).unwrap().data_size,
+        4 * 8 * 8 + 4
+    );
+
+    // Upstream reads the active buffer whatever the render mode.
+    display.ui.display_set_render_mode(disp, RenderMode::Partial);
+    assert_eq!(display.snapshot().unwrap().pixel(0, 0), Some([255, 0, 0]));
+    display.ui.display_set_render_mode(disp, RenderMode::Direct);
+
+    // A header that does not fit the bytes, or a format `buf_to_xrgb8888()`
+    // does not convert, is an error, not a panic.
+    let buffer = display.ui.display_get_buf_active(disp).unwrap();
+    assert!(RgbImage::from_buffer(8, 8, u32::from(u16::MAX), ColorFormat::Xrgb8888, buffer.data()).is_err());
+    assert!(RgbImage::from_buffer(8, 8, 32, ColorFormat::A8, buffer.data()).is_err());
 }
 
 #[test]

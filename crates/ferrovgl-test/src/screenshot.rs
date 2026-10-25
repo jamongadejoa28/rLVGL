@@ -2,6 +2,9 @@ use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter};
 use std::path::{Component, Path, PathBuf};
 
+use ferrovgl_core::ColorFormat;
+use ferrovgl_core::draw::draw_buf::DrawBuf;
+
 /// An image normalized to three bytes per pixel in R, G, B order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RgbImage {
@@ -65,6 +68,107 @@ impl RgbImage {
             }
         }
         Self::new(width, height, pixels)
+    }
+
+    /// `buf_to_xrgb8888()` of `lv_test_screenshot_compare.c`, keeping the RGB
+    /// channels: RGB565 (and RGB565_SWAPPED, read with swapped bytes),
+    /// ARGB8888, XRGB8888, premultiplied ARGB8888, RGB888, L8, AL88 and I1.
+    ///
+    /// Upstream leaves the output uninitialised for any other format; this
+    /// returns an error instead, and also when `bytes` cannot hold `height`
+    /// rows of `stride` bytes.
+    pub fn from_buffer(
+        width: u32,
+        height: u32,
+        stride: u32,
+        cf: ColorFormat,
+        bytes: &[u8],
+    ) -> io::Result<Self> {
+        let len = image_len(width, height)?;
+        let (w, h, stride) = (width as usize, height as usize, stride as usize);
+        let (start, row_bytes) = match cf {
+            ColorFormat::Rgb565 | ColorFormat::Rgb565Swapped | ColorFormat::Al88 => (0, w * 2),
+            ColorFormat::Argb8888 | ColorFormat::Xrgb8888 | ColorFormat::Argb8888Premultiplied => (0, w * 4),
+            ColorFormat::Rgb888 => (0, w * 3),
+            ColorFormat::L8 => (0, w),
+            /* `buf_in += 8`: skip the two-entry palette. */
+            ColorFormat::I1 => (8, w.div_ceil(8)),
+            _ => return Err(invalid(format!("screenshots do not support {cf:?}"))),
+        };
+        let required = stride
+            .checked_mul(h - 1)
+            .and_then(|n| n.checked_add(start))
+            .and_then(|n| n.checked_add(row_bytes))
+            .ok_or_else(|| invalid("buffer size overflow"))?;
+        if bytes.len() < required {
+            return Err(invalid("draw buffer or stride is too short"));
+        }
+        let mut pixels = Vec::with_capacity(len);
+        for y in 0..h {
+            let row = start + y * stride;
+            let buf_in = &bytes[row..row + row_bytes];
+            match cf {
+                ColorFormat::Rgb565 | ColorFormat::Rgb565Swapped => {
+                    for p in buf_in.as_chunks::<2>().0 {
+                        let c16 = if cf == ColorFormat::Rgb565Swapped {
+                            u16::from_be_bytes(*p)
+                        } else {
+                            u16::from_le_bytes(*p)
+                        };
+                        let red = u32::from(c16 >> 11);
+                        let green = u32::from((c16 >> 5) & 0x3f);
+                        let blue = u32::from(c16 & 0x1f);
+                        /*To make it rounded*/
+                        pixels.extend_from_slice(&[
+                            ((red * 2106) >> 8) as u8,
+                            ((green * 1037) >> 8) as u8,
+                            ((blue * 2106) >> 8) as u8,
+                        ]);
+                    }
+                }
+                ColorFormat::Argb8888 | ColorFormat::Xrgb8888 | ColorFormat::Argb8888Premultiplied => {
+                    for p in buf_in.as_chunks::<4>().0 {
+                        pixels.extend_from_slice(&[p[2], p[1], p[0]]);
+                    }
+                }
+                ColorFormat::Rgb888 => {
+                    for p in buf_in.as_chunks::<3>().0 {
+                        pixels.extend_from_slice(&[p[2], p[1], p[0]]);
+                    }
+                }
+                ColorFormat::L8 => {
+                    for &l in buf_in {
+                        pixels.extend_from_slice(&[l; 3]);
+                    }
+                }
+                ColorFormat::Al88 => {
+                    for p in buf_in.as_chunks::<2>().0 {
+                        pixels.extend_from_slice(&[p[0]; 3]);
+                    }
+                }
+                ColorFormat::I1 => {
+                    for x in 0..w {
+                        let byte = buf_in[x / 8];
+                        let bit_pos = x % 8;
+                        let pixel = (byte >> (7 - bit_pos)) & 0x01;
+                        pixels.extend_from_slice(&[if pixel != 0 { 0xff } else { 0x00 }; 3]);
+                    }
+                }
+                _ => unreachable!("rejected above"),
+            }
+        }
+        Self::new(width, height, pixels)
+    }
+
+    /// [`Self::from_buffer`] for a draw buffer's header and data.
+    pub fn from_draw_buf(buf: &DrawBuf) -> io::Result<Self> {
+        Self::from_buffer(
+            buf.header.w.into(),
+            buf.header.h.into(),
+            buf.header.stride.into(),
+            buf.header.cf,
+            buf.data(),
+        )
     }
 
     /// Width in pixels.
