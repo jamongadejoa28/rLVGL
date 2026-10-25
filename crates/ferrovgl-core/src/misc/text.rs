@@ -1,5 +1,5 @@
 //! Ported from lvgl v9.6.0: `include/lvgl/font/lv_text.h`, `src/misc/lv_text_private.h`,
-//! `src/misc/lv_text.c`.
+//! `src/misc/lv_text.c`, `src/misc/lv_text_ap.h`, `src/misc/lv_text_ap.c`.
 //!
 //! Text measurement, line breaking and the UTF-8 encoder/decoder
 //! (`LV_TXT_ENC == LV_TXT_ENC_UTF8`).
@@ -32,6 +32,11 @@ const NO_BREAK_FOUND: u32 = u32::MAX;
 
 /// `#if LV_TXT_LINE_BREAK_LONG_LEN > 0`: break inside words that are "long".
 const LINE_BREAK_LONG_ENABLED: bool = TXT_LINE_BREAK_LONG_LEN != 0;
+
+/// `LV_USE_ARABIC_PERSIAN_CHARS`: `tests/configs/full.defconfig` (the parity
+/// config) sets it to `y`, so the `#if LV_USE_ARABIC_PERSIAN_CHARS` branches
+/// are the ones ported.
+pub const USE_ARABIC_PERSIAN_CHARS: bool = true;
 
 bitflags::bitflags! {
     /// `lv_text_flag_t`
@@ -374,8 +379,10 @@ pub fn get_size_attributes(text: &str, font: &dyn Font, attributes: &TextAttribu
             log::warn!("integer overflow while calculating text height");
             return size_res;
         } else {
-            size_res.y += i32::from(letter_height);
-            size_res.y += attributes.line_space;
+            // Plain `int32_t +=` in C: it wraps on every target, and the
+            // second add can bring `y` back below `INT32_MAX`.
+            size_res.y = size_res.y.wrapping_add(i32::from(letter_height));
+            size_res.y = size_res.y.wrapping_add(attributes.line_space);
         }
 
         /* Calculate the longest line */
@@ -886,10 +893,20 @@ pub fn cut(txt: &mut alloc::string::String, pos: u32, len: u32) {
 
 /// `lv_text_set_text_vfmt()`: format `args` into a newly allocated string.
 ///
-/// The `LV_USE_ARABIC_PERSIAN_CHARS` post-processing (`lv_text_ap_proc()`)
-/// is not applied here.
+/// With [`USE_ARABIC_PERSIAN_CHARS`] (the `#if LV_USE_ARABIC_PERSIAN_CHARS`
+/// branch) the formatted raw text is passed through `lv_text_ap_proc()`
+/// ([`ap_proc`]), so Arabic/Persian letters come back in their contextual
+/// presentation forms.
 pub fn set_text_vfmt(args: core::fmt::Arguments<'_>) -> alloc::string::String {
-    alloc::fmt::format(args)
+    if USE_ARABIC_PERSIAN_CHARS {
+        /* Put together the text according to the format string */
+        let raw_txt = alloc::fmt::format(args);
+
+        /* Get the size of the Arabic text and process it */
+        ap_proc(&raw_txt)
+    } else {
+        alloc::fmt::format(args)
+    }
 }
 
 /// `lv_text_encoded_letter_next_2()`: read the letter at `ofs` and the one
@@ -1161,6 +1178,340 @@ pub fn get_encoded_length(txt: &[u8]) -> u32 {
     }
 
     len
+}
+
+/*
+ * Ported from LVGL v9.6.0: src/misc/lv_text_ap.h, src/misc/lv_text_ap.c
+ * (`LV_USE_ARABIC_PERSIAN_CHARS == 1`).
+ */
+
+/// `LV_UNDEF_ARABIC_PERSIAN_CHARS`: "not an Arabic/Persian letter" index.
+pub const UNDEF_ARABIC_PERSIAN_CHARS: u32 = u32::MAX;
+/// `LV_AP_ALPHABET_BASE_CODE`: the code point of `char_offset == 0` in
+/// `ap_chars_map[]`.
+pub const AP_ALPHABET_BASE_CODE: u32 = 0x0622;
+
+/// `ap_chars_map_t` (private in `lv_text_ap.c`).
+#[derive(Copy, Clone)]
+struct ApCharsMap {
+    char_offset: u8,
+    char_end_form: u16,
+    char_beginning_form_offset: i8,
+    char_middle_form_offset: i8,
+    char_isolated_form_offset: i8,
+    /// `ap_chars_conjunction.conj_to_previous`
+    conj_to_previous: u8,
+    /// `ap_chars_conjunction.conj_to_next`
+    conj_to_next: u8,
+}
+
+/// One `ap_chars_map[]` row:
+/// `{Key Offset, End, Beginning, Middle, Isolated, {conjunction}}`.
+const fn ap(
+    char_offset: u8,
+    char_end_form: u16,
+    char_beginning_form_offset: i8,
+    char_middle_form_offset: i8,
+    char_isolated_form_offset: i8,
+    conj: (u8, u8),
+) -> ApCharsMap {
+    ApCharsMap {
+        char_offset,
+        char_end_form,
+        char_beginning_form_offset,
+        char_middle_form_offset,
+        char_isolated_form_offset,
+        conj_to_previous: conj.0,
+        conj_to_next: conj.1,
+    }
+}
+
+/// `ap_chars_map[]` (private in `lv_text_ap.c`), terminated by
+/// `LV_AP_END_CHARS_LIST`.
+#[rustfmt::skip]
+static AP_CHARS_MAP: [ApCharsMap; 53] = [
+    ap(0, 0xFE81, 0, 0, 0, (0, 0)),     // أ
+    ap(1, 0xFE84, -1, 0, -1, (1, 0)),   // أ
+    ap(2, 0xFE86, -1, 0, -1, (1, 0)),   // ؤ
+    ap(3, 0xFE88, -1, 0, -1, (1, 0)),   // ﺇ
+    ap(4, 0xFE8A, 1, 2, -1, (1, 1)),    // ئ
+    ap(5, 0xFE8E, -1, 0, -1, (1, 0)),   // آ
+    ap(6, 0xFE90, 1, 2, -1, (1, 1)),    // ب
+    ap(92, 0xFB57, 1, 2, -1, (1, 1)),   // پ
+    ap(8, 0xFE96, 1, 2, -1, (1, 1)),    // ت
+    ap(9, 0xFE9A, 1, 2, -1, (1, 1)),    // ث
+    ap(10, 0xFE9E, 1, 2, -1, (1, 1)),   // ج
+    ap(100, 0xFB7B, 1, 2, -1, (1, 1)),  // چ
+    ap(11, 0xFEA2, 1, 2, -1, (1, 1)),   // ح
+    ap(12, 0xFEA6, 1, 2, -1, (1, 1)),   // خ
+    ap(13, 0xFEAA, -1, 0, -1, (1, 0)),  // د
+    ap(14, 0xFEAC, -1, 0, -1, (1, 0)),  // ذ
+    ap(15, 0xFEAE, -1, 0, -1, (1, 0)),  // ر
+    ap(16, 0xFEB0, -1, 0, -1, (1, 0)),  // ز
+    ap(118, 0xFB8B, -1, 0, -1, (1, 0)), // ژ
+    ap(17, 0xFEB2, 1, 2, -1, (1, 1)),   // س
+    ap(18, 0xFEB6, 1, 2, -1, (1, 1)),   // ش
+    ap(19, 0xFEBA, 1, 2, -1, (1, 1)),   // ص
+    ap(20, 0xFEBE, 1, 2, -1, (1, 1)),   // ض
+    ap(21, 0xFEC2, 1, 2, -1, (1, 1)),   // ط
+    ap(22, 0xFEC6, 1, 2, -1, (1, 1)),   // ظ
+    ap(23, 0xFECA, 1, 2, -1, (1, 1)),   // ع
+    ap(24, 0xFECE, 1, 2, -1, (1, 1)),   // غ
+    ap(30, 0x0640, 0, 0, 0, (1, 1)),    // - (mad, hyphen)
+    ap(31, 0xFED2, 1, 2, -1, (1, 1)),   // ف
+    ap(32, 0xFED6, 1, 2, -1, (1, 1)),   // ق
+    ap(135, 0xFB8F, 1, 2, -1, (1, 1)),  // ک
+    ap(33, 0xFEDA, 1, 2, -1, (1, 1)),   // ﻙ
+    ap(141, 0xFB93, 1, 2, -1, (1, 1)),  // گ
+    ap(34, 0xFEDE, 1, 2, -1, (1, 1)),   // ل
+    ap(35, 0xFEE2, 1, 2, -1, (1, 1)),   // م
+    ap(36, 0xFEE6, 1, 2, -1, (1, 1)),   // ن
+    ap(38, 0xFEEE, -1, 0, -1, (1, 0)),  // و
+    ap(37, 0xFEEA, 1, 2, -1, (1, 1)),   // ه
+    ap(39, 0xFEF0, 0, 0, -1, (1, 0)),   // ى
+    ap(40, 0xFEF2, 1, 2, -1, (1, 1)),   // ي
+    ap(170, 0xFBFD, 1, 2, -1, (1, 1)),  // ی
+    ap(7, 0xFE94, -1, 2, -1, (1, 0)),   // ة
+    ap(206, 0x06F0, -1, 2, 0, (0, 0)),  // ۰
+    ap(207, 0x06F1, 0, 0, 0, (0, 0)),   // ۱
+    ap(208, 0x06F2, 0, 0, 0, (0, 0)),   // ۲
+    ap(209, 0x06F3, 0, 0, 0, (0, 0)),   // ۳
+    ap(210, 0x06F4, 0, 0, 0, (0, 0)),   // ۴
+    ap(211, 0x06F5, 0, 0, 0, (0, 0)),   // ۵
+    ap(212, 0x06F6, 0, 0, 0, (0, 0)),   // ۶
+    ap(213, 0x06F7, 0, 0, 0, (0, 0)),   // ۷
+    ap(214, 0x06F8, 0, 0, 0, (0, 0)),   // ۸
+    ap(215, 0x06F9, 0, 0, 0, (0, 0)),   // ۹
+    ap(0, 0, 0, 0, 0, (0, 0)),          // LV_AP_END_CHARS_LIST
+];
+
+/// `lv_text_ap_strlen()`: number of bytes the Arabic/Persian processed
+/// version of `txt` needs, excluding the NUL terminator.
+///
+/// Every Arabic/Persian letter is counted with the size of its end form.
+/// Like upstream, the string ends at its first NUL byte.
+pub fn ap_strlen(txt: &str) -> usize {
+    ap_strlen_bytes(txt.as_bytes())
+}
+
+/// [`ap_strlen`] on raw bytes.
+fn ap_strlen_bytes(txt: &[u8]) -> usize {
+    let mut chars_cnt: u32 = 0;
+
+    let txt_length = get_encoded_length(txt);
+
+    let mut i: u32 = 0;
+    let mut j: u32 = 0;
+    while i < txt_length {
+        let mut ch_enc = encoded_next(txt, Some(&mut j));
+        let current_ap_idx = ap_get_char_index(ch_enc as u16);
+
+        if current_ap_idx != UNDEF_ARABIC_PERSIAN_CHARS {
+            ch_enc = u32::from(AP_CHARS_MAP[current_ap_idx as usize].char_end_form);
+        }
+
+        if ch_enc < 0x80 {
+            chars_cnt = chars_cnt.wrapping_add(1);
+        } else if ch_enc < 0x0800 {
+            chars_cnt = chars_cnt.wrapping_add(2);
+        } else if ch_enc < 0x01_0000 {
+            chars_cnt = chars_cnt.wrapping_add(3);
+        } else {
+            chars_cnt = chars_cnt.wrapping_add(4);
+        }
+
+        i += 1;
+    }
+
+    chars_cnt as usize
+}
+
+/// `lv_text_ap_proc()`: replace the Arabic/Persian letters of `txt` with
+/// their contextual (isolated, initial, medial, final) presentation forms.
+/// Other characters are copied unchanged.
+///
+/// Upstream writes into a caller allocated `txt_out` of
+/// `lv_text_ap_strlen(txt) + 1` bytes; here the result is returned. When a
+/// lam-alef ligature merges two letters, upstream pads `txt_out` with NUL
+/// bytes before the terminator; the returned string ends at the first of
+/// them, which is where every C reader of `txt_out` stops. Like upstream,
+/// `txt` ends at its first NUL byte.
+pub fn ap_proc(txt: &str) -> alloc::string::String {
+    let txt = txt.as_bytes();
+
+    let txt_length = get_encoded_length(txt);
+
+    let mut ch_enc: alloc::vec::Vec<u32> = alloc::vec![0; txt_length as usize + 1];
+    let mut ch_fin: alloc::vec::Vec<u32> = alloc::vec![0; txt_length as usize + 1];
+
+    let mut i: u32 = 0;
+    let mut j: u32 = 0;
+    while j < txt_length {
+        ch_enc[j as usize] = encoded_next(txt, Some(&mut i));
+        j += 1;
+    }
+
+    ch_enc[j as usize] = 0;
+
+    /* Upstream reads `ch_enc[i + 2]` only when `ch_enc[i + 1]` is a vowel
+     * (so not the terminator) and stays in bounds; reading 0 past the end
+     * keeps the port panic free whatever the input. */
+    let enc_at = |ch_enc: &[u32], k: u32| -> u32 { ch_enc.get(k as usize).copied().unwrap_or(0) };
+
+    i = 0;
+    j = 0;
+    let mut idx_previous = UNDEF_ARABIC_PERSIAN_CHARS;
+    while i < txt_length {
+        let index_current = ap_get_char_index(enc_at(&ch_enc, i) as u16);
+        let mut idx_next = ap_get_char_index(enc_at(&ch_enc, i + 1) as u16);
+
+        if text_is_arabic_vowel(enc_at(&ch_enc, i) as u16) {
+            /* Current character is a vowel */
+            ch_fin[j as usize] = enc_at(&ch_enc, i);
+            i += 1;
+            j += 1;
+            continue; /* Skip this character */
+        } else if text_is_arabic_vowel(enc_at(&ch_enc, i + 1) as u16) {
+            /* Next character is a vowel:
+             * skip the vowel character to join with the character after it */
+            idx_next = ap_get_char_index(enc_at(&ch_enc, i + 2) as u16);
+        }
+
+        if index_current == UNDEF_ARABIC_PERSIAN_CHARS {
+            ch_fin[j as usize] = enc_at(&ch_enc, i);
+            j += 1;
+            i += 1;
+            idx_previous = UNDEF_ARABIC_PERSIAN_CHARS;
+            continue;
+        }
+
+        let conjunction_to_previous: u8 = if i == 0 || idx_previous == UNDEF_ARABIC_PERSIAN_CHARS {
+            0
+        } else {
+            AP_CHARS_MAP[idx_previous as usize].conj_to_next
+        };
+        let conjunction_to_next: u8 =
+            if i == txt_length.wrapping_sub(1) || idx_next == UNDEF_ARABIC_PERSIAN_CHARS {
+                0
+            } else {
+                AP_CHARS_MAP[idx_next as usize].conj_to_previous
+            };
+
+        let mut lam_alef = text_lam_alef(index_current, idx_next);
+        if lam_alef != 0 {
+            if conjunction_to_previous != 0 {
+                lam_alef += 1;
+            }
+            ch_fin[j as usize] = lam_alef;
+            idx_previous = UNDEF_ARABIC_PERSIAN_CHARS;
+            i += 2;
+            j += 1;
+            continue;
+        }
+
+        let cur = &AP_CHARS_MAP[index_current as usize];
+        let end_form = i32::from(cur.char_end_form);
+        ch_fin[j as usize] = if conjunction_to_previous != 0 && conjunction_to_next != 0 {
+            (end_form + i32::from(cur.char_middle_form_offset)) as u32
+        } else if conjunction_to_previous == 0 && conjunction_to_next != 0 {
+            (end_form + i32::from(cur.char_beginning_form_offset)) as u32
+        } else if conjunction_to_previous != 0 && conjunction_to_next == 0 {
+            end_form as u32
+        } else {
+            (end_form + i32::from(cur.char_isolated_form_offset)) as u32
+        };
+        idx_previous = index_current;
+        i += 1;
+        j += 1;
+    }
+    ch_fin[j as usize] = 0;
+    for k in 0..txt_length as usize {
+        ch_enc[k] = 0;
+    }
+    ch_enc[..j as usize].copy_from_slice(&ch_fin[..j as usize]);
+    drop(ch_fin);
+
+    let mut txt_out: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(ap_strlen_bytes(txt) + 1);
+
+    for &c in &ch_enc[..txt_length as usize] {
+        if c < 0x80 {
+            txt_out.push((c & 0xFF) as u8);
+        } else if c < 0x0800 {
+            txt_out.push((((c >> 6) & 0x1F) | 0xC0) as u8);
+            txt_out.push(((c & 0x3F) | 0x80) as u8);
+        } else if c < 0x01_0000 {
+            txt_out.push((((c >> 12) & 0x0F) | 0xE0) as u8);
+            txt_out.push((((c >> 6) & 0x3F) | 0x80) as u8);
+            txt_out.push(((c & 0x3F) | 0x80) as u8);
+        } else if c < 0x11_0000 {
+            txt_out.push((((c >> 18) & 0x07) | 0xF0) as u8);
+            txt_out.push((((c >> 12) & 0x3F) | 0x80) as u8);
+            txt_out.push((((c >> 6) & 0x3F) | 0x80) as u8);
+            txt_out.push(((c & 0x3F) | 0x80) as u8);
+        }
+    }
+
+    /* `*(txt_out_temp) = '\0'`: the C string ends at its first NUL byte */
+    txt_out.truncate(strlen(&txt_out));
+    match alloc::string::String::from_utf8(txt_out) {
+        Ok(s) => s,
+        /* Not reached: every code point written is a Unicode scalar value */
+        Err(e) => alloc::string::String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    }
+}
+
+/// `lv_ap_get_char_index()` (static in `lv_text_ap.c`). Takes a `uint16_t`
+/// like upstream, so callers truncate the code point.
+#[allow(clippy::if_same_then_else)] // keep the upstream if / else-if shape
+fn ap_get_char_index(c: u16) -> u32 {
+    let c = i32::from(c);
+    let mut i: u8 = 0;
+    while AP_CHARS_MAP[i as usize].char_end_form != 0 {
+        let m = &AP_CHARS_MAP[i as usize];
+        let end = i32::from(m.char_end_form);
+        if c == i32::from(m.char_offset) + AP_ALPHABET_BASE_CODE as i32 {
+            return u32::from(i);
+        } else if c == end // is it an End form
+            || c == end + i32::from(m.char_beginning_form_offset) // is it a Beginning form
+            || c == end + i32::from(m.char_middle_form_offset) // is it a middle form
+            || c == end + i32::from(m.char_isolated_form_offset)
+        // is it an isolated form
+        {
+            return u32::from(i);
+        }
+        i += 1;
+    }
+    UNDEF_ARABIC_PERSIAN_CHARS
+}
+
+/// `lv_text_lam_alef()` (static in `lv_text_ap.c`): the lam-alef ligature
+/// for the `ap_chars_map[]` indexes `ch_curr` and `ch_next`, or 0.
+fn text_lam_alef(ch_curr: u32, ch_next: u32) -> u32 {
+    if AP_CHARS_MAP[ch_curr as usize].char_offset != 34 {
+        return 0;
+    }
+    if ch_next == UNDEF_ARABIC_PERSIAN_CHARS {
+        return 0;
+    }
+    let ch_code = u32::from(AP_CHARS_MAP[ch_next as usize].char_offset) + AP_ALPHABET_BASE_CODE;
+    if ch_code == 0x0622 {
+        return 0xFEF5; /* (lam-alef) mad */
+    }
+    if ch_code == 0x0623 {
+        return 0xFEF7; /* (lam-alef) top hamza */
+    }
+    if ch_code == 0x0625 {
+        return 0xFEF9; /* (lam-alef) bot hamza */
+    }
+    if ch_code == 0x0627 {
+        return 0xFEFB; /* (lam-alef) alef */
+    }
+    0
+}
+
+/// `lv_text_is_arabic_vowel()` (static in `lv_text_ap.c`).
+const fn text_is_arabic_vowel(c: u16) -> bool {
+    (c >= 0x064B) && (c <= 0x0652)
 }
 
 #[cfg(test)]
@@ -1678,5 +2029,113 @@ mod tests {
         ins(&mut s, 5, "X");
         assert_eq!(s, "abX\0cd");
         assert_eq!(set_text_vfmt(format_args!("{}-{}", 1, "x")), "1-x");
+    }
+
+    /// A font whose `line_height` is the largest `uint16_t letter_height`.
+    struct TallFont;
+
+    impl Font for TallFont {
+        fn line_height(&self) -> i32 {
+            65535
+        }
+        fn base_line(&self) -> i32 {
+            0
+        }
+        fn underline_position(&self) -> i8 {
+            0
+        }
+        fn underline_thickness(&self) -> i8 {
+            0
+        }
+        fn glyph_dsc(&self, out: &mut GlyphDsc, _letter: u32, _letter_next: u32) -> bool {
+            out.adv_w = 10;
+            true
+        }
+        fn glyph_bitmap_a8(&self, _g: &GlyphDsc, _out: &mut [u8], _stride: usize) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn get_size_wraps_intermediate_height_like_c() {
+        /* line 32949 (0-based): y = 32949 * 65174 = 2147418126 passes the
+         * guard (y + 65535 - 361 <= INT32_MAX) but y + 65535 alone exceeds
+         * INT32_MAX; C wraps there and the `line_space` add brings it back.
+         * The next line trips the guard and returns early. */
+        let text = "\n".repeat(32951);
+        let a = TextAttributes {
+            letter_space: 0,
+            line_space: -361,
+            max_width: coord::MAX,
+            text_flags: TextFlags::NONE,
+        };
+        let size = get_size_attributes(&text, &TallFont, &a);
+        assert_eq!(size, Point::new(0, 2147483300));
+    }
+
+    /* lv_text_ap.c */
+
+    #[test]
+    fn ap_proc_shapes_contextual_forms() {
+        /* ba + alef: initial ba, final alef */
+        assert_eq!(ap_proc("\u{0628}\u{0627}"), "\u{FE91}\u{FE8E}");
+        /* ba ba ba: initial, medial, final */
+        assert_eq!(ap_proc("\u{0628}\u{0628}\u{0628}"), "\u{FE91}\u{FE92}\u{FE90}");
+        /* a lone ba is isolated; a space breaks the joining */
+        assert_eq!(ap_proc("\u{0628} \u{0628}"), "\u{FE8F} \u{FE8F}");
+        /* a vowel is copied and skipped when joining */
+        assert_eq!(ap_proc("\u{0628}\u{064E}\u{0628}"), "\u{FE91}\u{064E}\u{FE90}");
+        /* non Arabic/Persian text is unchanged */
+        assert_eq!(ap_proc("Hello, ÁÉ 0x1F"), "Hello, ÁÉ 0x1F");
+        assert_eq!(ap_proc(""), "");
+    }
+
+    #[test]
+    fn ap_proc_lam_alef_ligature() {
+        assert_eq!(ap_proc("\u{0644}\u{0627}"), "\u{FEFB}");
+        /* joined to a previous letter: the final ligature form */
+        assert_eq!(ap_proc("\u{0628}\u{0644}\u{0627}"), "\u{FE91}\u{FEFC}");
+        /* upstream quirk: lam + vowel + alef emits the ligature, drops the
+         * vowel and then shapes the alef again on its own */
+        assert_eq!(ap_proc("\u{0644}\u{064E}\u{0627}"), "\u{FEFB}\u{FE8D}");
+    }
+
+    #[test]
+    fn ap_proc_matches_upstream_quirks() {
+        /* `lv_ap_get_char_index(uint16_t)` truncates: U+1FE90 looks like ba */
+        assert_eq!(ap_proc("\u{1FE90}"), "\u{FE8F}");
+        /* the string ends at its first NUL byte */
+        assert_eq!(ap_proc("ab\0cd"), "ab");
+        /* already shaped forms are recognized and shaped again */
+        assert_eq!(ap_proc("\u{FE91}\u{FE8E}"), "\u{FE91}\u{FE8E}");
+    }
+
+    #[test]
+    fn ap_strlen_counts_end_forms() {
+        assert_eq!(ap_strlen("abc"), 3);
+        /* 2-byte letters counted with their 3-byte end forms */
+        assert_eq!(ap_strlen("\u{0628}\u{0627}"), 6);
+        assert_eq!(ap_strlen("\u{0644}\u{0627}"), 6);
+        /* the vowel stays 2 bytes; U+1FE90 is counted as 0xFE90 */
+        assert_eq!(ap_strlen("\u{064E}\u{1FE90}"), 5);
+        assert_eq!(ap_strlen("ab\0cd"), 2);
+        /* the output always fits the buffer upstream allocates */
+        for s in [
+            "\u{0644}\u{064E}\u{0627}",
+            "\u{0628}\u{0644}\u{0627}x",
+            "\u{06F0}\u{0640}",
+        ] {
+            assert!(ap_proc(s).len() <= ap_strlen(s));
+        }
+    }
+
+    #[test]
+    fn set_text_vfmt_applies_arabic_persian_processing() {
+        const { assert!(USE_ARABIC_PERSIAN_CHARS) };
+        assert_eq!(
+            set_text_vfmt(format_args!("{}", "\u{0628}\u{0627}")),
+            "\u{FE91}\u{FE8E}"
+        );
+        assert_eq!(set_text_vfmt(format_args!("{}%", 42)), "42%");
     }
 }
