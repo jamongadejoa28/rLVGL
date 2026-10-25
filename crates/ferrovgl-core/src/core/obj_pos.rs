@@ -341,8 +341,17 @@ impl Ui {
         } else {
             let mut content_width = -1;
             let unclamped_w = self.calc_dynamic_width(obj, StyleProp::WIDTH, Some(&mut content_width));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let minw = self.calc_dynamic_width(obj, StyleProp::MIN_WIDTH, Some(&mut content_width));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let maxw = self.calc_dynamic_width(obj, StyleProp::MAX_WIDTH, Some(&mut content_width));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let w = lv_clamp(minw, unclamped_w, maxw);
 
             // If the width in effect is a percentage of a parent that is itself
@@ -371,8 +380,17 @@ impl Ui {
         } else {
             let mut content_height = -1;
             let unclamped_h = self.calc_dynamic_height(obj, StyleProp::HEIGHT, Some(&mut content_height));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let minh = self.calc_dynamic_height(obj, StyleProp::MIN_HEIGHT, Some(&mut content_height));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let maxh = self.calc_dynamic_height(obj, StyleProp::MAX_HEIGHT, Some(&mut content_height));
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(parent) {
+                return false;
+            }
             let h = lv_clamp(minh, unclamped_h, maxh);
 
             // See the width branch above.
@@ -1685,10 +1703,17 @@ impl Ui {
         let space_left = self.obj_get_style_space_left(obj, Part::MAIN);
 
         let self_w = self.obj_get_self_width(obj) + space_left + space_right;
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
 
         let mut child_res = coord::MIN;
 
-        if !self.layout_get_min_size(obj, &mut child_res, true) {
+        let minimum_handled = self.layout_get_min_size(obj, &mut child_res, true);
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
+        if !minimum_handled {
             let child_cnt = self.pos_child_count(obj);
             let obj_coords = self.pos_coords(obj);
             // With RTL find the left most coordinate
@@ -1806,10 +1831,17 @@ impl Ui {
         let space_bottom = self.obj_get_style_space_bottom(obj, Part::MAIN);
 
         let self_h = self.obj_get_self_height(obj) + space_top + space_bottom;
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
 
         let mut child_res = coord::MIN;
 
-        if !self.layout_get_min_size(obj, &mut child_res, false) {
+        let minimum_handled = self.layout_get_min_size(obj, &mut child_res, false);
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
+        if !minimum_handled {
             let child_cnt = self.pos_child_count(obj);
             let obj_coords = self.pos_coords(obj);
             for i in 0..child_cnt {

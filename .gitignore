@@ -1,3 +1,4 @@
 tests/upstream/
 target/
 *.png.err
+.venv/

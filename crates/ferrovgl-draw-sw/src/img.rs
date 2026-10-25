@@ -1175,8 +1175,11 @@ fn apply_mask(ctx: &mut DrawCtx, draw_dsc: &DrawImageDsc) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "complex")]
     use alloc::rc::Rc;
-    use ferrovgl_core::draw::draw_buf::{DrawBuf, ImageDsc, ImageHeader, STRIDE_AUTO};
+    #[cfg(feature = "complex")]
+    use ferrovgl_core::draw::draw_buf::{DrawBuf, STRIDE_AUTO};
+    use ferrovgl_core::draw::draw_buf::{ImageDsc, ImageHeader};
     use ferrovgl_core::draw::{DrawTaskType, LayerId};
     use ferrovgl_core::misc::color::{Color32, OPA_COVER};
     use ferrovgl_core::misc::style::ImageColorkey;

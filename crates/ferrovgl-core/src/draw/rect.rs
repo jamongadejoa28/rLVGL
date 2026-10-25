@@ -277,6 +277,16 @@ pub(crate) trait TaskSink {
     /// `lv_draw_finalize_task_creation(layer, t)`
     fn finalize(&mut self, t: DrawTaskRef);
 
+    /// Create a shadow layer with this sink's draw-unit lifecycle notifications.
+    fn create_drop_shadow(&mut self, parent: LayerId, base: &DrawDscBase, area: &Area) -> Option<LayerId> {
+        self.ctx().layer_create_drop_shadow(parent, base, area)
+    }
+
+    /// Finish a drop shadow while retaining this sink's draw-unit dispatch.
+    fn finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
+        self.ctx().layer_finish_drop_shadow(layer, base);
+    }
+
     /// The `LV_EVENT_DRAW_TASK_ADDED` block of `lv_draw_mask_rect()`, sent
     /// before finalizing (only an object tree can send it).
     fn send_mask_task_added(&mut self, t: DrawTaskRef) {
@@ -312,6 +322,14 @@ impl TaskSink for Ui {
     #[inline]
     fn finalize(&mut self, t: DrawTaskRef) {
         self.draw_finalize_task_creation(t);
+    }
+
+    fn finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
+        self.layer_finish_drop_shadow(layer, base);
+    }
+
+    fn create_drop_shadow(&mut self, parent: LayerId, base: &DrawDscBase, area: &Area) -> Option<LayerId> {
+        self.layer_create_drop_shadow(parent, base, area)
     }
 
     fn send_mask_task_added(&mut self, t: DrawTaskRef) {
@@ -367,12 +385,12 @@ fn draw_fill_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &FillDsc
     }
 
     if dsc.base.drop_shadow_opa != 0
-        && let Some(ds_layer) = s.ctx().layer_create_drop_shadow(layer, &dsc.base, coords)
+        && let Some(ds_layer) = s.create_drop_shadow(layer, &dsc.base, coords)
     {
         let mut ds_dsc = dsc.clone();
         ds_dsc.base.drop_shadow_opa = 0; /*Disable drop shadow so rendering below will render plain fill*/
         draw_fill_impl(s, ds_layer, &ds_dsc, coords);
-        s.ctx().layer_finish_drop_shadow(ds_layer, &dsc.base);
+        s.finish_drop_shadow(ds_layer, &dsc.base);
     }
 
     let t = s.ctx().add_task(layer, coords, DrawTaskType::Fill);
@@ -393,12 +411,12 @@ fn draw_border_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &Borde
     }
 
     if dsc.base.drop_shadow_opa != 0
-        && let Some(ds_layer) = s.ctx().layer_create_drop_shadow(layer, &dsc.base, coords)
+        && let Some(ds_layer) = s.create_drop_shadow(layer, &dsc.base, coords)
     {
         let mut ds_dsc = dsc.clone();
         ds_dsc.base.drop_shadow_opa = 0; /*Disable drop shadow so rendering below will render plain border*/
         draw_border_impl(s, ds_layer, &ds_dsc, coords);
-        s.ctx().layer_finish_drop_shadow(ds_layer, &dsc.base);
+        s.finish_drop_shadow(ds_layer, &dsc.base);
     }
 
     let t = s.ctx().add_task(layer, coords, DrawTaskType::Border);
@@ -468,13 +486,13 @@ fn draw_rect_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &RectDsc
 
     if dsc.base.drop_shadow_opa != 0
         && (has_fill || has_outline)
-        && let Some(ds_layer) = s.ctx().layer_create_drop_shadow(layer, &dsc.base, coords)
+        && let Some(ds_layer) = s.create_drop_shadow(layer, &dsc.base, coords)
     {
         let mut ds_dsc = dsc.clone();
         ds_dsc.base.drop_shadow_opa = 0; /*Disable drop shadow so rendering below will render plain shadow*/
         ds_dsc.shadow_opa = 0;
         draw_rect_impl(s, ds_layer, &ds_dsc, coords);
-        s.ctx().layer_finish_drop_shadow(ds_layer, &dsc.base);
+        s.finish_drop_shadow(ds_layer, &dsc.base);
     }
 
     /*Shadow*/

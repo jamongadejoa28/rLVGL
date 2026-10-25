@@ -580,21 +580,6 @@ impl Ui {
         }
     }
 
-    /// `(int32_t)lv_obj_get_style_prop(obj, part, prop).num`
-    fn style_num(&self, obj: Obj, part: Part, prop: StyleProp) -> i32 {
-        self.obj_get_style_prop(obj, part, prop).num()
-    }
-
-    /// `(lv_opa_t)lv_obj_get_style_prop(obj, part, prop).num`
-    fn style_opa(&self, obj: Obj, part: Part, prop: StyleProp) -> Opa {
-        self.style_num(obj, part, prop) as Opa
-    }
-
-    /// `lv_obj_get_style_prop(obj, part, prop).color`
-    fn style_color(&self, obj: Obj, part: Part, prop: StyleProp) -> Color {
-        self.obj_get_style_prop(obj, part, prop).color()
-    }
-
     /// `lv_obj_get_style_*_color_filtered_internal()`
     fn style_color_filtered(&self, obj: Obj, part: Part, prop: StyleProp) -> Color {
         let v = self.obj_get_style_prop(obj, part, prop);

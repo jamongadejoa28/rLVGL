@@ -4,8 +4,6 @@
 //! The layout registry. `LAYOUT_FLEX` and `LAYOUT_GRID` are registered by
 //! [`builtin_layouts`] when the matching feature is on.
 
-#![allow(unused_variables)] // skeleton: bodies are todo!()
-
 pub mod flex;
 pub mod grid;
 
@@ -13,6 +11,7 @@ use alloc::vec::Vec;
 
 use crate::core::Ui;
 use crate::core::obj::Obj;
+use crate::misc::style::Part;
 
 /// `LV_LAYOUT_NONE`
 pub const LAYOUT_NONE: u32 = 0;
@@ -24,9 +23,9 @@ pub const LAYOUT_GRID: u32 = 2;
 pub const LAYOUT_LAST: u32 = 3;
 
 /// `lv_layout_update_cb_t`
-pub type LayoutUpdateCallback = fn(&mut Ui, Obj);
-/// `lv_layout_get_min_size_cb_t`: `(ui, obj, req_size, width) -> handled`.
-pub type LayoutGetMinSizeCallback = fn(&mut Ui, Obj, &mut i32, bool) -> bool;
+pub type LayoutUpdateCallback = fn(&mut Ui, Obj, u32);
+/// `lv_layout_get_min_size_cb_t`: `(ui, obj, req_size, width, user_data) -> handled`.
+pub type LayoutGetMinSizeCallback = fn(&mut Ui, Obj, &mut i32, bool, u32) -> bool;
 
 /// `lv_layout_callbacks_t`
 #[derive(Copy, Clone, Debug)]
@@ -66,27 +65,29 @@ pub fn builtin_layouts() -> Vec<LayoutDsc> {
         LayoutDsc::new(layout_none_update),
         LayoutDsc {
             callbacks: LayoutCallbacks {
-                update: flex::flex_update,
-                get_min_size: Some(flex::flex_get_min_size),
+                update: |ui, obj, _| flex::flex_update(ui, obj),
+                get_min_size: Some(|ui, obj, size, width, _| flex::flex_get_min_size(ui, obj, size, width)),
             },
             user_data: 0,
         },
         LayoutDsc {
             callbacks: LayoutCallbacks {
-                update: grid::grid_update,
-                get_min_size: Some(grid::grid_get_min_size),
+                update: |ui, obj, _| grid::grid_update(ui, obj),
+                get_min_size: Some(|ui, obj, size, width, _| grid::grid_get_min_size(ui, obj, size, width)),
             },
             user_data: 0,
         },
     ]
 }
 
-fn layout_none_update(ui: &mut Ui, obj: Obj) {}
+fn layout_none_update(_ui: &mut Ui, _obj: Obj, _user_data: u32) {}
 
 impl Ui {
     /// `lv_layout_create()`: register a user layout and return its id.
     pub fn layout_create(&mut self, callbacks: LayoutCallbacks, user_data: u32) -> u32 {
-        todo!()
+        let id = self.layouts.len() as u32;
+        self.layouts.push(LayoutDsc { callbacks, user_data });
+        id
     }
 
     /// `lv_layout_register()` (deprecated alias of `layout_create`).
@@ -102,18 +103,32 @@ impl Ui {
 
     /// `lv_layout_apply()`: run the layout of `obj`.
     pub fn layout_apply(&mut self, obj: Obj) {
-        todo!()
+        let id = self.obj_get_style_layout(obj, Part::MAIN) as usize;
+        if id > 0
+            && let Some(layout) = self.layouts.get(id).copied()
+        {
+            (layout.callbacks.update)(self, obj, layout.user_data);
+        }
     }
 
     /// `lv_layout_get_min_size()`
     pub fn layout_get_min_size(&mut self, obj: Obj, size: &mut i32, width: bool) -> bool {
-        todo!()
+        let id = self.obj_get_style_layout(obj, Part::MAIN) as usize;
+        if id > 0
+            && let Some(layout) = self.layouts.get(id).copied()
+            && let Some(callback) = layout.callbacks.get_min_size
+        {
+            return callback(self, obj, size, width, layout.user_data);
+        }
+        false
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::UiConfig;
+    use crate::misc::style::StyleSelector;
 
     #[test]
     fn builtin_ids() {
@@ -121,5 +136,42 @@ mod tests {
         assert_eq!(l.len(), 3);
         assert_eq!(LAYOUT_FLEX, 1);
         assert_eq!(LAYOUT_GRID, 2);
+    }
+
+    #[test]
+    fn layout_dispatches_user_data_and_minimum_size_without_holding_registry_borrow() {
+        let mut ui = Ui::new(UiConfig::default());
+        let disp = ui.display_create(32, 24);
+        let screen = ui.display_get_screen_active(Some(disp)).unwrap();
+        let obj = ui.obj_create(Some(screen));
+        let layout = ui.layout_create(
+            LayoutCallbacks {
+                update: |ui, _, tag| {
+                    ui.set_app(tag);
+                    // Registration from the callback may reallocate the registry.
+                    ui.layout_register(|_, _, _| {}, 0);
+                },
+                get_min_size: Some(|_, _, size, width, tag| {
+                    *size = if width { tag as i32 } else { -(tag as i32) };
+                    true
+                }),
+            },
+            42,
+        );
+        assert_eq!(layout, LAYOUT_LAST);
+        ui.obj_set_style_layout(obj, layout as u16, StyleSelector::DEFAULT);
+        ui.layout_apply(obj);
+        assert_eq!(ui.app::<u32>(), Some(&42));
+        let mut size = 0;
+        assert!(ui.layout_get_min_size(obj, &mut size, true));
+        assert_eq!(size, 42);
+        assert!(ui.layout_get_min_size(obj, &mut size, false));
+        assert_eq!(size, -42);
+        for id in [LAYOUT_NONE as u16, u16::MAX] {
+            ui.obj_set_style_layout(obj, id, StyleSelector::DEFAULT);
+            ui.layout_apply(obj);
+            assert!(!ui.layout_get_min_size(obj, &mut size, true));
+            assert_eq!(size, -42);
+        }
     }
 }

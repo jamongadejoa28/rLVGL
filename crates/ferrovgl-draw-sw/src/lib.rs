@@ -20,7 +20,6 @@
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
-#![allow(unused_variables)] // skeleton: bodies are todo!()
 
 extern crate alloc;
 
@@ -259,6 +258,13 @@ impl DrawUnit for SwDrawUnit {
 
     fn on_event(&mut self, code: EventCode, param: &mut EventParam<'_>) {
         let _ = (code, param);
+        // `lv_refr.c: refr_finish` releases the circle cache after all
+        // draw tasks have completed. The core forwards that operation to
+        // the renderer through this event because it cannot depend on us.
+        #[cfg(feature = "complex")]
+        if code == EventCode::REFR_READY {
+            mask::cleanup(&mut self.circle_cache);
+        }
     }
 }
 
@@ -526,5 +532,87 @@ mod tests {
         assert_eq!(u.name(), "SW");
         assert_eq!(SwDrawUnit::default().idx, 0);
         assert_eq!(SwDrawUnit::new(3).idx, 3);
+    }
+
+    #[cfg(feature = "complex")]
+    #[test]
+    fn refresh_ready_releases_circle_cache() {
+        let mut unit = SwDrawUnit::default();
+        let mut radius = mask::MaskRadiusParam::default();
+        mask::radius_init(
+            &mut unit.circle_cache,
+            &mut radius,
+            &Area::new(0, 0, 39, 39),
+            10,
+            false,
+        );
+        let mut param = mask::MaskParam::Radius(radius);
+        mask::free_param(&mut unit.circle_cache, &mut param);
+        assert!(unit.circle_cache.entries.iter().any(|c| !c.cir_opa.is_empty()));
+
+        // Layer lifecycle events can occur between tasks and must not
+        // discard circles still in use by the current frame.
+        unit.on_event(EventCode::CHILD_DELETED, &mut EventParam::None);
+        assert!(unit.circle_cache.entries.iter().any(|c| !c.cir_opa.is_empty()));
+
+        unit.on_event(EventCode::REFR_READY, &mut EventParam::None);
+        for entry in &unit.circle_cache.entries {
+            assert!(entry.cir_opa.is_empty());
+            assert!(entry.x_start_on_y.is_empty());
+            assert!(entry.opa_start_on_y.is_empty());
+            assert_eq!((entry.radius, entry.life, entry.used_cnt), (0, 0, 0));
+        }
+    }
+
+    #[cfg(all(feature = "cf-xrgb8888", feature = "cf-argb8888"))]
+    #[test]
+    fn ui_dispatch_composites_child_layer_and_releases_it() {
+        use ferrovgl_core::core::UiConfig;
+        use ferrovgl_core::draw::FillDsc;
+
+        let mut ui = Ui::new(UiConfig::default());
+        init(&mut ui);
+        let area = Area::new(0, 0, 7, 5);
+        let root = ui.draw_layer_create(None, ColorFormat::Xrgb8888, &area);
+        let mut fill = FillDsc::new();
+        fill.color = Color::make(0, 0, 255);
+        ui.draw_fill(root, &fill, &area);
+        let root_memory = ui.draw.used_memory_for_layers;
+
+        let child_area = Area::new(2, 1, 5, 4);
+        let child = ui.draw_layer_create(Some(root), ColorFormat::Argb8888, &child_area);
+        fill.color = Color::make(255, 0, 0);
+        ui.draw_fill(child, &fill, &child_area);
+        let mut composite = DrawImageDsc::new();
+        composite.src = ImageSrc::Layer(child);
+        ui.draw_layer(root, &composite, &child_area);
+
+        // A synchronous unit needs a later dispatch to retire finished
+        // tasks. Bound the loop so a scheduling regression fails promptly.
+        for _ in 0..8 {
+            ui.draw_dispatch();
+            if ui.draw.layer(root).unwrap().tasks.is_empty() {
+                break;
+            }
+        }
+        assert!(ui.draw.layer(root).unwrap().tasks.is_empty());
+        assert!(
+            ui.draw.layer(child).is_none(),
+            "finished source layer is released"
+        );
+        assert_eq!(ui.draw.used_memory_for_layers, root_memory);
+
+        let buf = ui.draw.layer(root).unwrap().draw_buf.as_ref().unwrap();
+        for y in 0..6usize {
+            for x in 0..8usize {
+                let offset = y * usize::from(buf.header.stride) + x * 4;
+                let expected = if (2..=5).contains(&x) && (1..=4).contains(&y) {
+                    [0, 0, 255]
+                } else {
+                    [255, 0, 0]
+                };
+                assert_eq!(&buf.data()[offset..offset + 3], &expected, "pixel {x},{y}");
+            }
+        }
     }
 }

@@ -1,0 +1,187 @@
+//! Integration coverage of public object, refresh, software draw and teardown paths.
+
+use std::rc::Rc;
+
+use ferrovgl_core::draw::label::LabelDsc;
+use ferrovgl_core::{Area, Color, ColorFormat, EventCode, FontRef, RenderMode, StyleSelector};
+use ferrovgl_test::{DISPLAY_DPI, TestDisplay};
+
+#[test]
+fn public_display_object_refresh_and_delete_render_pixels() {
+    let mut display = TestDisplay::with_resolution(64, 48).unwrap();
+    let screen = display.screen().unwrap();
+    let selector = StyleSelector::DEFAULT;
+    assert_eq!(display.ui.display_get_dpi(Some(display.display())), DISPLAY_DPI);
+    assert_eq!(
+        display.ui.display_get_render_mode(display.display()),
+        RenderMode::Direct
+    );
+    assert_eq!(
+        display.ui.display_get_color_format(Some(display.display())),
+        ColorFormat::Xrgb8888
+    );
+    assert!(display.ui.display_get_theme(Some(display.display())).is_none());
+    display.ui.obj_set_style_bg_color(screen, Color::WHITE, selector);
+    display.ui.obj_set_style_bg_opa(screen, 255, selector);
+
+    let rectangle = display.ui.obj_create(Some(screen));
+    display.ui.obj_set_pos(rectangle, 10, 8);
+    display.ui.obj_set_size(rectangle, 30, 24);
+    display
+        .ui
+        .obj_set_style_bg_color(rectangle, Color::hex(0x123456), selector);
+    display.ui.obj_set_style_bg_opa(rectangle, 255, selector);
+    display.ui.obj_set_style_radius(rectangle, 6, selector);
+    display.ui.obj_set_style_border_width(rectangle, 0, selector);
+
+    let image = display.snapshot().unwrap();
+    assert_eq!(image.pixel(0, 0), Some([255, 255, 255]));
+    assert_eq!(image.pixel(24, 20), Some([0x12, 0x34, 0x56]));
+    assert_eq!(image.pixel(10, 8), Some([255, 255, 255]));
+    assert_eq!(image.pixel(40, 20), Some([255, 255, 255]));
+    assert_eq!(
+        display.snapshot().unwrap(),
+        image,
+        "repeat refresh must be stable"
+    );
+
+    display
+        .ui
+        .obj_set_style_bg_color(rectangle, Color::hex(0x654321), selector);
+    let restyled = display.snapshot().unwrap();
+    assert_eq!(restyled.pixel(24, 20), Some([0x65, 0x43, 0x21]));
+    assert_eq!(restyled.pixel(0, 0), Some([255; 3]));
+
+    display.ui.obj_delete(rectangle);
+    let cleared = display.snapshot().unwrap();
+    assert!(cleared.pixels().iter().all(|&v| v == 255));
+    display.ui.deinit();
+    assert!(!display.ui.is_initialized());
+    assert!(display.ui.objs.is_empty());
+    assert!(display.snapshot().is_err());
+}
+
+#[test]
+fn draw_event_renders_montserrat_into_the_display() {
+    let mut display = TestDisplay::with_resolution(128, 32).unwrap();
+    let screen = display.screen().unwrap();
+    display
+        .ui
+        .obj_set_style_bg_color(screen, Color::WHITE, StyleSelector::DEFAULT);
+    display
+        .ui
+        .obj_set_style_bg_opa(screen, 255, StyleSelector::DEFAULT);
+    display.ui.obj_add_event_cb(
+        screen,
+        Rc::new(|ui, event| {
+            let layer = event.layer().expect("DRAW_MAIN layer");
+            let mut label = LabelDsc::new();
+            label.font = Some(FontRef::Static(&ferrovgl_fonts::MONTSERRAT_14));
+            label.text = Rc::from("Hello Rust");
+            label.color = Color::BLACK;
+            ui.draw_label(layer, &label, &Area::new(4, 4, 123, 27));
+        }),
+        EventCode::DRAW_MAIN,
+        None,
+    );
+    let image = display.snapshot().unwrap();
+    assert_eq!(image.pixel(0, 0), Some([255, 255, 255]));
+    let ink = image
+        .pixels()
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|p| p[0] < 255)
+        .count();
+    assert!(ink > 100, "expected actual glyph ink, got {ink} pixels");
+    assert!(ink < 1000, "text must not fill the display: {ink} pixels");
+    assert_eq!(display.snapshot().unwrap(), image);
+    display.ui.deinit();
+}
+
+#[test]
+fn default_display_matches_upstream_configuration() {
+    let mut display = TestDisplay::new().unwrap();
+    let image = display.snapshot().unwrap();
+    assert_eq!((image.width(), image.height()), (800, 480));
+    display.wait(3);
+    assert_eq!(display.ui.tick_get(), 3);
+    display.ui.deinit();
+}
+
+#[test]
+fn dimensions_cannot_truncate_the_draw_buffer_header() {
+    for (width, height) in [
+        (0, 1),
+        (-1, 1),
+        (1, 0),
+        (16384, 1),
+        (65536, 1),
+        (1, 65536),
+        (i32::MAX, 1),
+    ] {
+        let result = TestDisplay::with_resolution(width, height);
+        assert!(matches!(result, Err(error) if error.kind() == std::io::ErrorKind::InvalidInput));
+    }
+}
+
+#[test]
+fn wait_zero_flushes_pending_style_changes() {
+    let mut display = TestDisplay::with_resolution(8, 8).unwrap();
+    let screen = display.screen().unwrap();
+    display
+        .ui
+        .obj_set_style_bg_opa(screen, 255, StyleSelector::DEFAULT);
+    display
+        .ui
+        .obj_set_style_bg_color(screen, Color::hex(0xff0000), StyleSelector::DEFAULT);
+    display.wait(0);
+    let buffer = display.ui.display_get_buf_active(display.display()).unwrap();
+    assert_eq!(&buffer.data()[..3], &[0, 0, 255]);
+    assert_eq!(display.ui.tick_get(), 0);
+}
+
+#[test]
+fn changed_display_configuration_cannot_produce_a_partial_screenshot() {
+    let mut display = TestDisplay::with_resolution(8, 8).unwrap();
+    display
+        .ui
+        .display_set_render_mode(display.display(), RenderMode::Partial);
+    assert!(display.snapshot().is_err());
+    display
+        .ui
+        .display_set_render_mode(display.display(), RenderMode::Direct);
+    display.ui.display_set_resolution(display.display(), 9, 8);
+    assert!(display.snapshot().is_err());
+    display.ui.display_set_resolution(display.display(), 8, 8);
+    display
+        .ui
+        .display_set_color_format(display.display(), ColorFormat::Rgb565);
+    assert!(display.snapshot().is_err());
+    display
+        .ui
+        .display_set_color_format(display.display(), ColorFormat::Xrgb8888);
+    display
+        .ui
+        .display_mut(display.display())
+        .unwrap()
+        .buf_1
+        .as_mut()
+        .unwrap()
+        .header
+        .stride = 1;
+    assert!(display.snapshot().is_err());
+}
+
+#[test]
+fn callback_deleting_display_during_refresh_returns_an_error() {
+    let mut display = TestDisplay::with_resolution(8, 8).unwrap();
+    let handle = display.display();
+    display.ui.display_add_event_cb(
+        handle,
+        Rc::new(move |ui, _| ui.display_delete(handle)),
+        EventCode::REFR_READY,
+        None,
+    );
+    assert!(display.snapshot().unwrap_err().to_string().contains("deleted"));
+}

@@ -35,6 +35,9 @@ theme-mono = []
 ferrovgl-core = { workspace = true }
 ferrovgl-fonts = { workspace = true }
 
+[dev-dependencies]
+ferrovgl-fonts = { workspace = true, features = ["montserrat-14"] }
+
 [lints]
 workspace = true
 

@@ -5,10 +5,18 @@
 //! object tree) as `Rc<dyn Fn>`; dispatch snapshots the id list and clones
 //! the `Rc` out before calling, so callbacks may add/remove callbacks or
 //! delete their own target, exactly like in C.
+//!
+//! `LV_USE_EXT_DATA` is enabled as in the pinned full test configuration.
+//! Descriptor release hooks keep C's removal-time ordering. An active event
+//! retains an `Rc` of its external data so self-removal cannot leave a dangling
+//! pointer; replacing data drops the old `Rc` without calling the old hook.
+//! The dispatch cleanup also tracks callbacks appended after the initial
+//! snapshot, so deleting the owner cannot orphan those arena entries.
 
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::any::Any;
+use core::cell::RefCell;
 
 use crate::core::Ui;
 use crate::core::obj::Obj;
@@ -400,8 +408,25 @@ pub type EventCallback = Rc<dyn for<'p> Fn(&mut Ui, &mut Event<'p>)>;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventDscId(pub Key);
 
+/// The `LV_USE_EXT_DATA` release hook. A removed descriptor passes its
+/// external data here before marking itself for deferred deletion.
+pub type EventExtDataFreeCb = fn(Option<Rc<dyn Any>>);
+
+/// `lv_ext_data_t` for an event descriptor. Shared ownership keeps external
+/// data borrowed by an active callback alive when that callback removes itself.
+#[derive(Default)]
+pub struct EventExtData {
+    /// `data`; independent of the callback's application `user_data`.
+    pub data: Option<Rc<dyn Any>>,
+    /// `free_cb`; called at removal time, including with `None` on repeated
+    /// removal while the descriptor is still in a traversed list.
+    pub free_cb: Option<EventExtDataFreeCb>,
+}
+
 /// `lv_event_dsc_t`: one registered callback.
 pub struct EventDsc {
+    /// `ext_data` (`LV_USE_EXT_DATA`).
+    pub ext_data: EventExtData,
     /// `cb`
     pub cb: EventCallback,
     /// `user_data`
@@ -440,6 +465,9 @@ pub struct EventList {
     pub is_traversing: bool,
     /// `has_marked_deleting`
     pub has_marked_deleting: bool,
+    // Clones held by active dispatches must also know about descriptors
+    // appended later, in case deleting the owner drops the live list.
+    additions_during_dispatch: Option<Rc<RefCell<Vec<EventDscId>>>>,
 }
 
 impl EventList {
@@ -449,6 +477,7 @@ impl EventList {
             dscs: Vec::new(),
             is_traversing: false,
             has_marked_deleting: false,
+            additions_during_dispatch: None,
         }
     }
 
@@ -620,6 +649,9 @@ pub struct Event<'p> {
     pub param: EventParam<'p>,
     /// `user_data` of the running callback.
     pub user_data: Option<Rc<dyn Any>>,
+    /// `ext_data.data` (`LV_USE_EXT_DATA`) of the running descriptor.
+    /// A callback-local strong reference replaces C's borrowed pointer.
+    pub ext_data: Option<Rc<dyn Any>>,
     /// `stop_processing`
     pub stop_processing: bool,
     /// `stop_bubbling`
@@ -928,6 +960,7 @@ fn event_new<'p>(code: EventCode, original_target: EventTarget, param: EventPara
         current_target: original_target,
         param,
         user_data: None,
+        ext_data: None,
         stop_processing: false,
         stop_bubbling: false,
         stop_trickling: false,
@@ -937,6 +970,23 @@ fn event_new<'p>(code: EventCode, original_target: EventTarget, param: EventPara
 }
 
 impl Ui {
+    /// `lv_event_desc_set_external_data()` (`LV_USE_EXT_DATA`).
+    ///
+    /// Replacing data does not call the old release hook, like upstream.
+    /// Rust drops the descriptor's old `Rc` instead of leaking ownership.
+    pub fn event_desc_set_external_data(
+        &mut self,
+        id: EventDscId,
+        data: Option<Rc<dyn Any>>,
+        free_cb: Option<EventExtDataFreeCb>,
+    ) {
+        let Some(dsc) = self.event_dscs.get_mut(id.0) else {
+            check_arg_failed("lv_event_desc_set_external_data: dsc != NULL");
+            return;
+        };
+        dsc.ext_data = EventExtData { data, free_cb };
+    }
+
     /// `lv_event_add()`: register `cb` on `list`.
     ///
     /// The descriptor is stored in [`Ui::event_dscs`]; `list` only keeps its
@@ -950,12 +1000,16 @@ impl Ui {
         user_data: Option<Rc<dyn Any>>,
     ) -> EventDscId {
         let dsc = EventDsc {
+            ext_data: EventExtData::default(),
             cb,
             user_data,
             filter: filter.to_u32(),
         };
         let id = EventDscId(self.event_dscs.insert(dsc));
         list.dscs.push(id);
+        if let Some(added) = &list.additions_during_dispatch {
+            added.borrow_mut().push(id);
+        }
         id
     }
 
@@ -969,6 +1023,7 @@ impl Ui {
         for i in 0..size {
             let event = list.dscs[i];
             if event == dsc {
+                event_free_external_data(&mut self.event_dscs, event);
                 event_mark_deleting(&mut self.event_dscs, list, event);
                 cleanup_event_list(&mut self.event_dscs, list);
                 return true;
@@ -1000,6 +1055,7 @@ impl Ui {
         let Some(&dsc) = list.dscs.get(index) else {
             return false;
         };
+        event_free_external_data(&mut self.event_dscs, dsc);
         event_mark_deleting(&mut self.event_dscs, list, dsc);
         cleanup_event_list(&mut self.event_dscs, list);
         true
@@ -1010,6 +1066,7 @@ impl Ui {
         let size = list.dscs.len();
         for i in 0..size {
             let dsc = list.dscs[i];
+            event_free_external_data(&mut self.event_dscs, dsc);
             event_mark_deleting(&mut self.event_dscs, list, dsc);
         }
 
@@ -1055,7 +1112,7 @@ impl Ui {
         let mut back_array_head = local.dscs.clone();
 
         // Dealing with the problem of nested event deletion event
-        let is_traversing = {
+        let (is_traversing, additions) = {
             let (_, live_list) = self.event_parts(target);
             let list = match live_list.filter(|_| live) {
                 Some(l) => l,
@@ -1063,7 +1120,11 @@ impl Ui {
             };
             let is_traversing = list.is_traversing;
             list.is_traversing = true;
-            is_traversing
+            let additions = list
+                .additions_during_dispatch
+                .get_or_insert_with(|| Rc::new(RefCell::new(Vec::new())))
+                .clone();
+            (is_traversing, additions)
         };
 
         let mut res = LvResult::Ok;
@@ -1088,6 +1149,7 @@ impl Ui {
             let filter = dsc.filter & !EventCode::PREPROCESS;
             if filter == EventCode::ALL.0 as u32 || filter == e.code.0 as u32 {
                 e.user_data = dsc.user_data.clone();
+                e.ext_data = dsc.ext_data.data.clone();
                 let cb = dsc.cb.clone();
                 cb(self, e);
                 self.event_frame_sync(e);
@@ -1109,21 +1171,25 @@ impl Ui {
         }
 
         if e.deleted {
+            back_array_head.extend_from_slice(&additions.borrow());
             cleanup_event_list_core(&mut self.event_dscs, &mut back_array_head);
         } else {
             let (dscs, live_list) = self.event_parts(target);
             match live_list.filter(|_| live) {
                 Some(list) => {
                     list.is_traversing = false;
+                    list.additions_during_dispatch = None;
                     cleanup_event_list(dscs, list);
                 }
                 None if live => {
                     // The owner disappeared without the event being marked
                     // deleted (no frame pushed): release like the deleted case.
+                    back_array_head.extend_from_slice(&additions.borrow());
                     cleanup_event_list_core(dscs, &mut back_array_head);
                 }
                 None => {
                     local.is_traversing = false;
+                    local.additions_during_dispatch = None;
                     cleanup_event_list(dscs, local);
                 }
             }
@@ -1247,6 +1313,15 @@ impl Ui {
                 e.deleted = true;
             }
         }
+    }
+}
+
+/// `LV_USE_EXT_DATA` removal hooks run before the descriptor is marked.
+fn event_free_external_data(dscs: &mut Arena<EventDsc>, id: EventDscId) {
+    if let Some(dsc) = dscs.get_mut(id.0)
+        && let Some(free_cb) = dsc.ext_data.free_cb
+    {
+        free_cb(dsc.ext_data.data.take());
     }
 }
 
@@ -1652,7 +1727,7 @@ mod tests {
     fn filter_all_matches_every_code_and_user_data_is_passed() {
         let mut ui = new_ui();
         let obj = make_obj(&mut ui);
-        let seen = Rc::new(core::cell::RefCell::new(Vec::new()));
+        let seen = Rc::new(RefCell::new(Vec::new()));
         let s = seen.clone();
         let cb: EventCallback = Rc::new(move |_ui: &mut Ui, e: &mut Event<'_>| {
             let ud = e.user_data().and_then(|d| d.downcast_ref::<u32>()).copied();
@@ -1759,6 +1834,168 @@ mod tests {
         // No leaked descriptors and no dangling frames.
         assert!(ui.event_dscs.is_empty());
         assert!(ui.event_stack.is_empty());
+    }
+
+    #[test]
+    fn callbacks_added_during_dispatch_are_released_when_target_is_deleted() {
+        let mut ui = new_ui();
+        let obj = make_obj(&mut ui);
+        add(
+            &mut ui,
+            obj,
+            Rc::new(|ui, e| {
+                let obj = e.current_target_obj().unwrap();
+                add(ui, obj, noop_cb(), EventCode::CLICKED);
+                delete(ui, obj);
+            }),
+            EventCode::CLICKED,
+        );
+
+        assert_eq!(send(&mut ui, obj, EventCode::CLICKED), LvResult::Invalid);
+        assert!(
+            ui.event_dscs.is_empty(),
+            "descriptors added by the callback leaked"
+        );
+        assert!(ui.event_stack.is_empty());
+    }
+
+    /// Exercise the owner wrappers too, including a nested DELETE dispatch.
+    #[test]
+    fn public_owner_deletion_releases_callbacks_added_in_nested_dispatch() {
+        struct DropCount(Rc<Cell<u32>>);
+        impl Drop for DropCount {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        fn add_to(ui: &mut Ui, target: EventTarget, cb: EventCallback, data: Option<Rc<dyn Any>>) {
+            match target {
+                EventTarget::Obj(obj) => {
+                    ui.obj_add_event_cb(obj, cb, EventCode::ALL, data);
+                }
+                EventTarget::Display(disp) => {
+                    ui.display_add_event_cb(disp, cb, EventCode::ALL, data);
+                }
+                EventTarget::Indev(indev) => {
+                    ui.indev_add_event_cb(indev, cb, EventCode::ALL, data);
+                }
+                EventTarget::DrawUnit(_) => unreachable!(),
+            }
+        }
+        fn send_to(ui: &mut Ui, target: EventTarget, code: EventCode) -> LvResult {
+            match target {
+                EventTarget::Obj(obj) => ui.obj_send_event(obj, code, EventParam::None),
+                EventTarget::Display(disp) => ui.display_send_event(disp, code, EventParam::None),
+                EventTarget::Indev(indev) => ui.indev_send_event(indev, code, EventParam::None),
+                EventTarget::DrawUnit(_) => unreachable!(),
+            }
+        }
+        for kind in 0..3 {
+            let mut ui = new_ui();
+            let disp = ui.display_create(32, 32);
+            let target = match kind {
+                0 => EventTarget::Obj(ui.obj_create(ui.display_get_screen_active(Some(disp)))),
+                1 => EventTarget::Display(disp),
+                _ => EventTarget::Indev(ui.indev_create()),
+            };
+            let drops = Rc::new(Cell::new(0));
+            let dropped = drops.clone();
+            let cb: EventCallback = Rc::new(move |ui, e| {
+                let target = e.current_target();
+                if e.code() == EventCode::CLICKED {
+                    assert_eq!(send_to(ui, target, EventCode::READY), LvResult::Invalid);
+                } else if e.code() == EventCode::READY {
+                    // Added after both the outer and nested snapshots.
+                    for _ in 0..5 {
+                        add_to(ui, target, noop_cb(), Some(Rc::new(DropCount(dropped.clone()))));
+                    }
+                    match target {
+                        EventTarget::Obj(obj) => ui.obj_delete(obj),
+                        EventTarget::Display(disp) => ui.display_delete(disp),
+                        EventTarget::Indev(indev) => ui.indev_delete(indev),
+                        EventTarget::DrawUnit(_) => unreachable!(),
+                    }
+                    // All owning descriptors remain until the outer traversal returns.
+                    assert_eq!(dropped.get(), 0);
+                }
+            });
+            add_to(&mut ui, target, cb, None);
+            assert_eq!(send_to(&mut ui, target, EventCode::CLICKED), LvResult::Invalid);
+            assert_eq!(drops.get(), 5);
+            assert!(ui.event_stack.is_empty());
+            ui.display_delete(disp);
+            assert!(ui.event_dscs.is_empty());
+        }
+    }
+
+    #[test]
+    fn external_data_release_precedes_deferred_descriptor_cleanup() {
+        struct Payload(Rc<RefCell<Vec<&'static str>>>);
+        impl Drop for Payload {
+            fn drop(&mut self) {
+                self.0.borrow_mut().push("drop");
+            }
+        }
+        fn release(data: Option<Rc<dyn Any>>) {
+            data.unwrap()
+                .downcast_ref::<Payload>()
+                .unwrap()
+                .0
+                .borrow_mut()
+                .push("free");
+        }
+        let mut ui = new_ui();
+        let obj = make_obj(&mut ui);
+        let trace = Rc::new(RefCell::new(Vec::new()));
+        let seen = trace.clone();
+        let id = add(
+            &mut ui,
+            obj,
+            Rc::new(move |ui, e| {
+                seen.borrow_mut().push("callback");
+                assert!(e.user_data().is_none());
+                assert!(e.ext_data.as_ref().unwrap().is::<Payload>());
+                let id = list_of(ui, obj).dscs[0];
+                assert!(with_list(ui, obj, |ui, list| ui.event_remove_dsc(list, id)));
+                assert!(ui.event_dscs[id.0].is_marked_deleting());
+                assert!(ui.event_dscs[id.0].ext_data.data.is_none());
+                // C's borrowed pointer may have been freed here; Rust keeps it valid.
+                assert!(e.ext_data.as_ref().unwrap().is::<Payload>());
+                seen.borrow_mut().push("after removal");
+            }),
+            EventCode::CLICKED,
+        );
+        ui.event_desc_set_external_data(id, Some(Rc::new(Payload(trace.clone()))), Some(release));
+        assert_eq!(send(&mut ui, obj, EventCode::CLICKED), LvResult::Ok);
+        assert_eq!(*trace.borrow(), ["callback", "free", "after removal", "drop"]);
+        assert!(ui.event_dscs.is_empty());
+    }
+
+    #[test]
+    fn external_data_replacement_and_all_removal_paths() {
+        fn release(data: Option<Rc<dyn Any>>) {
+            if let Some(data) = data {
+                let count = data.downcast_ref::<Cell<u32>>().unwrap();
+                count.set(count.get() + 1);
+            }
+        }
+        let mut ui = new_ui();
+        let mut list = EventList::new();
+        let count = Rc::new(Cell::new(0u32));
+        let old = Rc::new(Cell::new(0u32));
+        for _ in 0..3 {
+            let id = ui.event_add(&mut list, noop_cb(), EventCode::ALL.into(), None);
+            ui.event_desc_set_external_data(id, Some(old.clone()), Some(release));
+            ui.event_desc_set_external_data(id, Some(count.clone()), Some(release));
+        }
+        assert_eq!(old.get(), 0, "replacement must not call the old free hook");
+        assert_eq!(Rc::strong_count(&old), 1);
+        assert!(ui.event_remove(&mut list, 0));
+        assert_eq!(count.get(), 1);
+        ui.event_remove_all(&mut list);
+        assert_eq!(count.get(), 3);
+        assert_eq!(Rc::strong_count(&count), 1);
+        assert!(ui.event_dscs.is_empty());
     }
 
     #[test]

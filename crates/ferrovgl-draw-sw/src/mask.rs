@@ -1113,7 +1113,6 @@ pub fn mask_radius(
     let k = rect.x1 - abs_x; /*First relevant coordinate on the of the mask*/
     let w = rect.width();
     let h = rect.height();
-    let abs_x = abs_x - rect.x1;
     let abs_y = abs_y - rect.y1;
 
     let cir_y = if abs_y < radius {

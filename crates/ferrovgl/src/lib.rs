@@ -29,4 +29,6 @@ pub use ferrovgl_widgets as widgets;
 /// Commonly used types.
 pub mod prelude {
     pub use ferrovgl_core::{Align, Area, Color, Color32, ColorFormat, Dir, Opa, Point};
+    #[cfg(feature = "widgets")]
+    pub use ferrovgl_widgets::{Button, Image, ImageAlign, Label, LabelLongMode};
 }

@@ -468,12 +468,12 @@ fn draw_label_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &LabelD
     }
 
     if dsc.base.drop_shadow_opa != 0
-        && let Some(ds_layer) = s.ctx().layer_create_drop_shadow(layer, &dsc.base, coords)
+        && let Some(ds_layer) = s.create_drop_shadow(layer, &dsc.base, coords)
     {
         let mut ds_dsc = dsc.clone();
         ds_dsc.base.drop_shadow_opa = 0; /*Disable drop shadow so rendering below will render plain label*/
         draw_label_impl(s, ds_layer, &ds_dsc, coords);
-        s.ctx().layer_finish_drop_shadow(ds_layer, &dsc.base);
+        s.finish_drop_shadow(ds_layer, &dsc.base);
     }
 
     let t = s.ctx().add_task(layer, coords, DrawTaskType::Label);

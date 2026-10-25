@@ -346,6 +346,8 @@ pub(crate) fn blend_to_buf(
 /// `lv_draw_sw_blend_color()`: route a fill to the kernel of `layer_cf`.
 #[inline]
 fn blend_color(layer_cf: ColorFormat, fill_dsc: &mut BlendFillDsc<'_>) {
+    // Every format arm can be disabled in a minimal no_std build.
+    let _ = &fill_dsc;
     match layer_cf {
         #[cfg(feature = "cf-rgb565")]
         ColorFormat::Rgb565 => to_rgb565::fill(fill_dsc),
@@ -375,6 +377,7 @@ fn blend_color(layer_cf: ColorFormat, fill_dsc: &mut BlendFillDsc<'_>) {
 /// `layer_cf`.
 #[inline]
 fn blend_image(layer_cf: ColorFormat, image_dsc: &mut BlendImageDsc<'_>) {
+    let _ = &image_dsc;
     match layer_cf {
         #[cfg(feature = "cf-rgb565")]
         ColorFormat::Rgb565 | ColorFormat::Rgb565A8 => to_rgb565::image(image_dsc),

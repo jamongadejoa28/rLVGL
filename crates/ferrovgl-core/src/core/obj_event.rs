@@ -7,7 +7,7 @@
 //! The `lv_event_get_*()` parameter accessors of `lv_obj_event.c`
 //! (`lv_event_get_indev()`, `lv_event_get_layer()`, `lv_event_set_ext_draw_size()`,
 //! `lv_event_set_cover_res()`, ...) are methods of
-//! [`Event`](crate::misc::event::Event) in `misc/event.rs`.
+//! [`Event`] in `misc/event.rs`.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -38,6 +38,7 @@ impl Ui {
             target: EventTarget::Obj(obj),
             code,
             user_data: None,
+            ext_data: None,
             param,
             deleted: false,
             stop_bubbling: false,
@@ -642,6 +643,7 @@ pub(crate) mod tests {
             current_target: EventTarget::Obj(obj),
             param: EventParam::None,
             user_data: None,
+            ext_data: None,
             stop_processing: false,
             stop_bubbling: false,
             stop_trickling: false,

@@ -262,12 +262,12 @@ fn draw_image_impl<S: TaskSink + ?Sized>(s: &mut S, layer: LayerId, dsc: &DrawIm
     }
 
     if dsc.base.drop_shadow_opa != 0
-        && let Some(ds_layer) = s.ctx().layer_create_drop_shadow(layer, &dsc.base, coords)
+        && let Some(ds_layer) = s.create_drop_shadow(layer, &dsc.base, coords)
     {
         let mut ds_dsc = dsc.clone();
         ds_dsc.base.drop_shadow_opa = 0; /*Disable drop shadow so rendering below will render plain image*/
         draw_image_impl(s, ds_layer, &ds_dsc, coords);
-        s.ctx().layer_finish_drop_shadow(ds_layer, &dsc.base);
+        s.finish_drop_shadow(ds_layer, &dsc.base);
     }
 
     let mut new_image_dsc = dsc.clone();
@@ -739,7 +739,10 @@ fn variable_parts(src: &ImageSrc) -> Option<(ImageHeader, &[u8])> {
 }
 
 /// `lv_image_decoder_get_info()` with access to the layers.
-fn image_decoder_get_info(ctx: &DrawCtx, src: &ImageSrc) -> Option<ImageHeader> {
+///
+/// Resolves in-memory descriptors and live layer buffers. File paths still need
+/// a decoder registry and return `None`, as in [`image_header_of`].
+pub fn image_decoder_get_info(ctx: &DrawCtx, src: &ImageSrc) -> Option<ImageHeader> {
     match src {
         ImageSrc::Layer(l) => {
             let buf = ctx.layer(*l)?.draw_buf.as_ref()?;

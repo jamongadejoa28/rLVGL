@@ -1,0 +1,37 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "43 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [style_ops, text_break, tree_mutation]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv sync --locked
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz -> ../target/fuzz
+          shared-key: fuzz
+      - run: uv run --locked cargo +nightly install cargo-fuzz --version 0.13.2 --locked --root target/tools --target-dir target/tool-build
+      - run: uv run --locked python tools/fuzz.py ${{ matrix.target }} --seconds 600
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}
+            fuzz/corpus/${{ matrix.target }}
+          if-no-files-found: ignore

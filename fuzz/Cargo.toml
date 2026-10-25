@@ -1,0 +1,48 @@
+[package]
+name = "ferrovgl-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Keep libFuzzer's native tooling and lockfile out of production dependencies.
+[workspace]
+members = ["."]
+resolver = "3"
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+ferrovgl-core = { path = "../crates/ferrovgl-core", default-features = false, features = ["float"] }
+ferrovgl-fonts = { path = "../crates/ferrovgl-fonts", default-features = false, features = ["montserrat-14"] }
+
+[profile.release]
+opt-level = 1
+debug = 0
+incremental = true
+codegen-units = 16
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "style_ops"
+path = "fuzz_targets/style_ops.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text_break"
+path = "fuzz_targets/text_break.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tree_mutation"
+path = "fuzz_targets/tree_mutation.rs"
+test = false
+doc = false
+bench = false

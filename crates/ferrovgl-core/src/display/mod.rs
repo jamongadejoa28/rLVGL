@@ -185,7 +185,13 @@ pub trait DisplayDriver {
     fn flush(&mut self, disp: DisplayId, area: &Area, px_map: &mut [u8]) -> FlushResult;
     /// `flush_wait_cb`: block until a pending flush is done.
     fn flush_wait(&mut self, _disp: DisplayId) {}
-    /// `sync_cb` (direct mode): copy `area` from the active to the inactive buffer.
+    /// Whether the backend provides `sync_cb`. Override this together with
+    /// [`Self::sync`] to enable driver-managed synchronization; otherwise
+    /// direct double buffering uses the internal copy path.
+    fn has_sync(&self) -> bool {
+        false
+    }
+    /// `sync_cb`: copy `area` from the active to the inactive buffer.
     fn sync(&mut self, _disp: DisplayId, _area: &Area) {}
     /// `sync_wait_cb`
     fn sync_wait(&mut self, _disp: DisplayId) {}
@@ -1562,6 +1568,7 @@ impl Ui {
             check_arg_failed("display_add_event_cb: disp != NULL");
             // `NULL`: a handle that names no descriptor (a freed slot).
             let dsc = EventDsc {
+                ext_data: Default::default(),
                 cb,
                 user_data: None,
                 filter: filter.to_u32(),

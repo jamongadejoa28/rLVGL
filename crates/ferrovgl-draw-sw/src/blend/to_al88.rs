@@ -9,7 +9,7 @@
 //!   `LV_RESULT_INVALID` in the software renderer, so only the C fallback
 //!   loops are ported.
 //! - Buffers are byte slices; the C "row pointer += stride" becomes a byte
-//!   offset advanced with [`drawbuf_next_row`]. Multi-byte source pixels are
+//!   offset advanced with `drawbuf_next_row`. Multi-byte source pixels are
 //!   read little-endian, like the C structs on the reference targets.
 //! - `LV_LOG_WARN` paths (unknown source format or blend mode) do nothing.
 //! - Upstream quirk kept: in `i1_image_blend()` the non-normal blend-mode

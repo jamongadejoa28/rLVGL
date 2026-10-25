@@ -28,6 +28,13 @@ pub type ObjTreeWalkCallback<'a> = &'a mut dyn FnMut(&mut Ui, Obj) -> ObjTreeWal
 pub const OBJ_NAME_MAX_LEN: usize = 128;
 
 impl Ui {
+    /// `lv_obj_get_child(obj, i)` for `i >= 0`, read straight from `spec_attr`.
+    #[inline]
+    pub(super) fn child_at(&self, obj: Obj, i: u32) -> Option<Obj> {
+        let spec = self.obj(obj)?.spec.as_deref()?;
+        spec.children.get(i as usize).copied().map(Obj::from)
+    }
+
     /// `lv_obj_delete()`: send `LV_EVENT_DELETE`, delete the children
     /// (deepest first), run the destructors and free the slot.
     pub fn obj_delete(&mut self, obj: Obj) {
@@ -147,7 +154,7 @@ impl Ui {
         }
 
         // lv_async_call(lv_obj_delete_async_cb, obj)
-        self.async_queue.push(AsyncJob::DeleteObj(obj));
+        self.async_call_job(AsyncJob::DeleteObj(obj));
     }
 
     /// `lv_obj_set_parent()`: move `obj` to the end of `parent`'s children.
@@ -955,20 +962,10 @@ impl Ui {
         self.objs.remove(obj.id().0);
     }
 
-    /// `lv_async_call_cancel(lv_obj_delete_async_cb, obj)`: remove the first
-    /// pending `lv_obj_delete_async(obj)`.
+    /// `lv_async_call_cancel(lv_obj_delete_async_cb, obj)`: remove all
+    /// pending deletion timers for `obj`, preserving other async jobs.
     fn obj_tree_async_delete_cancel(&mut self, obj: Obj) -> LvResult {
-        let pos = self
-            .async_queue
-            .iter()
-            .position(|j| matches!(j, AsyncJob::DeleteObj(o) if *o == obj));
-        match pos {
-            Some(p) => {
-                self.async_queue.remove(p);
-                LvResult::Ok
-            }
-            None => LvResult::Invalid,
-        }
+        self.async_call_job_cancel(&AsyncJob::DeleteObj(obj))
     }
 
     /// `walk_core()` (static)
@@ -1419,19 +1416,30 @@ mod tests {
     }
 
     #[test]
-    fn delete_async_queues_and_cancel_removes_all() {
+    fn delete_async_uses_timers_and_cancel_removes_all_matches() {
         let mut ui = Ui::new(UiConfig::default());
         let (_, a, b, _, _, _) = tree(&mut ui);
+        let original_timers = ui.timers.order.clone();
         ui.obj_delete_async(a);
+        let first_a = ui.timer_get_next(None).unwrap();
         ui.obj_delete_async(b);
+        let only_b = ui.timer_get_next(None).unwrap();
         ui.obj_delete_async(a);
-        assert_eq!(ui.async_queue.len(), 3);
-        let mut res = LvResult::Ok;
-        while res == LvResult::Ok {
-            res = ui.obj_tree_async_delete_cancel(a);
-        }
-        assert_eq!(ui.async_queue.len(), 1);
-        assert!(matches!(ui.async_queue[0], AsyncJob::DeleteObj(o) if o == b));
+        let second_a = ui.timer_get_next(None).unwrap();
+        assert_eq!(ui.timers.order.len(), original_timers.len() + 3);
+        assert!(ui.obj_is_valid(a));
+        assert!(ui.obj_is_valid(b));
+        assert_eq!(ui.timer(first_a).unwrap().period, 0);
+        assert_eq!(ui.timer(first_a).unwrap().repeat_count, 1);
+
+        assert_eq!(ui.obj_tree_async_delete_cancel(a), LvResult::Ok);
+        assert_eq!(ui.obj_tree_async_delete_cancel(a), LvResult::Invalid);
+        assert!(ui.timer(first_a).is_none());
+        assert!(ui.timer(second_a).is_none());
+        assert_eq!(ui.timer_get_next(None), Some(only_b));
+        assert_eq!(&ui.timers.order[1..], original_timers.as_slice());
+        assert_eq!(ui.obj_tree_async_delete_cancel(b), LvResult::Ok);
+        assert_eq!(ui.timers.order, original_timers);
     }
 
     #[test]

@@ -136,13 +136,17 @@ fn fonts(root: &Path, check: bool) -> Result<()> {
 fn nostd_check(root: &Path) -> Result<()> {
     for target in ["thumbv7em-none-eabihf", "thumbv6m-none-eabi"] {
         for (pkg, features) in [
-            ("ferrovgl-core", "float,flex,grid"),
+            ("ferrovgl-core", "float,flex,grid,snapshot"),
             ("ferrovgl-draw-sw", "complex,cf-rgb565,cf-xrgb8888"),
             ("ferrovgl-fonts", "montserrat-14"),
-            ("ferrovgl-widgets", "label,button"),
+            (
+                "ferrovgl-widgets",
+                "label,button,image,theme-default,theme-simple",
+            ),
         ] {
             run(Command::new("cargo").current_dir(root).args([
                 "build",
+                "--locked",
                 "--release",
                 "--target",
                 target,
@@ -159,24 +163,84 @@ fn nostd_check(root: &Path) -> Result<()> {
 
 fn parity_report(root: &Path) -> Result<()> {
     let dir = root.join("target/parity");
-    let mut failed = Vec::new();
-    if dir.exists() {
-        for entry in std::fs::read_dir(&dir)? {
-            let name = entry?.file_name().to_string_lossy().to_string();
-            if let Some(stem) = name.strip_suffix("_diff.png") {
-                failed.push(stem.to_string());
-            }
-        }
-    }
-    failed.sort();
+    let mut results = Vec::new();
+    collect_parity_results(&dir, &dir, &mut results)?;
+    results.sort();
     println!("## Pixel parity\n");
-    if failed.is_empty() {
-        println!("No parity failures recorded in `target/parity`.");
-    } else {
-        println!("{} failing image(s):\n", failed.len());
-        for f in &failed {
-            println!("- {f}");
+    if results.is_empty() {
+        println!("No upstream image comparisons recorded (0 matched, 0 run). Pixel parity is unverified.");
+        return Ok(());
+    }
+    let matched = results.iter().filter(|(_, status)| status == "matched").count();
+    let mismatched = results.iter().filter(|(_, status)| status == "mismatch").count();
+    let errors = results.len() - matched - mismatched;
+    println!(
+        "{matched}/{} recorded comparisons matched; {mismatched} mismatched; {errors} errors.\n",
+        results.len()
+    );
+    for (name, status) in &results {
+        println!("- {name}: {status}");
+    }
+    println!(
+        "\nThese are the latest stored results in `target/parity`, not proof that every scenario ran in this invocation. Remove that directory before a fresh parity run."
+    );
+    Ok(())
+}
+
+fn collect_parity_results(root: &Path, dir: &Path, results: &mut Vec<(String, String)>) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            collect_parity_results(root, &path, results)?;
+        } else if kind.is_file() && path.extension().is_some_and(|ext| ext == "result") {
+            let text = std::fs::read_to_string(&path)?;
+            let status = match text.lines().next() {
+                Some("matched") => "matched",
+                Some("mismatch") => "mismatch",
+                _ => "error",
+            };
+            let name = path.strip_prefix(root)?.with_extension("");
+            results.push((name.to_string_lossy().into_owned(), status.to_owned()));
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parity_results_recurse_and_do_not_treat_absent_diffs_as_success() {
+        let dir = std::env::temp_dir().join(format!("ferrovgl-parity-report-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("widgets")).unwrap();
+        std::fs::write(dir.join("widgets/label.result"), "matched\n").unwrap();
+        std::fs::write(dir.join("mismatch.result"), "mismatch\n").unwrap();
+        std::fs::write(dir.join("missing-reference.result"), "error\nmissing reference\n").unwrap();
+        std::fs::write(dir.join("truncated.result"), "").unwrap();
+        std::fs::write(dir.join("old_diff.png"), "").unwrap();
+        let mut results = Vec::new();
+        collect_parity_results(&dir, &dir, &mut results).unwrap();
+        assert_eq!(results.len(), 4);
+        assert_eq!(
+            results.iter().filter(|(_, status)| status == "matched").count(),
+            1
+        );
+        assert_eq!(
+            results.iter().filter(|(_, status)| status == "mismatch").count(),
+            1
+        );
+        assert_eq!(results.iter().filter(|(_, status)| status == "error").count(), 2);
+        assert!(
+            results
+                .iter()
+                .any(|(name, _)| Path::new(name) == Path::new("widgets/label"))
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

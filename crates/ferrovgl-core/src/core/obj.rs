@@ -14,17 +14,17 @@ use core::cell::Cell;
 use crate::core::Ui;
 use crate::core::obj_style::{ObjStyle, ObjStyleSrc, ObjStyleTransitionDsc, StyleStateCmp};
 use crate::display::ScreenLoadAnim;
+use crate::draw::LayerId;
 use crate::draw::blur::BlurDsc;
 use crate::draw::grad::GradDir;
 use crate::draw::rect::RectDsc;
-use crate::draw::{DrawDsc, DrawTaskType, LayerId};
 use crate::group::{GroupId, KEY_DOWN, KEY_ENTER, KEY_LEFT, KEY_RIGHT, KEY_UP};
 use crate::indev::IndevType;
 use crate::misc::anim::{AnimEnable, AnimTarget};
 use crate::misc::area::{Area, Dir, Point};
 use crate::misc::arena::Key;
 use crate::misc::check_arg_failed;
-use crate::misc::color::{Color, OPA_MAX, OPA_MIN, OPA_TRANSP, Opa, opa_mix2};
+use crate::misc::color::{OPA_MAX, OPA_MIN, OPA_TRANSP, opa_mix2};
 use crate::misc::event::{
     CoverRes, Event, EventCallback, EventCode, EventList, EventParam, EventTarget, LvResult,
     event_free_user_data_cb,
@@ -235,7 +235,7 @@ impl dyn WidgetState {
         self.query(TypeId::of::<T>())?.downcast_ref::<T>()
     }
 
-    /// Mutable [`get`](Self::get).
+    /// Mutable version of `get`.
     #[inline]
     pub fn get_mut<T: Any>(&mut self) -> Option<&mut T> {
         self.query_mut(TypeId::of::<T>())?.downcast_mut::<T>()
@@ -634,7 +634,7 @@ fn obj_draw(ui: &mut Ui, e: &mut Event<'_>) {
             ui.obj_init_draw_blur_dsc(obj, Part::MAIN, &mut blur_dsc);
             blur_dsc.corner_radius = draw_dsc.radius;
             blur_dsc.base.layer = Some(layer);
-            draw_blur(ui, layer, &blur_dsc, &coords);
+            ui.draw_blur(layer, &blur_dsc, &coords);
         }
 
         ui.obj_init_draw_rect_dsc(obj, Part::MAIN, &mut draw_dsc);
@@ -657,7 +657,7 @@ fn obj_draw(ui: &mut Ui, e: &mut Event<'_>) {
             ui.obj_init_draw_blur_dsc(obj, Part::MAIN, &mut blur_dsc);
             blur_dsc.corner_radius = ui.style_num(obj, Part::MAIN, StyleProp::RADIUS);
             blur_dsc.base.layer = Some(layer);
-            draw_blur(ui, layer, &blur_dsc, &coords);
+            ui.draw_blur(layer, &blur_dsc, &coords);
         }
     } else if code == EventCode::DRAW_POST {
         let Some(layer) = e.layer() else {
@@ -749,50 +749,28 @@ fn draw_scrollbar(ui: &mut Ui, obj: Obj, layer: LayerId) {
             ui.obj_init_draw_blur_dsc(obj, Part::SCROLLBAR, &mut blur_dsc);
         }
         blur_dsc.base.id1 = 0;
-        draw_blur(ui, layer, &blur_dsc, &hor_area);
+        ui.draw_blur(layer, &blur_dsc, &hor_area);
 
         rect_dsc.base.id1 = 0;
         ui.draw_rect(layer, &rect_dsc, &hor_area);
 
         if !backdrop_blur {
-            draw_blur(ui, layer, &blur_dsc, &hor_area);
+            ui.draw_blur(layer, &blur_dsc, &hor_area);
         }
     }
     if ver_area.size() > 0 {
         blur_dsc.base.id1 = 1;
         if backdrop_blur {
-            draw_blur(ui, layer, &blur_dsc, &ver_area);
+            ui.draw_blur(layer, &blur_dsc, &ver_area);
         }
 
         rect_dsc.base.id1 = 1;
         ui.draw_rect(layer, &rect_dsc, &ver_area);
 
         if !backdrop_blur {
-            draw_blur(ui, layer, &blur_dsc, &ver_area);
+            ui.draw_blur(layer, &blur_dsc, &ver_area);
         }
     }
-}
-
-/// `lv_draw_blur()` ending in the full `lv_draw_finalize_task_creation()`
-/// ([`Ui::draw_finalize_task_creation`]: `LV_EVENT_DRAW_TASK_ADDED`, unit
-/// evaluation, failing untaken tasks, dispatch), like the `ui.draw_rect()`
-/// calls next to it. `DrawCtx::draw_blur` only binds the layer.
-///
-/// Kept private here until `draw/blur.rs` provides a `Ui`-level
-/// `draw_blur`; the body follows `src/draw/lv_draw_blur.c` 1:1.
-fn draw_blur(ui: &mut Ui, layer: LayerId, dsc: &BlurDsc, coords: &Area) {
-    /*`layer`, `dsc` and `coords` are references / handles: the NULL checks can't fail*/
-    if dsc.blur_radius <= 0 {
-        return;
-    }
-
-    let t = ui.draw.add_task(layer, coords, DrawTaskType::Blur);
-
-    if let Some(task) = ui.draw.task_mut(t) {
-        task.dsc = DrawDsc::Blur(Box::new(dsc.clone()));
-    }
-
-    ui.draw_finalize_task_creation(t);
 }
 
 /// `scrollbar_init_draw_dsc()`: initialize the draw descriptor for the
@@ -2142,36 +2120,10 @@ impl Ui {
             .map_or(0, |s| s.children.len() as u32)
     }
 
-    /// `lv_obj_get_child(obj, i)` for `i >= 0`, read straight from `spec_attr`.
-    #[inline]
-    fn child_at(&self, obj: Obj, i: u32) -> Option<Obj> {
-        let spec = self.obj(obj)?.spec.as_deref()?;
-        spec.children.get(i as usize).copied().map(Obj::from)
-    }
-
-    /// `lv_obj_get_style_<prop>_internal()` for numeric properties.
-    #[inline]
-    fn style_num(&self, obj: Obj, part: Part, prop: StyleProp) -> i32 {
-        self.obj_get_style_prop(obj, part, prop).num()
-    }
-
     /// `lv_obj_get_style_<prop>_internal()` for `bool` properties.
     #[inline]
     fn style_bool(&self, obj: Obj, part: Part, prop: StyleProp) -> bool {
         self.style_num(obj, part, prop) != 0
-    }
-
-    /// `lv_obj_get_style_<prop>_internal()` for opacity properties
-    /// (`(lv_opa_t)v.num`).
-    #[inline]
-    fn style_opa(&self, obj: Obj, part: Part, prop: StyleProp) -> Opa {
-        self.style_num(obj, part, prop) as Opa
-    }
-
-    /// `lv_obj_get_style_<prop>_internal()` for colour properties.
-    #[inline]
-    fn style_color(&self, obj: Obj, part: Part, prop: StyleProp) -> Color {
-        self.obj_get_style_prop(obj, part, prop).color()
     }
 
     /// `obj->coords` grown by `transform_width` / `transform_height` of
@@ -2364,6 +2316,7 @@ impl Ui {
 mod tests {
     use super::*;
     use crate::core::UiConfig;
+    use crate::draw::{DrawDsc, DrawTaskType};
 
     #[test]
     fn flag_bits_match_upstream() {
@@ -2820,13 +2773,13 @@ mod tests {
         let coords = Area::new(10, 10, 29, 29);
 
         /*`blur_radius <= 0`: no task*/
-        draw_blur(&mut ui, layer, &blur_dsc(0), &coords);
+        ui.draw_blur(layer, &blur_dsc(0), &coords);
         assert!(ui.draw.layer(layer).unwrap().tasks.is_empty());
 
         /*Keep the task in the layer: with a running task the finalization
          *only evaluates*/
         ui.draw.task_running = true;
-        draw_blur(&mut ui, layer, &blur_dsc(10), &coords);
+        ui.draw_blur(layer, &blur_dsc(10), &coords);
         ui.draw.task_running = false;
         {
             let tasks = &ui.draw.layer(layer).unwrap().tasks;
@@ -2848,7 +2801,7 @@ mod tests {
 
         /*Not taken by any draw unit: failed, then removed by the dispatch that
          *ends the finalization (`DrawCtx::draw_blur` would leave it waiting)*/
-        draw_blur(&mut ui, layer, &blur_dsc(10), &coords);
+        ui.draw_blur(layer, &blur_dsc(10), &coords);
         let tasks = &ui.draw.layer(layer).unwrap().tasks;
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].state, crate::draw::DrawTaskState::Waiting);

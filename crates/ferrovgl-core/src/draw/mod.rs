@@ -38,6 +38,8 @@ pub mod label;
 pub mod line;
 pub mod mask;
 pub mod rect;
+#[cfg(feature = "snapshot")]
+pub mod snapshot;
 pub mod triangle;
 pub mod utils;
 
@@ -1006,6 +1008,16 @@ impl DrawCtx {
         base: &DrawDscBase,
         area: &Area,
     ) -> Option<LayerId> {
+        self.layer_create_drop_shadow_impl(None, parent, base, area)
+    }
+
+    fn layer_create_drop_shadow_impl(
+        &mut self,
+        units: Option<&mut DrawUnits>,
+        parent: LayerId,
+        base: &DrawDscBase,
+        area: &Area,
+    ) -> Option<LayerId> {
         if !self.layers.contains(parent.0) {
             return None;
         }
@@ -1016,7 +1028,7 @@ impl DrawCtx {
         /* x2 to have some extra space for cleaner blurring */
         drop_shadow_area.increase(blur_radius.wrapping_mul(2), blur_radius.wrapping_mul(2));
 
-        Some(self.layer_create(Some(parent), ColorFormat::A8, &drop_shadow_area))
+        Some(self.layer_create_impl(units, Some(parent), ColorFormat::A8, &drop_shadow_area, None))
     }
 
     /// `lv_draw_layer_finish_drop_shadow()`
@@ -1325,6 +1337,47 @@ impl Ui {
     /// draw units.
     pub fn draw_layer_delete(&mut self, layer: LayerId) {
         self.draw.layer_delete_impl(Some(&mut self.draw_units), layer);
+    }
+}
+
+impl Ui {
+    /// `lv_draw_layer_create_drop_shadow()` with child-layer draw-unit notifications.
+    pub fn layer_create_drop_shadow(
+        &mut self,
+        parent: LayerId,
+        base: &DrawDscBase,
+        area: &Area,
+    ) -> Option<LayerId> {
+        self.draw
+            .layer_create_drop_shadow_impl(Some(&mut self.draw_units), parent, base, area)
+    }
+
+    /// `lv_draw_layer_finish_drop_shadow()` with draw-unit evaluation and dispatch.
+    /// Call this after drawing the shadow silhouette into the child A8 layer.
+    pub fn layer_finish_drop_shadow(&mut self, layer: LayerId, base: &DrawDscBase) {
+        let Some(data) = self.draw.layer(layer) else {
+            return;
+        };
+        let bounds = data.buf_area;
+        let parent = data.parent;
+        let mut blur = BlurDsc::new();
+        blur.blur_radius = base.drop_shadow_blur_radius;
+        blur.quality = base.drop_shadow_quality;
+        blur.base.drop_shadow_color = base.drop_shadow_color;
+        blur.base.drop_shadow_opa = base.drop_shadow_opa;
+        self.draw_blur(layer, &blur, &bounds);
+        let mut destination = bounds;
+        destination.move_by(
+            i32::from(base.drop_shadow_ofs_x),
+            i32::from(base.drop_shadow_ofs_y),
+        );
+        let mut image = DrawImageDsc::new();
+        image.src = ImageSrc::Layer(layer);
+        image.recolor = base.drop_shadow_color;
+        image.opa = base.drop_shadow_opa;
+        if let Some(parent) = parent {
+            self.draw_layer(parent, &image, &destination);
+        }
     }
 }
 
@@ -1947,6 +2000,36 @@ mod tests {
         assert!(
             ctx.layer_create_drop_shadow(layer, &base, &Area::new(0, 0, 1, 1))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn ui_shadow_creation_notifies_units_and_inherits_parent_display() {
+        use crate::core::UiConfig;
+        let mut ui = Ui::new(UiConfig::default());
+        let (unit, events) = MockUnit::recording(1);
+        ui.draw_units.push(unit);
+        ui.draw.unit_cnt = 1;
+        let disp = DisplayId(Arena::<()>::new().insert(()));
+        ui.disp_refresh = Some(disp);
+        let area = Area::new(10, 10, 19, 19);
+        let root = ui.draw_layer_create(None, ColorFormat::Xrgb8888, &area);
+        let mut base = DrawDscBase::new();
+        base.drop_shadow_blur_radius = 2;
+        let child = rect::TaskSink::create_drop_shadow(&mut ui, root, &base, &area).unwrap();
+        let shadow = ui.draw.layer(child).unwrap();
+        assert_eq!(shadow.display, Some(disp));
+        assert_eq!(shadow.parent, Some(root));
+        assert_eq!(shadow.color_format, ColorFormat::A8);
+        assert_eq!(shadow.buf_area, Area::new(6, 6, 23, 23));
+        ui.draw_layer_delete(child);
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                (EventCode::CHILD_CREATED, Some(root)),
+                (EventCode::CHILD_CREATED, Some(child)),
+                (EventCode::CHILD_DELETED, Some(child)),
+            ]
         );
     }
 

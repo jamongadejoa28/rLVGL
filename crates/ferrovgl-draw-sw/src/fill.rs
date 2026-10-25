@@ -9,7 +9,7 @@
 //! current buffers is built right before every `lv_draw_sw_blend()` call.
 //! The gradient colour map (`lv_color_t`, 3 bytes `B, G, R` in memory) is
 //! handed to the blender as `RGB888` bytes, converted with
-//! [`colors_to_rgb888`].
+//! `colors_to_rgb888`.
 
 #[cfg(feature = "complex")]
 use alloc::vec;

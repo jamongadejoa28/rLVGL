@@ -61,8 +61,22 @@ identity_op = "allow"
 erasing_op = "allow"
 manual_range_contains = "allow"
 
+[profile.dev]
+# Keep incremental recompilation, but avoid DWARF in every feature/target build.
+debug = 0
+incremental = true
+
+[profile.test]
+debug = 0
+incremental = true
+
+# Opt in only when source-level debugging is needed; uses target/dev-debug.
+[profile.dev-debug]
+inherits = "dev"
+debug = 2
+
 [profile.release]
-debug = 1
+debug = 0
 lto = "thin"
 codegen-units = 1
 

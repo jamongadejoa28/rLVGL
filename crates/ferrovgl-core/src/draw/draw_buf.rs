@@ -5,7 +5,7 @@
 //!
 //! This is one of the two modules allowed to contain `unsafe`: the only
 //! unsafe code is the pair of `u64` <-> byte view helpers
-//! ([`words_as_bytes`] / [`words_as_bytes_mut`]) over the aligned owned
+//! (`words_as_bytes` / `words_as_bytes_mut`) over the aligned owned
 //! storage. Every block carries a `// SAFETY:` comment.
 //!
 //! `lv_draw_buf_handlers_t` is omitted: there is one allocator, so
@@ -404,7 +404,9 @@ impl DrawBuf {
 
     /// `lv_draw_buf_init()`: wrap existing memory.
     ///
-    /// Fails with [`LvResult::Invalid`] if `data_size < stride * h`.
+    /// Fails with [`LvResult::Invalid`] if `data_size < stride * h` or the
+    /// supplied storage is shorter than `data_size`. The latter is a safe-Rust
+    /// check of the caller-owned allocation that C cannot inspect.
     pub fn init(
         w: u32,
         h: u32,
@@ -420,6 +422,15 @@ impl DrawBuf {
 
         /*"Data size too small, required: %d, provided: %d"*/
         if data_size < stride.wrapping_mul(h) {
+            return Err(LvResult::Invalid);
+        }
+        let storage_len = match &storage {
+            BufStorage::Owned(words) => size_of_val(words.as_ref()),
+            BufStorage::Static(bytes) => bytes.len(),
+            BufStorage::StaticMut(bytes) => bytes.len(),
+            BufStorage::Shared(bytes) => bytes.len(),
+        };
+        if data_size as usize > storage_len {
             return Err(LvResult::Invalid);
         }
 
@@ -718,23 +729,23 @@ impl DrawBuf {
     /// `data_size` and `data` of the buffer.
     ///
     /// [`ImageDsc::data`] is `&'static`, so only [`BufStorage::Static`] data
-    /// can be shared; for any other storage the descriptor carries the header
-    /// and `data_size` but an empty `data` slice.
-    pub fn to_image(&self) -> ImageDsc {
+    /// can be shared. Other storage returns `None`; pass runtime buffers as
+    /// [`crate::misc::style::ImageSrc::DrawBuf`] instead. This explicit lifetime
+    /// constraint replaces C's unrestricted borrowed descriptor.
+    pub fn to_image(&self) -> Option<ImageDsc> {
         let data: &'static [u8] = match &self.storage {
             BufStorage::Static(s) => {
                 let s: &'static [u8] = s;
-                let start = self.data_offset.min(s.len());
-                let end = (self.data_offset + self.data_size as usize).min(s.len());
-                &s[start..end]
+                let end = self.data_offset.checked_add(self.data_size as usize)?;
+                s.get(self.data_offset..end)?
             }
-            _ => &[],
+            _ => return None,
         };
-        ImageDsc {
+        Some(ImageDsc {
             header: self.header,
             data_size: self.data_size,
             data,
-        }
+        })
     }
 
     /// `lv_draw_buf_has_flag()`: `true` if any bit of `flag` is set.
@@ -765,7 +776,10 @@ impl DrawBuf {
             BufStorage::Shared(s) => s,
         };
         let start = self.data_offset.min(bytes.len());
-        let end = (self.data_offset + self.data_size as usize).min(bytes.len());
+        let end = self
+            .data_offset
+            .saturating_add(self.data_size as usize)
+            .min(bytes.len());
         &bytes[start..end]
     }
 
@@ -778,7 +792,10 @@ impl DrawBuf {
             BufStorage::Static(_) | BufStorage::Shared(_) => return None,
         };
         let start = self.data_offset.min(bytes.len());
-        let end = (self.data_offset + self.data_size as usize).min(bytes.len());
+        let end = self
+            .data_offset
+            .saturating_add(self.data_size as usize)
+            .min(bytes.len());
         Some(&mut bytes[start..end])
     }
 }
@@ -1084,13 +1101,13 @@ mod tests {
         /* Indexed */
         for cf in [ColorFormat::I1, ColorFormat::I2, ColorFormat::I4, ColorFormat::I8] {
             let mut b = DrawBuf::create(2, 2, cf, 0).unwrap();
-            let n = cf.indexed_palette_size() as u8;
-            for i in 0..n as u16 {
+            let n = cf.indexed_palette_size() as usize;
+            for i in 0..n {
                 b.set_palette(i as u8, Color32::make(255, 255, 255, 128));
             }
             assert_eq!(b.premultiply(), LvResult::Ok);
             assert!(b.has_flag(ImageFlags::PREMULTIPLIED));
-            for i in 0..n as usize {
+            for i in 0..n {
                 assert_eq!(px32(b.data(), i), Color32::make(127, 127, 127, 128));
             }
         }
@@ -1253,7 +1270,7 @@ mod tests {
         let b = DrawBuf::from_image(&img).unwrap();
         assert_eq!(b.header.flags, ImageFlags::PREMULTIPLIED);
         assert_eq!(b.data(), &PIXELS[..]);
-        let back = b.to_image();
+        let back = b.to_image().unwrap();
         assert_eq!(back.header, b.header);
         assert_eq!(back.data, &PIXELS[..]);
 
@@ -1263,6 +1280,128 @@ mod tests {
             data: &PIXELS,
         };
         assert!(DrawBuf::from_image(&small).is_err());
+    }
+
+    #[test]
+    fn storage_length_and_static_image_lifetimes_are_explicit() {
+        static PIXELS: [u8; 16] = [0xA5; 16];
+        let short = [
+            BufStorage::Static(&PIXELS[..3]),
+            BufStorage::Shared(Rc::from(&PIXELS[..3])),
+            BufStorage::Owned(vec![0u64].into_boxed_slice()),
+            BufStorage::StaticMut(Box::leak(vec![0; 3].into_boxed_slice())),
+        ];
+        for storage in short {
+            assert!(DrawBuf::init(4, 4, ColorFormat::A8, 4, storage, 16).is_err());
+        }
+
+        // init keeps the original unaligned pointer, as the C implementation
+        // does (its header comment claiming realignment is stale).
+        let mut static_buf =
+            DrawBuf::init(3, 2, ColorFormat::A8, 3, BufStorage::Static(&PIXELS[1..]), 6).unwrap();
+        assert_eq!(static_buf.data().as_ptr(), PIXELS[1..].as_ptr());
+        let image = static_buf.to_image().unwrap();
+        assert_eq!(image.data.len(), image.data_size as usize);
+        assert_eq!(image.data.as_ptr(), static_buf.data().as_ptr());
+        assert!(
+            DrawBuf::create(3, 2, ColorFormat::A8, 3)
+                .unwrap()
+                .to_image()
+                .is_none()
+        );
+        for storage in [
+            BufStorage::Shared(Rc::from(&PIXELS[..])),
+            BufStorage::StaticMut(Box::leak(vec![0; 16].into_boxed_slice())),
+        ] {
+            assert!(
+                DrawBuf::init(4, 4, ColorFormat::A8, 4, storage, 16)
+                    .unwrap()
+                    .to_image()
+                    .is_none()
+            );
+        }
+
+        // Public fields may describe a malformed range; never synthesize a
+        // descriptor with data_size > its actual data, or overflow the view.
+        static_buf.data_offset = usize::MAX;
+        assert!(static_buf.data().is_empty());
+        assert!(static_buf.to_image().is_none());
+        let mut owned = DrawBuf::create(3, 2, ColorFormat::A8, 3).unwrap();
+        assert_eq!(owned.data().as_ptr() as usize % DRAW_BUF_ALIGN, 0);
+        owned.data_offset = usize::MAX;
+        assert!(owned.data_mut().unwrap().is_empty());
+    }
+
+    #[test]
+    fn indexed_partial_copy_and_clear_preserve_c_byte_granularity() {
+        let mut src = DrawBuf::create(8, 2, ColorFormat::I2, 4).unwrap();
+        let mut dst = DrawBuf::create(8, 2, ColorFormat::I2, 5).unwrap();
+        src.data_mut().unwrap().fill(0x27);
+        dst.data_mut().unwrap().fill(0xA5);
+        src.data_mut().unwrap()[20] = 0x81;
+        DrawBuf::copy(
+            &mut dst,
+            Some(&Area::new(5, 0, 6, 1)),
+            &src,
+            Some(&Area::new(1, 0, 2, 1)),
+        );
+        // goto_xy floors x*bpp/8 and copy rounds the width up to bytes;
+        // upstream does not shift/mask individual packed pixel bits here.
+        assert_eq!(&dst.data()[..16], &[0xA5; 16]);
+        assert_eq!(
+            &dst.data()[16..26],
+            &[0xA5, 0x27, 0xA5, 0xA5, 0xA5, 0xA5, 0x81, 0xA5, 0xA5, 0xA5]
+        );
+        dst.clear(Some(&Area::new(1, 0, 2, 1)));
+        assert_eq!(dst.data()[16], 0);
+        assert_eq!(dst.data()[21], 0);
+        assert_eq!(dst.data()[17], 0x27);
+        assert_eq!(&dst.data()[..16], &[0xA5; 16]);
+
+        // Either NULL area requests a palette copy, matching buf_copy.
+        DrawBuf::copy(&mut dst, Some(&Area::new(0, 0, 7, 1)), &src, None);
+        assert_eq!(&dst.data()[..16], &[0x27; 16]);
+        assert_eq!(&dst.data()[16..18], &src.data()[16..18]);
+        assert_eq!(&dst.data()[21..23], &src.data()[20..22]);
+    }
+
+    #[test]
+    fn premultiply_padded_rows_leaves_padding_and_alpha_unchanged() {
+        let mut buf = DrawBuf::create(2, 2, ColorFormat::Argb8888, 12).unwrap();
+        buf.data_mut().unwrap().copy_from_slice(&[
+            100, 150, 200, 0, 100, 150, 200, 128, 0xA5, 0xA5, 0xA5, 0xA5, 100, 150, 200, 255, 100, 150, 200,
+            64, 0xA5, 0xA5, 0xA5, 0xA5,
+        ]);
+        assert_eq!(buf.premultiply(), LvResult::Ok);
+        assert_eq!(
+            buf.data(),
+            &[
+                0, 0, 0, 0, 50, 75, 100, 128, 0xA5, 0xA5, 0xA5, 0xA5, 100, 150, 200, 255, 25, 37, 50, 64,
+                0xA5, 0xA5, 0xA5, 0xA5,
+            ]
+        );
+    }
+
+    #[test]
+    fn reshape_uses_aligned_palette_and_alpha_capacity_without_reallocating() {
+        let mut buf = DrawBuf::create(4, 4, ColorFormat::Argb8888, 0).unwrap();
+        buf.data_mut().unwrap().fill(0xC3);
+        buf.set_flag(ImageFlags::USER3);
+        let ptr = buf.data().as_ptr();
+        assert!(buf.reshape(ColorFormat::I1, 8, 56, 1)); // 8-byte palette + 56 rows.
+        let old = buf.header;
+        assert!(!buf.reshape(ColorFormat::I1, 8, 57, 1)); // aligned size becomes 68.
+        assert_eq!(buf.header, old);
+        assert!(buf.reshape(ColorFormat::Rgb565A8, 2, 10, 4)); // 40 RGB + 20 alpha.
+        assert!(!buf.reshape(ColorFormat::Rgb565A8, 2, 11, 4));
+        assert_eq!(buf.data().as_ptr(), ptr);
+        assert_eq!(buf.data_size, 64);
+        assert!(buf.has_flag(ImageFlags::USER3));
+        // C clear(None) clears h*stride bytes, leaving RGB565A8's separate
+        // alpha plane and allocation padding intact.
+        buf.clear(None);
+        assert_eq!(&buf.data()[..40], &[0; 40]);
+        assert_eq!(&buf.data()[40..], &[0xC3; 24]);
     }
 
     #[test]

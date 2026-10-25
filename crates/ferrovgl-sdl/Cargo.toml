@@ -1,6 +1,6 @@
 [package]
 name = "ferrovgl-sdl"
-description = "SDL2 window, mouse and keyboard backend for ferrovgl (desktop simulator)"
+description = "SDL2 display backend for the ferrovgl desktop simulator"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,9 +13,13 @@ categories.workspace = true
 
 [dependencies]
 ferrovgl-core = { workspace = true, features = ["std"] }
-ferrovgl-draw-sw = { workspace = true, features = ["std"] }
-ferrovgl-widgets = { workspace = true, features = ["std"] }
+ferrovgl-draw-sw = { workspace = true, features = ["std", "complex", "cf-xrgb8888", "cf-argb8888", "cf-argb8888-premultiplied", "cf-a8"] }
+ferrovgl-widgets = { workspace = true, features = ["std", "label", "button", "image", "theme-default"] }
 sdl2 = { workspace = true }
+
+[dev-dependencies]
+ferrovgl-core = { workspace = true, features = ["flex", "grid"] }
+ferrovgl-fonts = { workspace = true, features = ["montserrat-14"] }
 
 [lints]
 workspace = true

@@ -21,7 +21,7 @@
 //! `FLUSH_START` / `FLUSH_FINISH` events `buf_act` is valid as upstream.
 //! While an area is being rendered (from `refr_area()` until the flush)
 //! the active `DisplayData::buf_n` slot is `None` and the buffer is
-//! `layer_head`'s `draw_buf`; [`disp_is_double_buffered`] accounts for
+//! `layer_head`'s `draw_buf`; `disp_is_double_buffered` accounts for
 //! that, and `lv_display_get_buf_active()` must fall back to
 //! `layer_head.draw_buf` while the slot is empty (display owner contract).
 //!
@@ -41,7 +41,7 @@
 use alloc::vec::Vec;
 
 use crate::core::Ui;
-use crate::core::obj::{LayerType, Obj, ObjTreeWalkRes};
+use crate::core::obj::{LayerType, Obj};
 use crate::core::obj_pos::ObjPointTransformFlag;
 use crate::display::{DisplayData, DisplayId, FlushResult, RenderMode};
 use crate::draw::draw_buf::{DrawBuf, STRIDE_AUTO};
@@ -113,19 +113,9 @@ fn disp_has_buf_3(d: &DisplayData) -> bool {
 }
 
 /// `disp->sync_cb != NULL`.
-///
-/// Known divergence (blocked outside this file): neither
-/// [`crate::display::DisplayDriver`] nor [`DisplayData`] can say whether a
-/// `sync_cb` is set, so a user sync callback is never assumed and the
-/// `user_sync` paths of [`Ui::display_refr_timer`] / `refr_sync_areas()`
-/// stay dormant. Change request for the display owner: add
-/// `fn has_sync(&self) -> bool { false }` to `DisplayDriver` (or a
-/// `sync_cb_set` flag on `DisplayData`), then this becomes
-/// `d.driver.as_ref().is_some_and(|dr| dr.has_sync())`.
 #[inline]
 fn disp_has_sync_cb(d: &DisplayData) -> bool {
-    let _ = d;
-    false
+    d.driver.as_ref().is_some_and(|driver| driver.has_sync())
 }
 
 /// The `buf_1` / `buf_2` / `buf_3` slot selected by `idx` (1..=3).
@@ -428,11 +418,11 @@ impl Ui {
                 self.send_draw_post_events(obj, layer);
             } else {
                 self.set_layer_clip(layer, clip_coords_for_children);
-                let mut clip_corner = self.style_num(obj, StyleProp::CLIP_CORNER) != 0;
+                let mut clip_corner = self.style_num(obj, Part::MAIN, StyleProp::CLIP_CORNER) != 0;
 
                 let mut radius = 0;
                 if clip_corner {
-                    radius = self.style_num(obj, StyleProp::RADIUS);
+                    radius = self.style_num(obj, Part::MAIN, StyleProp::RADIUS);
                     if radius == 0 {
                         clip_corner = false;
                     }
@@ -487,7 +477,7 @@ impl Ui {
             self.draw_mask_rect(layer_children, &mask_draw_dsc);
 
             img_draw_dsc.src = ImageSrc::Layer(layer_children);
-            self.draw.draw_layer(layer, &img_draw_dsc, &bottom);
+            self.draw_layer(layer, &img_draw_dsc, &bottom);
         }
 
         if !self.obj_is_valid(obj) || !self.draw.layers.contains(layer.0) {
@@ -511,7 +501,7 @@ impl Ui {
             self.draw_mask_rect(layer_children, &mask_draw_dsc);
 
             img_draw_dsc.src = ImageSrc::Layer(layer_children);
-            self.draw.draw_layer(layer, &img_draw_dsc, &top);
+            self.draw_layer(layer, &img_draw_dsc, &top);
         }
 
         if !self.obj_is_valid(obj) || !self.draw.layers.contains(layer.0) {
@@ -766,7 +756,7 @@ impl Ui {
         if self.obj_get_layer_type(obj) != LayerType::None {
             return None;
         }
-        if (self.style_num(obj, StyleProp::OPA) as u8) < OPA_MAX {
+        if (self.style_num(obj, Part::MAIN, StyleProp::OPA) as u8) < OPA_MAX {
             return None;
         }
 
@@ -825,15 +815,15 @@ impl Ui {
         }
 
         /*If `opa_layered != LV_OPA_COVER` draw the widget on a new layer and blend that layer with the given opacity.*/
-        let opa_layered = self.style_num(obj, StyleProp::OPA_LAYERED) as u8;
+        let opa_layered = self.style_num(obj, Part::MAIN, StyleProp::OPA_LAYERED) as u8;
         if opa_layered <= OPA_MIN {
             return;
         }
 
-        if self.style_num(obj, StyleProp::TRANSFORM_SCALE_X) <= 0 {
+        if self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SCALE_X) <= 0 {
             return;
         }
-        if self.style_num(obj, StyleProp::TRANSFORM_SCALE_Y) <= 0 {
+        if self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SCALE_Y) <= 0 {
             return;
         }
 
@@ -843,7 +833,7 @@ impl Ui {
         };
 
         /*Normal `opa` (not layered) will just scale down `bg_opa`, `text_opa`, etc, in the upcoming drawings.*/
-        let opa_main = self.style_num(obj, StyleProp::OPA) as u8;
+        let opa_main = self.style_num(obj, Part::MAIN, StyleProp::OPA) as u8;
         if opa_main < OPA_MAX {
             self.draw.layers[layer.0].opa = opa_mix2(layer_opa_ori, opa_main);
         }
@@ -955,8 +945,8 @@ impl Ui {
 
             let coords = self.obj_field_coords(obj);
             let mut pivot = Point::new(
-                self.style_num(obj, StyleProp::TRANSFORM_PIVOT_X),
-                self.style_num(obj, StyleProp::TRANSFORM_PIVOT_Y),
+                self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_PIVOT_X),
+                self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_PIVOT_Y),
             );
 
             if coord::is_pct(pivot.x) {
@@ -977,18 +967,19 @@ impl Ui {
             layer_draw_dsc.pivot.y = coords.y1 + pivot.y - new_buf_area.y1;
 
             layer_draw_dsc.opa = opa_layered;
-            layer_draw_dsc.rotation = self.style_num(obj, StyleProp::TRANSFORM_ROTATION);
+            layer_draw_dsc.rotation = self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_ROTATION);
             while layer_draw_dsc.rotation > 3600 {
                 layer_draw_dsc.rotation -= 3600;
             }
             while layer_draw_dsc.rotation < 0 {
                 layer_draw_dsc.rotation += 3600;
             }
-            layer_draw_dsc.scale_x = self.style_num(obj, StyleProp::TRANSFORM_SCALE_X);
-            layer_draw_dsc.scale_y = self.style_num(obj, StyleProp::TRANSFORM_SCALE_Y);
-            layer_draw_dsc.skew_x = self.style_num(obj, StyleProp::TRANSFORM_SKEW_X);
-            layer_draw_dsc.skew_y = self.style_num(obj, StyleProp::TRANSFORM_SKEW_Y);
-            layer_draw_dsc.blend_mode = BlendMode::from_u8(self.style_num(obj, StyleProp::BLEND_MODE) as u8);
+            layer_draw_dsc.scale_x = self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SCALE_X);
+            layer_draw_dsc.scale_y = self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SCALE_Y);
+            layer_draw_dsc.skew_x = self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SKEW_X);
+            layer_draw_dsc.skew_y = self.style_num(obj, Part::MAIN, StyleProp::TRANSFORM_SKEW_Y);
+            layer_draw_dsc.blend_mode =
+                BlendMode::from_u8(self.style_num(obj, Part::MAIN, StyleProp::BLEND_MODE) as u8);
             layer_draw_dsc.antialias = self
                 .disp_refresh
                 .and_then(|d| self.display(d))
@@ -997,7 +988,7 @@ impl Ui {
             layer_draw_dsc.image_area = *obj_draw_size;
             layer_draw_dsc.src = ImageSrc::Layer(new_layer);
 
-            self.draw.draw_layer(layer, &layer_draw_dsc, &layer_area_act);
+            self.draw_layer(layer, &layer_draw_dsc, &layer_area_act);
 
             layer_area_act.y1 = layer_area_act.y2 + 1;
         }
@@ -1824,129 +1815,7 @@ impl Ui {
     /// extent of every blur object overlapping an invalidated area, until a
     /// pass adds no new area.
     pub fn obj_invalidate_expand_blur(&mut self, disp: DisplayId) {
-        let Some(d) = self.display(disp) else {
-            return;
-        };
-        if d.inv_p == 0 {
-            return;
-        }
-
-        /*There is nothing to expand if no widget has blur or drop shadow*/
-        if self.blur_obj_cnt == 0 {
-            return;
-        }
-
-        loop {
-            let Some(d) = self.display(disp) else {
-                return;
-            };
-            let prev_inv_p = d.inv_p;
-            let (act_scr, prev_scr, sys_layer, top_layer, bottom_layer) =
-                (d.act_scr, d.prev_scr, d.sys_layer, d.top_layer, d.bottom_layer);
-
-            let mut cb = |ui: &mut Ui, obj: Obj| ui.blur_expand_walk_cb(obj, disp);
-            self.obj_tree_walk(act_scr.map(Obj), &mut cb);
-            if let Some(prev) = prev_scr {
-                self.obj_tree_walk(Some(Obj(prev)), &mut cb);
-            }
-            self.obj_tree_walk(sys_layer.map(Obj), &mut cb);
-            self.obj_tree_walk(top_layer.map(Obj), &mut cb);
-            self.obj_tree_walk(bottom_layer.map(Obj), &mut cb);
-
-            /*Repeat while new areas keep being added. An overflow in lv_inv_area()
-             *can instead shrink inv_p (it collapses to a single whole-screen area)
-             *and the loop exits, which is correct because the whole screen covers
-             *every blur object.*/
-            let Some(d) = self.display(disp) else {
-                return;
-            };
-            if d.inv_p <= prev_inv_p {
-                break;
-            }
-        }
-    }
-
-    /// `blur_expand_walk_cb()` (`lv_obj_pos.c`)
-    fn blur_expand_walk_cb(&mut self, obj: Obj, disp: DisplayId) -> ObjTreeWalkRes {
-        let Some(o) = self.obj(obj) else {
-            return ObjTreeWalkRes::Next;
-        };
-        if !o.has_blur {
-            return ObjTreeWalkRes::Next;
-        }
-
-        /*invalidate_area_core() expects untransformed coordinates and applies the
-         *transform itself*/
-        let ext_size = self.obj_get_ext_draw_size(obj);
-        let mut obj_coords = self.obj_field_coords(obj);
-        obj_coords.increase(ext_size, ext_size);
-
-        /*The invalidated areas are in screen coordinates so check the overlap
-         *against the transformed area*/
-        let mut scr_coords = obj_coords;
-        if self.obj_is_transformed(obj) {
-            self.obj_get_transformed_area(obj, &mut scr_coords, ObjPointTransformFlag::Recursive);
-        }
-
-        let mut i = 0;
-        loop {
-            let Some(d) = self.display(disp) else {
-                return ObjTreeWalkRes::Next;
-            };
-            if i >= d.inv_p as usize {
-                break;
-            }
-            /*The join pass runs after this and its state is reset each frame*/
-            debug_assert!(!inv_joined_at(d, i));
-            if inv_area_at(d, i).is_on(&scr_coords) {
-                self.invalidate_area_core(obj, &mut obj_coords);
-
-                /*No need to check the children as the widget is already invalidated
-                 *which will redraw the children too*/
-                return ObjTreeWalkRes::SkipChildren;
-            }
-            i += 1;
-        }
-
-        ObjTreeWalkRes::Next
-    }
-
-    /// `is_transformed()` (`lv_obj_pos.c`): `obj` or a parent has a
-    /// transform layer.
-    fn obj_is_transformed(&self, obj: Obj) -> bool {
-        let mut cur = Some(obj.id());
-        while let Some(id) = cur {
-            let Some(o) = self.objs.get(id.0) else {
-                return false;
-            };
-            if o.spec
-                .as_ref()
-                .is_some_and(|s| s.layer_type == LayerType::Transform)
-            {
-                return true;
-            }
-            cur = o.parent;
-        }
-        false
-    }
-
-    /// `invalidate_area_core()` (`lv_obj_pos.c`)
-    fn invalidate_area_core(&mut self, obj: Obj, area_tmp: &mut Area) -> LvResult {
-        if !self.obj_area_is_visible(obj, area_tmp) {
-            return LvResult::Invalid;
-        }
-        if self
-            .obj(obj)
-            .and_then(|o| o.spec.as_ref())
-            .is_some_and(|s| s.layer_type == LayerType::Transform)
-        {
-            /*Make the area slightly larger to avoid rounding errors.
-             *5 is an empirical value*/
-            area_tmp.increase(5, 5);
-        }
-
-        let disp = self.obj_get_display(obj);
-        self.inv_area(disp, Some(area_tmp))
+        self.obj_pos_invalidate_expand_blur(disp);
     }
 
     /*=====================
@@ -1987,25 +1856,6 @@ impl Ui {
     #[inline]
     fn obj_field_coords(&self, obj: Obj) -> Area {
         self.obj(obj).map_or_else(Area::default, |o| o.coords)
-    }
-
-    /// `obj->spec_attr->children[i]`
-    #[inline]
-    fn child_at(&self, obj: Obj, i: u32) -> Option<Obj> {
-        self.obj(obj)?
-            .spec
-            .as_ref()?
-            .children
-            .get(i as usize)
-            .copied()
-            .map(Obj)
-    }
-
-    /// `lv_obj_get_style_<prop>_internal(obj, LV_PART_MAIN)` for numeric
-    /// properties (`v.num`).
-    #[inline]
-    fn style_num(&self, obj: Obj, prop: StyleProp) -> i32 {
-        self.obj_get_style_prop(obj, Part::MAIN, prop).num()
     }
 
     /// `lv_obj_refr()` on the first `child_cnt` children of `obj`.
@@ -2100,6 +1950,10 @@ mod tests {
             last_activity_time: 0,
             refreshed_area: Area::default(),
             vsync_count: 0,
+            ext_data: crate::display::ExtData {
+                free_cb: None,
+                data: None,
+            },
         }
     }
 
@@ -2107,6 +1961,128 @@ mod tests {
         let id = DisplayId(ui.displays.insert(d));
         ui.display_order.insert(0, id);
         id
+    }
+
+    #[test]
+    fn refresh_compositing_evaluates_layer_tasks() {
+        struct LayerUnit;
+        impl crate::draw::DrawUnit for LayerUnit {
+            fn name(&self) -> &'static str {
+                "layer-test"
+            }
+
+            fn evaluate(&mut self, task: &mut crate::draw::DrawTask) -> i32 {
+                if task.ty == crate::draw::DrawTaskType::Layer {
+                    task.preferred_draw_unit_id = 1;
+                    task.preference_score = 10;
+                    1
+                } else {
+                    0
+                }
+            }
+
+            fn dispatch(&mut self, _ctx: &mut crate::draw::DrawCtx, _layer: LayerId) -> i32 {
+                -1
+            }
+        }
+
+        let mut ui = Ui::new(UiConfig::default());
+        let disp = add_display(&mut ui, disp_data(10, 10));
+        ui.disp_refresh = Some(disp);
+        ui.draw_create_unit(Box::new(LayerUnit));
+        let coords = Area::new(1, 1, 8, 8);
+        let obj = crate::core::obj_class::tests::raw_obj(&mut ui, &crate::core::obj::OBJ_CLASS, None);
+        ui.obj_mut(obj).unwrap().coords = coords;
+        let layer = ui.draw_layer_create(None, ColorFormat::Xrgb8888, &Area::new(0, 0, 9, 9));
+
+        // Keep tasks queued so the test can inspect the evaluated composite
+        // from both rounded corner bands and the opacity/transform path.
+        ui.draw.task_running = true;
+        ui.obj_redraw_clip_corner(layer, obj, 0, 2);
+        ui.obj_refr_layered(layer, obj, LayerType::Simple, 128, &coords, &coords);
+        ui.draw.task_running = false;
+
+        let tasks: Vec<_> = ui
+            .draw
+            .layer(layer)
+            .unwrap()
+            .tasks
+            .iter()
+            .filter(|task| task.ty == crate::draw::DrawTaskType::Layer)
+            .collect();
+        assert_eq!(tasks.len(), 3);
+        for task in tasks {
+            assert_eq!(task.preferred_draw_unit_id, 1);
+            assert_eq!(task.preference_score, 10);
+            // Composition stays blocked until dispatch finishes the source
+            // layer; selecting a draw unit must already have happened.
+            assert_eq!(task.state, crate::draw::DrawTaskState::Blocked);
+        }
+    }
+
+    #[test]
+    fn user_sync_copies_only_remaining_areas_and_waits() {
+        use core::cell::{Cell, RefCell};
+        struct SyncDriver {
+            enabled: bool,
+            copied: Rc<RefCell<Vec<Area>>>,
+            waits: Rc<Cell<usize>>,
+        }
+
+        impl crate::display::DisplayDriver for SyncDriver {
+            fn flush(&mut self, _disp: DisplayId, _area: &Area, _px_map: &mut [u8]) -> FlushResult {
+                FlushResult::Done
+            }
+
+            fn has_sync(&self) -> bool {
+                self.enabled
+            }
+
+            fn sync(&mut self, _disp: DisplayId, area: &Area) {
+                self.copied.borrow_mut().push(*area);
+            }
+
+            fn sync_wait(&mut self, _disp: DisplayId) {
+                self.waits.set(self.waits.get() + 1);
+            }
+        }
+
+        let mut ui = Ui::new(UiConfig::default());
+        let copied = Rc::new(RefCell::new(Vec::new()));
+        let waits = Rc::new(Cell::new(0));
+        let mut data = disp_data(10, 10);
+        data.offset_x = 2;
+        data.offset_y = 3;
+        data.sync_areas = vec![Area::new(0, 0, 5, 5), Area::new(8, 8, 12, 12)];
+        data.inv_areas[0] = Area::new(0, 0, 5, 2);
+        data.inv_p = 1;
+        let disp = add_display(&mut ui, data);
+        // Partial mode with one buffer has no automatic sync; a driver must
+        // explicitly advertise sync support before the callback is called.
+        for enabled in [false, true] {
+            ui.display_set_driver(
+                disp,
+                Some(Box::new(SyncDriver {
+                    enabled,
+                    copied: copied.clone(),
+                    waits: waits.clone(),
+                })),
+            );
+            ui.refr_sync_areas(disp);
+            if !enabled {
+                assert!(copied.borrow().is_empty());
+                assert_eq!(ui.display(disp).unwrap().sync_areas.len(), 2);
+            }
+        }
+        assert_eq!(
+            *copied.borrow(),
+            vec![Area::new(2, 6, 7, 8), Area::new(10, 11, 11, 12)]
+        );
+        assert_eq!(waits.get(), 2);
+        let data = ui.display(disp).unwrap();
+        assert!(data.sync_areas.is_empty());
+        assert!(!data.syncing);
+        assert!(!data.syncing_last);
     }
 
     #[test]
@@ -2408,6 +2384,42 @@ mod tests {
         ui.display_mut(disp).unwrap().inv_p = 1;
         ui.obj_invalidate_expand_blur(disp);
         assert_eq!(ui.display(disp).unwrap().inv_p, 1);
+    }
+
+    #[test]
+    fn blur_expansion_repeats_until_overlapping_objects_are_covered() {
+        use crate::core::obj::OBJ_CLASS;
+        use crate::core::obj_class::tests::raw_obj;
+
+        let mut ui = Ui::new(UiConfig::default());
+        let screen = raw_obj(&mut ui, &OBJ_CLASS, None);
+        ui.obj_mut(screen).unwrap().coords = Area::new(0, 0, 99, 99);
+        let mut data = disp_data(100, 100);
+        data.screens.push(screen.id());
+        data.act_scr = Some(screen.id());
+        let disp = add_display(&mut ui, data);
+        ui.disp_default = Some(disp);
+
+        // Walk the furthest object first. It only overlaps an area added
+        // when the second object is visited, so another pass is required.
+        let farther = raw_obj(&mut ui, &OBJ_CLASS, Some(screen));
+        let nearer = raw_obj(&mut ui, &OBJ_CLASS, Some(screen));
+        let farther_area = Area::new(25, 10, 39, 19);
+        let nearer_area = Area::new(10, 10, 29, 19);
+        for (obj, coords) in [(farther, farther_area), (nearer, nearer_area)] {
+            let data = ui.obj_mut(obj).unwrap();
+            data.coords = coords;
+            data.has_blur = true;
+        }
+        ui.blur_obj_cnt = 2;
+        ui.inv_area(Some(disp), Some(&Area::new(10, 10, 11, 11)));
+        ui.obj_invalidate_expand_blur(disp);
+
+        let data = ui.display(disp).unwrap();
+        assert_eq!(data.inv_p, 3);
+        assert_eq!(&data.inv_areas[1..3], &[nearer_area, farther_area]);
+        ui.obj_invalidate_expand_blur(disp);
+        assert_eq!(ui.display(disp).unwrap().inv_p, 3);
     }
 
     struct EventLogUnit {

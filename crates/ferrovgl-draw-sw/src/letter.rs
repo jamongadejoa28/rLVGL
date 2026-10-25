@@ -37,7 +37,7 @@
 //!
 //! The renderer needs the unit (custom blend handlers, circle cache) and the
 //! task, which the glyph callback signature of the core does not carry: the
-//! entry points capture them in a closure around [`draw_letter_cb_impl`].
+//! entry points capture them in a closure around `draw_letter_cb_impl`.
 
 use alloc::rc::Rc;
 
@@ -134,7 +134,7 @@ pub fn letter(unit: &mut SwDrawUnit, ctx: &mut DrawCtx, t: &DrawTask, dsc: &Lett
 ///
 /// This stand-alone form renders with a fresh [`SwDrawUnit`] (no custom
 /// blend handlers) and a copy of the task `t`; the renderer entry points
-/// use [`draw_letter_cb_impl`] with their own unit.
+/// use `draw_letter_cb_impl` with their own unit.
 pub fn draw_letter_cb(
     ctx: &mut DrawCtx,
     t: DrawTaskRef,

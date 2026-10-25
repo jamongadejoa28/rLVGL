@@ -999,6 +999,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "cf-xrgb8888")]
     #[allow(clippy::too_many_arguments)] // test case table
     fn shadow(
         unit: &mut SwDrawUnit,

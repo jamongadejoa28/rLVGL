@@ -22,6 +22,10 @@
 //! - `lv_obj_get_scroll_bottom/left/right()` and `lv_obj_get_scrollbar_area()`
 //!   take `&mut self` because `lv_obj_get_self_width/height()` send
 //!   `LV_EVENT_GET_SELF_SIZE`.
+//! - A callback may delete the measured/scrolled object. Validity checks stop
+//!   the current operation before its next access; scrollbar queries retain
+//!   their empty output areas. This Rust safety adaptation preserves C's
+//!   getter/event order and arithmetic whenever the objects remain alive.
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -225,6 +229,10 @@ impl Ui {
         }
 
         let mut self_h = self.obj_get_self_height(obj);
+        // GET_SELF_SIZE may delete this object (or an ancestor).
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
         self_h = self_h.wrapping_sub(
             self.obj_get_height(obj)
                 .wrapping_sub(space_top)
@@ -282,6 +290,9 @@ impl Ui {
         }
 
         let mut self_w = self.obj_get_self_width(obj);
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
         self_w = self_w.wrapping_sub(
             self.obj_get_width(obj)
                 .wrapping_sub(space_right)
@@ -335,6 +346,9 @@ impl Ui {
         }
 
         let mut self_w = self.obj_get_self_width(obj);
+        if !self.obj_is_valid(obj) {
+            return 0;
+        }
         self_w = self_w.wrapping_sub(
             self.obj_get_width(obj)
                 .wrapping_sub(space_right)
@@ -382,6 +396,9 @@ impl Ui {
 
         // We need to know the final sizes for bound check
         self.obj_update_layout(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         // Don't let scroll more than naturally possible by the size of the content
         let x_current = self.obj_get_scroll_x(obj).wrapping_neg();
@@ -392,9 +409,14 @@ impl Ui {
                 x_bounded = 0;
             }
             if x_bounded < 0 {
-                let mut scroll_max = self
-                    .obj_get_scroll_left(obj)
-                    .wrapping_add(self.obj_get_scroll_right(obj));
+                let left = self.obj_get_scroll_left(obj);
+                if !self.obj_is_valid(obj) {
+                    return;
+                }
+                let mut scroll_max = left.wrapping_add(self.obj_get_scroll_right(obj));
+                if !self.obj_is_valid(obj) {
+                    return;
+                }
                 if scroll_max < 0 {
                     scroll_max = 0;
                 }
@@ -408,9 +430,14 @@ impl Ui {
                 x_bounded = 0;
             }
             if x_bounded > 0 {
-                let mut scroll_max = self
-                    .obj_get_scroll_left(obj)
-                    .wrapping_add(self.obj_get_scroll_right(obj));
+                let left = self.obj_get_scroll_left(obj);
+                if !self.obj_is_valid(obj) {
+                    return;
+                }
+                let mut scroll_max = left.wrapping_add(self.obj_get_scroll_right(obj));
+                if !self.obj_is_valid(obj) {
+                    return;
+                }
                 if scroll_max < 0 {
                     scroll_max = 0;
                 }
@@ -432,6 +459,9 @@ impl Ui {
             let mut scroll_max = self
                 .obj_get_scroll_top(obj)
                 .wrapping_add(self.obj_get_scroll_bottom(obj));
+            if !self.obj_is_valid(obj) {
+                return;
+            }
             if scroll_max < 0 {
                 scroll_max = 0;
             }
@@ -479,6 +509,9 @@ impl Ui {
                     return;
                 }
                 self.anim_start(&a);
+                if !self.obj_is_valid(obj) {
+                    return;
+                }
             }
 
             if dy != 0 {
@@ -502,7 +535,13 @@ impl Ui {
         } else {
             // Remove pending animations
             self.anim_delete(AnimTarget::Obj(obj), Some(&AnimExec::ObjScrollY));
+            if !self.obj_is_valid(obj) {
+                return;
+            }
             self.anim_delete(AnimTarget::Obj(obj), Some(&AnimExec::ObjScrollX));
+            if !self.obj_is_valid(obj) {
+                return;
+            }
 
             let res = self.obj_send_event(obj, EventCode::SCROLL_BEGIN, EventParam::None);
             if res != LvResult::Ok {
@@ -526,7 +565,9 @@ impl Ui {
         }
 
         self.obj_scroll_to_x(obj, x, anim_en);
-        self.obj_scroll_to_y(obj, y, anim_en);
+        if self.obj_is_valid(obj) {
+            self.obj_scroll_to_y(obj, y, anim_en);
+        }
     }
 
     /// `lv_obj_scroll_to_x()`
@@ -536,6 +577,9 @@ impl Ui {
         }
 
         self.anim_delete(AnimTarget::Obj(obj), Some(&AnimExec::ObjScrollX));
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         let scroll_x = self.obj_get_scroll_x(obj);
         let diff = x.wrapping_neg().wrapping_add(scroll_x);
@@ -550,6 +594,9 @@ impl Ui {
         }
 
         self.anim_delete(AnimTarget::Obj(obj), Some(&AnimExec::ObjScrollY));
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         let scroll_y = self.obj_get_scroll_y(obj);
         let diff = y.wrapping_neg().wrapping_add(scroll_y);
@@ -566,6 +613,9 @@ impl Ui {
 
         // Be sure the screens layout is correct
         self.obj_update_layout(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         let mut p = Point::new(0, 0);
         self.scroll_area_into_view(obj, obj, &mut p, anim_en);
@@ -580,12 +630,18 @@ impl Ui {
 
         // Be sure the screens layout is correct
         self.obj_update_layout(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         let mut p = Point::new(0, 0);
         let mut child = obj;
         let mut parent = self.obj_get_parent(child);
         while let Some(par) = parent {
             self.scroll_area_into_view(obj, child, &mut p, anim_en);
+            if !self.obj_is_valid(obj) || !self.obj_is_valid(par) {
+                return;
+            }
             child = par;
             parent = self.obj_get_parent(par);
         }
@@ -662,6 +718,9 @@ impl Ui {
         }
 
         self.obj_update_layout(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
         let mut p = self.indev_scroll_get_snap_dist(obj);
         if p.x == COORD_MAX || p.x == COORD_MIN {
             p.x = 0;
@@ -719,15 +778,28 @@ impl Ui {
         if self.obj_get_scroll_snap_y(obj) == ScrollSnap::None {
             let st = self.obj_get_scroll_top(obj);
             let mut sb = self.obj_get_scroll_bottom(obj);
+            if !self.obj_is_valid(obj) {
+                return;
+            }
             if sb < 0 && st > 0 {
                 sb = st.min(sb.wrapping_neg());
                 self.obj_scroll_by(obj, 0, sb, anim_en);
             }
         }
 
+        if !self.obj_is_valid(obj) {
+            return;
+        }
+
         if self.obj_get_scroll_snap_x(obj) == ScrollSnap::None {
             let sl = self.obj_get_scroll_left(obj);
+            if !self.obj_is_valid(obj) {
+                return;
+            }
             let sr = self.obj_get_scroll_right(obj);
+            if !self.obj_is_valid(obj) {
+                return;
+            }
             if !self.scroll_is_rtl(obj, Part::MAIN) {
                 // Be sure the left side is not remains scrolled in
                 if sr < 0 && sl > 0 {
@@ -846,8 +918,18 @@ impl Ui {
 
         let st = self.obj_get_scroll_top(obj);
         let sb = self.obj_get_scroll_bottom(obj);
+        // Extent callbacks may delete the object before the next getter.
+        if !self.obj_is_valid(obj) {
+            return;
+        }
         let sl = self.obj_get_scroll_left(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
         let sr = self.obj_get_scroll_right(obj);
+        if !self.obj_is_valid(obj) {
+            return;
+        }
 
         let dir = self.obj_get_scroll_dir(obj);
 
@@ -1104,6 +1186,9 @@ impl Ui {
             y_scroll = bottom_diff.wrapping_neg();
             // Do not let scrolling in
             let sb = self.obj_get_scroll_bottom(parent);
+            if !self.obj_is_valid(parent) || !self.obj_is_valid(child) || !self.obj_is_valid(area_obj) {
+                return;
+            }
             if sb.wrapping_add(y_scroll) < 0 {
                 y_scroll = 0;
             }
@@ -1159,6 +1244,9 @@ impl Ui {
             x_scroll = left_diff;
             // Do not let scrolling in
             let sl = self.obj_get_scroll_left(parent);
+            if !self.obj_is_valid(parent) || !self.obj_is_valid(child) || !self.obj_is_valid(area_obj) {
+                return;
+            }
             if sl.wrapping_sub(x_scroll) < 0 {
                 x_scroll = 0;
             }
@@ -1166,6 +1254,9 @@ impl Ui {
             x_scroll = right_diff.wrapping_neg();
             // Do not let scrolling in
             let sr = self.obj_get_scroll_right(parent);
+            if !self.obj_is_valid(parent) || !self.obj_is_valid(child) || !self.obj_is_valid(area_obj) {
+                return;
+            }
             if sr.wrapping_add(x_scroll) < 0 {
                 x_scroll = 0;
             }
@@ -1198,7 +1289,13 @@ impl Ui {
 
         // Remove any pending scroll animations.
         self.anim_delete(AnimTarget::Obj(parent), Some(&AnimExec::ObjScrollY));
+        if !self.obj_is_valid(parent) || !self.obj_is_valid(child) || !self.obj_is_valid(area_obj) {
+            return;
+        }
         self.anim_delete(AnimTarget::Obj(parent), Some(&AnimExec::ObjScrollX));
+        if !self.obj_is_valid(parent) || !self.obj_is_valid(child) || !self.obj_is_valid(area_obj) {
+            return;
+        }
 
         if !scroll_dir.contains(Dir::LEFT) && x_scroll < 0 {
             x_scroll = 0;
@@ -1282,6 +1379,139 @@ mod tests {
         let mut s = SpecAttr::new();
         s.scroll = Point::new(x, y);
         s
+    }
+
+    #[test]
+    fn scroll_extent_queries_stop_if_self_size_deletes_the_object() {
+        use crate::misc::style::StyleSelector;
+        use alloc::rc::Rc;
+        for query in 0..3 {
+            let mut ui = Ui::new(UiConfig::default());
+            let display = ui.display_create(160, 120);
+            let screen = ui.display_get_screen_active(Some(display)).unwrap();
+            let obj = ui.obj_create(Some(screen));
+            if query == 2 {
+                ui.obj_set_style_base_dir(obj, BaseDir::Rtl, StyleSelector::DEFAULT);
+            }
+            ui.obj_add_event_cb(
+                obj,
+                Rc::new(move |ui, _| ui.obj_delete(obj)),
+                EventCode::GET_SELF_SIZE,
+                None,
+            );
+            let extent = match query {
+                0 => ui.obj_get_scroll_bottom(obj),
+                1 => ui.obj_get_scroll_right(obj),
+                _ => ui.obj_get_scroll_left(obj),
+            };
+            assert_eq!(extent, 0);
+            assert!(!ui.obj_is_valid(obj));
+        }
+    }
+
+    #[test]
+    fn scrollbar_bounded_scroll_and_readjust_stop_after_self_size_deletion() {
+        use crate::misc::style::StyleSelector;
+        for operation in 0..5 {
+            let mut ui = Ui::new(UiConfig::default());
+            let display = ui.display_create(160, 120);
+            let screen = ui.display_get_screen_active(Some(display)).unwrap();
+            let obj = ui.obj_create(Some(screen));
+            ui.obj_set_size(obj, 100, 80);
+            if operation == 2 {
+                ui.obj_set_style_base_dir(obj, BaseDir::Rtl, StyleSelector::DEFAULT);
+            }
+            ui.obj_update_layout(screen);
+            ui.obj_add_event_cb(
+                obj,
+                Rc::new(move |ui, _| ui.obj_delete(obj)),
+                EventCode::GET_SELF_SIZE,
+                None,
+            );
+            match operation {
+                0 => {
+                    let (horizontal, vertical) = ui.obj_get_scrollbar_area(obj);
+                    assert_eq!(horizontal, Area::new(0, 0, -1, -1));
+                    assert_eq!(vertical, Area::new(0, 0, -1, -1));
+                }
+                1 => ui.obj_scroll_by_bounded(obj, -10, 0, false),
+                2 => ui.obj_scroll_by_bounded(obj, 10, 0, false),
+                3 => ui.obj_scroll_by_bounded(obj, 0, -10, false),
+                _ => ui.obj_readjust_scroll(obj, false),
+            }
+            assert!(!ui.obj_is_valid(obj));
+        }
+    }
+
+    #[test]
+    fn scrolling_both_axes_stops_when_the_first_axis_callback_deletes_object() {
+        let mut ui = Ui::new(UiConfig::default());
+        let display = ui.display_create(160, 120);
+        let screen = ui.display_get_screen_active(Some(display)).unwrap();
+        let obj = ui.obj_create(Some(screen));
+        ui.obj_set_size(obj, 100, 80);
+        let content = ui.obj_create(Some(obj));
+        ui.obj_set_size(content, 300, 300);
+        ui.obj_update_layout(screen);
+        ui.obj_add_event_cb(
+            obj,
+            Rc::new(move |ui, _| ui.obj_delete(obj)),
+            EventCode::SCROLL,
+            None,
+        );
+        ui.obj_scroll_to(obj, 20, 20, false);
+        assert!(!ui.obj_is_valid(obj));
+    }
+
+    #[test]
+    fn cancelling_scroll_animation_stops_when_scroll_end_deletes_object() {
+        for operation in 0..3 {
+            let mut ui = Ui::new(UiConfig::default());
+            let display = ui.display_create(160, 120);
+            let screen = ui.display_get_screen_active(Some(display)).unwrap();
+            let obj = ui.obj_create(Some(screen));
+            ui.obj_update_layout(screen);
+            ui.obj_scroll_by(obj, 100, 100, true);
+            ui.tick_inc(20);
+            ui.anim_refr_now();
+            ui.obj_add_event_cb(
+                obj,
+                Rc::new(move |ui, _| ui.obj_delete(obj)),
+                EventCode::SCROLL_END,
+                None,
+            );
+            match operation {
+                0 => ui.obj_scroll_by(obj, 5, 5, false),
+                1 => ui.obj_scroll_to_x(obj, 5, false),
+                _ => ui.obj_scroll_to_y(obj, 5, false),
+            }
+            assert!(!ui.obj_is_valid(obj), "operation {operation}");
+        }
+    }
+
+    #[test]
+    fn scrolling_into_view_stops_if_a_callback_deletes_its_ancestor() {
+        for event in [EventCode::GET_SELF_SIZE, EventCode::SCROLL] {
+            for recursive in [false, true] {
+                let mut ui = Ui::new(UiConfig::default());
+                let display = ui.display_create(160, 120);
+                let screen = ui.display_get_screen_active(Some(display)).unwrap();
+                let parent = ui.obj_create(Some(screen));
+                ui.obj_set_size(parent, 100, 80);
+                let child = ui.obj_create(Some(parent));
+                ui.obj_set_size(child, 10, 10);
+                ui.obj_set_pos(child, 200, 200);
+                ui.obj_update_layout(screen);
+                ui.obj_add_event_cb(parent, Rc::new(move |ui, _| ui.obj_delete(parent)), event, None);
+                if recursive {
+                    ui.obj_scroll_to_view_recursive(child, false);
+                } else {
+                    ui.obj_scroll_to_view(child, false);
+                }
+                assert!(!ui.obj_is_valid(parent));
+                assert!(!ui.obj_is_valid(child));
+            }
+        }
     }
 
     #[test]

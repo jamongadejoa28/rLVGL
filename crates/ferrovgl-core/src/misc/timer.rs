@@ -541,12 +541,19 @@ mod tests {
 
     #[test]
     fn core_init_state_matches_upstream() {
+        // lv_timer_core_init() itself starts empty. Ui::new() subsequently
+        // runs lv_anim_core_init(), which installs one paused timer.
+        let state = TimerState::new();
+        assert!(state.run);
+        assert!(state.timers.is_empty());
+        assert!(state.order.is_empty());
         let ui = ui();
-        // lv_timer_core_init(): empty list, handling enabled.
+        let animation = ui.anim_get_timer().unwrap();
         assert!(ui.timers.run);
-        assert!(ui.timers.timers.is_empty());
-        assert!(ui.timers.order.is_empty());
-        assert_eq!(ui.timer_get_next(None), None);
+        assert_eq!(ui.timers.order, vec![animation]);
+        assert_eq!(ui.timer_get_next(None), Some(animation));
+        assert_eq!(ui.timer_get_next(Some(animation)), None);
+        assert!(ui.timer_get_paused(animation));
         assert_eq!(NO_TIMER_READY, 0xFFFF_FFFF);
     }
 
@@ -582,20 +589,22 @@ mod tests {
     #[test]
     fn ins_head_order_and_get_next() {
         let mut ui = ui();
+        let animation = ui.anim_get_timer().unwrap();
         let a = ui.timer_create_basic();
         let b = ui.timer_create_basic();
         let c = ui.timer_create_basic();
         // lv_ll_ins_head(): the newest timer is the head.
-        assert_eq!(ui.timers.order, vec![c, b, a]);
+        assert_eq!(ui.timers.order, vec![c, b, a, animation]);
         assert_eq!(ui.timer_get_next(None), Some(c));
         assert_eq!(ui.timer_get_next(Some(c)), Some(b));
         assert_eq!(ui.timer_get_next(Some(b)), Some(a));
-        assert_eq!(ui.timer_get_next(Some(a)), None);
+        assert_eq!(ui.timer_get_next(Some(a)), Some(animation));
+        assert_eq!(ui.timer_get_next(Some(animation)), None);
         ui.timer_delete(b);
         assert!(ui.timers.deleted);
         assert_eq!(ui.timer_get_next(Some(c)), Some(a));
         assert_eq!(ui.timer_get_next(Some(b)), None, "stale handle");
-        assert_eq!(ui.timers.timers.len(), 2);
+        assert_eq!(ui.timers.timers.len(), 3);
         // Deleting a stale handle is `timer == NULL`: a no-op.
         ui.timers.deleted = false;
         ui.timer_delete(b);
@@ -629,7 +638,7 @@ mod tests {
         assert_eq!(count.get(), 2);
         assert_eq!(ui.timer(t).unwrap().last_run, 231);
 
-        // No timers at all: LV_NO_TIMER_READY.
+        // Only the paused animation timer remains: LV_NO_TIMER_READY.
         ui.timer_delete(t);
         assert_eq!(ui.timer_handler(), NO_TIMER_READY);
     }
@@ -637,6 +646,7 @@ mod tests {
     #[test]
     fn repeat_count_one_auto_deletes() {
         let mut ui = ui();
+        let animation = ui.anim_get_timer().unwrap();
         ui.tick_inc(1);
         let (count, cb) = counter();
         let t = ui.timer_create(cb, 10, None);
@@ -645,7 +655,8 @@ mod tests {
         ui.timer_handler();
         assert_eq!(count.get(), 1);
         assert!(ui.timer(t).is_none(), "deleted after its single run");
-        assert!(ui.timers.order.is_empty());
+        assert_eq!(ui.timers.order, vec![animation]);
+        assert!(ui.timer_get_paused(animation));
         ui.tick_inc(10);
         assert_eq!(ui.timer_handler(), NO_TIMER_READY);
         assert_eq!(count.get(), 1);
@@ -830,6 +841,7 @@ mod tests {
     #[test]
     fn callback_deleting_itself_and_others() {
         let mut ui = ui();
+        let animation = ui.anim_get_timer().unwrap();
         ui.tick_inc(1);
         let (count_a, cb_a) = counter();
         let a = ui.timer_create(cb_a, 10, None);
@@ -844,7 +856,7 @@ mod tests {
         });
         let b = ui.timer_create(cb_b, 10, None);
         let c = ui.timer_create(cb_c, 10, None);
-        assert_eq!(ui.timers.order, vec![c, b, a]);
+        assert_eq!(ui.timers.order, vec![c, b, a, animation]);
 
         ui.tick_inc(10);
         let next = ui.timer_handler();
@@ -853,7 +865,7 @@ mod tests {
         assert_eq!(count_a.get(), 0, "a was deleted before its turn");
         assert!(ui.timer(a).is_none());
         assert!(ui.timer(b).is_none());
-        assert_eq!(ui.timers.order, vec![c]);
+        assert_eq!(ui.timers.order, vec![c, animation]);
         assert_eq!(next, 10);
 
         // Restarting from the head after the deletion must not run c twice.
@@ -865,6 +877,7 @@ mod tests {
     #[test]
     fn callback_creating_a_timer_restarts_from_head_once() {
         let mut ui = ui();
+        let animation = ui.anim_get_timer().unwrap();
         ui.tick_inc(1);
         let (count_a, cb_a) = counter();
         let a = ui.timer_create(cb_a, 10, None);
@@ -887,7 +900,7 @@ mod tests {
         assert_eq!(count_new.get(), 1, "new head timer ran in the same handler pass");
         assert!(ui.timer(n).is_none(), "repeat_count 1 => auto deleted");
         assert_eq!(count_a.get(), 1, "a ran exactly once despite the restart");
-        assert_eq!(ui.timers.order, vec![b, a]);
+        assert_eq!(ui.timers.order, vec![b, a, animation]);
     }
 
     #[test]

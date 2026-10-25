@@ -10,7 +10,7 @@
 //!   `LV_RESULT_INVALID` in the software renderer, so only the C fallback
 //!   loops are ported.
 //! - Buffers are byte slices; the C "row pointer += stride" becomes a byte
-//!   offset advanced with [`drawbuf_next_row`].
+//!   offset advanced with `drawbuf_next_row`.
 //! - `LV_LOG_WARN` on an unknown source format does nothing.
 //! - `mask_only_image_blend()` is compiled when any of its users is, which
 //!   adds `RGB565_SWAPPED` to the upstream guard (upstream would not build

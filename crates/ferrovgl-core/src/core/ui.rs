@@ -362,6 +362,8 @@ impl Ui {
         /*lv_image_decoder_deinit(): no decoder registry. lv_refr_deinit(): empty upstream.*/
 
         self.obj_style_deinit();
+        // Shared styles, including theme-owned styles, belong to this context.
+        self.styles.clear();
 
         /*lv_draw_sw_deinit() (mask cache) is owned by the renderer crate;
          *its units are deleted by lv_draw_deinit() below*/
@@ -400,16 +402,6 @@ impl Ui {
             let i_next = next_in_order(&self.display_order, disp);
             self.display_delete(disp);
             i = i_next;
-        }
-    }
-
-    /// `lv_obj_style_deinit()`: clear `style_trans_ll` and free the custom
-    /// property flag table (an empty table is the C `NULL`).
-    fn obj_style_deinit(&mut self) {
-        self.style_trans.clear();
-        self.style_trans_order.clear();
-        if !self.style_custom_prop_flags.is_empty() {
-            self.style_custom_prop_flags = Vec::new();
         }
     }
 

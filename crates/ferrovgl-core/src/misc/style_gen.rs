@@ -1,7 +1,7 @@
 //! Ported from lvgl v9.6.0: `include/lvgl/core/lv_style_gen.h`, `src/misc/lv_style_gen.c`
 //! (and the property table shared with `src/core/lv_obj_style_gen.c`).
 //!
-//! [`style_props!`] is a "callback" table macro: `style_props!(my_macro)`
+//! [`style_props!`](crate::style_props) is a "callback" table macro: `style_props!(my_macro)`
 //! expands to `my_macro! { (ROW), (ROW), ... }` with one row per built-in
 //! property, so that every typed accessor family (`lv_style_set_*`,
 //! `lv_obj_set_style_*`, `lv_obj_get_style_*`) is generated from a single
@@ -13,7 +13,7 @@
 //! where `CONST_NAME` is the `StyleProp::CONST_NAME` associated constant,
 //! `Variant` the CamelCase spelling kept for generated enum-like tables, and `kind` is one of `num`, `cast`, `enum`, `flags`, `bool`, `color`,
 //! `font`, `grad`, `image`, `transition`, `color_filter`, `tracks`, `anim`,
-//! `colorkey`, and selects how `Type` is packed into a [`StyleValue`].
+//! `colorkey`, and selects how `Type` is packed into a [`StyleValue`](crate::misc::style::StyleValue).
 
 use crate::misc::style::{ConstStyleEntry, ConstStyleValue, StyleProp};
 
@@ -155,7 +155,7 @@ macro_rules! style_props {
     };
 }
 
-/// Pack a typed value into a [`StyleValue`] according to the table `kind`.
+/// Pack a typed value into a [`StyleValue`](crate::misc::style::StyleValue) according to the table `kind`.
 ///
 /// Usable in `const` contexts for every kind (moving an `Rc` through a const
 /// fn is allowed; only creating one is not).

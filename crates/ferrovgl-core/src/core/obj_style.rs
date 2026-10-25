@@ -828,6 +828,25 @@ const STATE_CMP_DRAW_PAD_PROPS: [StyleProp; 14] = [
  **********************/
 
 impl Ui {
+    /// `lv_obj_get_style_<prop>_internal()` for numeric properties.
+    #[inline]
+    pub(super) fn style_num(&self, obj: Obj, part: Part, prop: StyleProp) -> i32 {
+        self.obj_get_style_prop(obj, part, prop).num()
+    }
+
+    /// `lv_obj_get_style_<prop>_internal()` for opacity properties
+    /// (`(lv_opa_t)v.num`).
+    #[inline]
+    pub(super) fn style_opa(&self, obj: Obj, part: Part, prop: StyleProp) -> Opa {
+        self.style_num(obj, part, prop) as Opa
+    }
+
+    /// `lv_obj_get_style_<prop>_internal()` for colour properties.
+    #[inline]
+    pub(super) fn style_color(&self, obj: Obj, part: Part, prop: StyleProp) -> Color {
+        self.obj_get_style_prop(obj, part, prop).color()
+    }
+
     /// `lv_obj_style_init()`: `lv_ll_init(style_trans_ll_p)`; the list is
     /// already empty in a fresh [`Ui`].
     pub fn obj_style_init(&mut self) {
