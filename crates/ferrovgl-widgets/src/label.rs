@@ -211,27 +211,37 @@ impl Label {
     /// The `lv_label_set_text(label, NULL)` form: retain and refresh current text.
     pub fn refresh_text(self, ui: &mut Ui) {
         revert_dots(ui, self.0);
-        // In C a static source takes set_text_internal's copy branch, so this
-        // form also switches static text to mutable, owned storage.
-        if let Some(label) = state_mut(ui, self.0)
-            && label.text.is_static()
-        {
-            label.text = TextStorage::copied(label.text.as_str());
-            label.update_draw_text();
-        }
-        /*`label->text == text && label->static_txt == 0`: `lv_text_ap_proc(label->text, label->text)`*/
-        #[cfg(feature = "arabic-persian-chars")]
-        if let Some(label) = state_mut(ui, self.0)
-            && let TextStorage::Owned(_) = label.text
-        {
-            label.text = TextStorage::copied(label.text.as_str());
-            label.update_draw_text();
+        // `set_text_internal()` picks exactly one branch, so `lv_text_ap_proc()`
+        // (not idempotent) runs at most once per refresh.
+        if let Some(label) = state_mut(ui, self.0) {
+            if label.text.is_static() {
+                // A static source takes the malloc + `copy_text_to_label()`
+                // branch, which also switches the label to owned storage.
+                label.text = TextStorage::copied(label.text.as_str());
+                label.update_draw_text();
+            } else if let TextStorage::Owned(_) = label.text {
+                /*`label->text == text && label->static_txt == 0`: realloc, then
+                 *`lv_text_ap_proc(label->text, label->text)`*/
+                #[cfg(feature = "arabic-persian-chars")]
+                {
+                    label.text = TextStorage::copied(label.text.as_str());
+                    label.update_draw_text();
+                }
+            }
         }
         mark_need_refr_text(ui, self.0);
     }
     /// `lv_label_set_text_fmt/vfmt()`, using Rust formatting arguments.
+    ///
+    /// Like C, the text from `lv_text_set_text_vfmt()` (already shaped by
+    /// `lv_text_ap_proc()`) is stored directly, without `copy_text_to_label()`.
     pub fn set_text_fmt(self, ui: &mut Ui, args: core::fmt::Arguments<'_>) {
-        self.set_text(ui, &text::set_text_vfmt(args));
+        revert_dots(ui, self.0);
+        if let Some(label) = state_mut(ui, self.0) {
+            label.text = TextStorage::owned(&text::set_text_vfmt(args));
+            label.update_draw_text();
+        }
+        mark_need_refr_text(ui, self.0);
     }
     /// `lv_label_set_text_static()`. Static strings cannot be changed by dots,
     /// insertion or deletion, matching upstream's static-text restriction.
@@ -1302,6 +1312,29 @@ mod tests {
         assert_eq!(label.text(&ui), "static!");
         label.set_text_fmt(&mut ui, format_args!("{} °C", 23));
         assert_eq!(label.text(&ui), "23 °C");
+    }
+
+    /// `lv_text_ap_proc()` is not idempotent (the lam-alef ligature U+FEFC is
+    /// not in `ap_chars_map`), so each C path must shape exactly as often as
+    /// `set_text_internal()` / `lv_label_set_text_vfmt()` do.
+    #[cfg(feature = "arabic-persian-chars")]
+    #[test]
+    fn ap_proc_runs_once_per_c_path() {
+        let (mut ui, screen) = setup();
+        let label = Label::create(&mut ui, screen);
+        // Static text + `lv_label_set_text(obj, NULL)`: copy branch only.
+        label.set_text_static(&mut ui, "\u{0628}\u{0644}\u{0627}");
+        label.refresh_text(&mut ui);
+        assert_eq!(label.text(&ui), "\u{FE91}\u{FEFC}");
+        // Owned text + `lv_label_set_text(obj, NULL)`: in-place reprocess
+        // (`lv_text_ap_proc(label->text, label->text)`), exactly as C does.
+        label.refresh_text(&mut ui);
+        assert_eq!(label.text(&ui), "\u{FE8F}\u{FEFC}");
+        // `lv_label_set_text_vfmt()` stores `lv_text_set_text_vfmt()` directly.
+        label.set_text_fmt(&mut ui, format_args!("{}", "\u{0628}\u{0644}\u{0627}"));
+        assert_eq!(label.text(&ui), "\u{FE91}\u{FEFC}");
+        label.set_text(&mut ui, "\u{0628}\u{0644}\u{0627}");
+        assert_eq!(label.text(&ui), "\u{FE91}\u{FEFC}");
     }
 
     #[test]
