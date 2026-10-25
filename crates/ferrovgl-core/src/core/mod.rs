@@ -7,6 +7,9 @@ pub mod obj;
 pub mod obj_class;
 pub mod obj_draw;
 pub mod obj_event;
+#[cfg(feature = "obj-id")]
+#[cfg_attr(docsrs, doc(cfg(feature = "obj-id")))]
+pub mod obj_id;
 pub mod obj_pos;
 pub mod obj_scroll;
 pub mod obj_style;

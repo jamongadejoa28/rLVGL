@@ -1440,6 +1440,7 @@ mod tests {
 
     fn make_obj(ui: &mut Ui) -> Obj {
         let key = ui.objs.insert(ObjData {
+            ext_data: Default::default(),
             class: &OBJ_CLASS,
             parent: None,
             spec: Some(Box::new(SpecAttr::new())),
@@ -1462,6 +1463,8 @@ mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: Box::new(()),
         });
         Obj(ObjId(key))

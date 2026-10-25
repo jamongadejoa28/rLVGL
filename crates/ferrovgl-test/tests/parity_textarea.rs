@@ -3,9 +3,9 @@
 //! Every upstream test function, in upstream order, with its values and
 //! screenshot names. `setUp` creates a text area on the active screen of a
 //! fresh default-theme display with upstream's mouse, keypad and encoder test
-//! devices; `tearDown`'s `lv_obj_clean` is the display drop. `lv_test_wait`
-//! is reproduced exactly ([`test_wait`]), including the trailing reads of
-//! the three test input devices.
+//! devices; `tearDown`'s `lv_obj_clean` is the display drop. `lv_test_wait`,
+//! `lv_test_mouse_click_at` and `lv_test_mouse_move_to_obj` are the harness
+//! ports ([`TestDisplay::wait`] and friends).
 //!
 //! Upstream runs these tests one after another on one screen and only cleans
 //! its children. No test in this file changes the screen itself, a focus
@@ -56,39 +56,19 @@ fn set_up() -> Fixture {
     }
 }
 
-/// `lv_test_wait()`: advance the tick and run the timers once per
-/// millisecond, then read the pointer, encoder and keypad and refresh.
+/// `lv_test_wait()`
 fn test_wait(f: &mut Fixture, ms: u32) {
-    let ui = &mut f.display.ui;
-    for _ in 0..ms {
-        ui.tick_inc(1);
-        ui.timer_handler();
-    }
-    f.inputs.mouse.read(ui);
-    f.inputs.encoder.read(ui);
-    f.inputs.keypad.read(ui);
-    let display = f.display.display();
-    f.display.ui.refr_now(Some(display));
+    f.display.wait(ms);
 }
 
 /// `lv_test_mouse_click_at()`
 fn mouse_click_at(f: &mut Fixture, x: i32, y: i32) {
-    f.inputs.mouse.release();
-    test_wait(f, 50);
-    f.inputs.mouse.move_to(x, y);
-    f.inputs.mouse.press();
-    test_wait(f, 50);
-    f.inputs.mouse.release();
-    test_wait(f, 50);
+    f.display.mouse_click_at(x, y);
 }
 
 /// `lv_test_mouse_move_to_obj()`: no layout update, like upstream.
 fn mouse_move_to_obj(f: &mut Fixture, obj: Obj) {
-    let ui = &f.display.ui;
-    let coords = ui.obj_get_coords(obj);
-    let x = coords.x1 + ui.obj_get_width(obj) / 2;
-    let y = coords.y1 + ui.obj_get_height(obj) / 2;
-    f.inputs.mouse.move_to(x, y);
+    f.display.mouse_move_to_obj(obj);
 }
 
 /// `lv_obj_send_event(obj, LV_EVENT_KEY, &key)`

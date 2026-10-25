@@ -12,10 +12,8 @@
 //! `captured_*`, ...) are thread-locals because each Rust test runs on its own
 //! thread.
 //!
-//! Skipped (the widget is not ported in this worktree):
-//! `test_observer_arc_value` (`lv_arc_bind_value()`, the arc widget is a
-//! skeleton), `test_observer_roller_value`, `test_observer_dropdown_value`,
-//! `test_observer_scale_line_needle_value`,
+//! Skipped (the widget is not ported): `test_observer_roller_value`,
+//! `test_observer_dropdown_value`, `test_observer_scale_line_needle_value`,
 //! `test_observer_scale_image_needle_value` (no roller / dropdown / scale
 //! widget).
 //!
@@ -38,7 +36,7 @@ use ferrovgl_core::core::observer::{ObjSetBoolCb, ObserverId, SubjectId, Subject
 use ferrovgl_core::misc::style::{ImageSrc, SharedRef};
 use ferrovgl_core::{Color, EventCode, Obj, ObjFlags, State, Ui};
 use ferrovgl_test::{TestDisplay, TestInputs};
-use ferrovgl_widgets::{Bar, Button, Image, Label, Slider};
+use ferrovgl_widgets::{Arc, Bar, Button, Image, Label, Slider};
 
 const ANIM_OFF: bool = false;
 
@@ -1250,6 +1248,35 @@ fn test_observer_label_text_formatted() {
     f.ui()
         .subject_set_pointer(subject_pointer, Some(Rc::new("pointer: NOTHING")));
     assert_eq!("pointer: WORLD", obj.text(f.ui()));
+    tear_down(f);
+}
+
+#[test]
+fn test_observer_arc_value() {
+    let mut f = set_up();
+    let screen = f.screen();
+    let obj = Arc::create(f.ui(), screen);
+
+    let subject = subject_create(&mut f, SubjectType::Int);
+    f.ui().subject_set_int(subject, 30);
+    obj.bind_value(f.ui(), subject);
+
+    assert_eq!(30, obj.value(f.ui()));
+
+    f.ui().subject_set_int(subject, 40);
+    assert_eq!(40, obj.value(f.ui()));
+
+    f.ui().obj_update_layout(obj.obj());
+    f.inputs.mouse.release();
+    f.display.wait(100);
+
+    f.inputs.mouse.move_to(65, 10);
+    f.inputs.mouse.press();
+    f.display.wait(100);
+    f.inputs.mouse.release();
+
+    assert_eq!(50, obj.value(f.ui()));
+    assert_eq!(50, f.ui().subject_get_int(subject));
     tear_down(f);
 }
 

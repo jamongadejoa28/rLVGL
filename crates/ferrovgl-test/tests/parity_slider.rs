@@ -724,7 +724,7 @@ fn slider_large_range_drag_no_int32_overflow_horiz() {
     ui.refr_now(None);
 
     /* Drag from center to right: pixel ~300 → value should be ~10M (not overflowed) */
-    f.inputs.mouse.move_to_obj(&mut f.display.ui, slider.obj());
+    f.inputs.mouse.move_to_obj(&f.display.ui, slider.obj());
     f.inputs.mouse.press();
     f.display.wait(50);
     f.inputs.mouse.move_by(150, 0); /* drag right ~50% more */
@@ -751,7 +751,7 @@ fn slider_large_range_drag_no_int32_overflow_vert() {
     ui.obj_update_layout(slider.obj());
     ui.refr_now(None);
 
-    f.inputs.mouse.move_to_obj(&mut f.display.ui, slider.obj());
+    f.inputs.mouse.move_to_obj(&f.display.ui, slider.obj());
     f.inputs.mouse.press();
     f.display.wait(50);
     f.inputs.mouse.move_by(0, -100);

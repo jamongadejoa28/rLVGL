@@ -148,13 +148,13 @@ fn nostd_check(root: &Path) -> Result<()> {
         for (pkg, features) in [
             (
                 "ferrovgl-core",
-                "float,flex,grid,snapshot,observer,bidi,arabic-persian-chars",
+                "float,flex,grid,snapshot,observer,bidi,arabic-persian-chars,obj-id",
             ),
             ("ferrovgl-draw-sw", "complex,cf-rgb565,cf-xrgb8888"),
             ("ferrovgl-fonts", "montserrat-14,dejavu-16-persian-hebrew"),
             (
                 "ferrovgl-widgets",
-                "label,button,image,bar,slider,switch,checkbox,arc,line,led,spinner,buttonmatrix,textarea,observer,bidi,arabic-persian-chars,theme-default,theme-simple",
+                "label,button,image,bar,slider,switch,checkbox,arc,line,led,spinner,buttonmatrix,textarea,observer,float,bidi,arabic-persian-chars,theme-default,theme-simple",
             ),
         ] {
             run(Command::new("cargo").current_dir(root).args([

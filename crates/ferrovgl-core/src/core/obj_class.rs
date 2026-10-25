@@ -6,11 +6,14 @@
 //! derived-first, exactly like `lv_obj_class_create_obj()` / `lv_obj_destruct()`.
 
 use alloc::boxed::Box;
+use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::any::Any;
 
 use crate::core::Ui;
 use crate::core::obj::{
-    Obj, ObjClass, ObjClassEditable, ObjClassGroupDef, ObjData, ObjFlags, ObjId, WidgetState,
+    Obj, ObjClass, ObjClassEditable, ObjClassGroupDef, ObjData, ObjExtData, ObjExtDataFreeCb, ObjFlags,
+    ObjId, WidgetState,
 };
 use crate::misc::area::Area;
 use crate::misc::check_arg_failed;
@@ -28,6 +31,7 @@ impl Ui {
     pub fn obj_class_create_obj(&mut self, class: &'static ObjClass, parent: Option<Obj>) -> Obj {
         // uint32_t s = get_instance_size(class_p); lv_malloc_zeroed(s)
         let data = ObjData {
+            ext_data: ObjExtData::default(),
             class,
             parent: parent.map(Obj::id),
             spec: None,
@@ -50,6 +54,8 @@ impl Ui {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: get_instance_size(class)(),
         };
         let obj = Obj(ObjId(self.objs.insert(data)));
@@ -152,9 +158,14 @@ impl Ui {
             return;
         };
 
-        // Known deviation (LV_USE_EXT_DATA=y): `ObjData` has no `ext_data`
-        // field yet (shared-type request), so `ext_data.free_cb(ext_data.data)`
-        // cannot run here and `lv_obj_set_external_data()` is not provided.
+        // LV_USE_EXT_DATA. Like upstream `free_cb` stays set, so every base
+        // class level of the recursion calls it again, with `NULL` data.
+        if let Some(o) = self.obj_mut(obj)
+            && let Some(free_cb) = o.ext_data.free_cb
+        {
+            let data = o.ext_data.data.take();
+            free_cb(data);
+        }
 
         if let Some(destructor) = class.destructor {
             destructor(class, self, obj);
@@ -214,6 +225,23 @@ impl Ui {
         c.group_def == ObjClassGroupDef::True
     }
 
+    /// `lv_obj_set_external_data()` (`LV_USE_EXT_DATA`): attach `data` to
+    /// `obj` and the `free_cb` that `lv_obj_destruct()` calls with it.
+    pub fn obj_set_external_data(
+        &mut self,
+        obj: Obj,
+        data: Option<Rc<dyn Any>>,
+        free_cb: Option<ObjExtDataFreeCb>,
+    ) {
+        let Some(o) = self.obj_mut(obj) else {
+            check_arg_failed("Can't attach external user data and destructor callback to a NULL object");
+            return;
+        };
+
+        o.ext_data.data = data;
+        o.ext_data.free_cb = free_cb;
+    }
+
     /// `lv_obj_construct()` (static): construct the base classes first,
     /// with `obj->class_p` temporarily lowered to the class being
     /// constructed, then call this level's constructor with the final
@@ -223,8 +251,11 @@ impl Ui {
             return;
         };
 
-        // Known deviation (LV_USE_EXT_DATA=y): `ext_data.free_cb` and
-        // `ext_data.data` would be cleared here; `ObjData` has no `ext_data`.
+        // LV_USE_EXT_DATA
+        if let Some(o) = self.obj_mut(obj) {
+            o.ext_data.free_cb = None;
+            o.ext_data.data = None;
+        }
 
         if let Some(base) = cur.base {
             let original_class_p = cur;
@@ -359,6 +390,7 @@ pub(crate) mod tests {
             return ui.obj_class_create_obj(class, Some(p));
         }
         let data = ObjData {
+            ext_data: ObjExtData::default(),
             class,
             parent: None,
             spec: None,
@@ -381,6 +413,8 @@ pub(crate) mod tests {
             is_deleting: false,
             rendered: false,
             has_blur: false,
+            #[cfg(feature = "obj-id")]
+            id: 0,
             widget: (class.new_state)(),
         };
         Obj(ObjId(ui.objs.insert(data)))
@@ -470,5 +504,42 @@ pub(crate) mod tests {
     fn class_new_state_is_the_derived_state() {
         let s = class_new_state(&TEST_C)();
         assert!(s.get::<()>().is_some());
+    }
+
+    /// `free_cb` calls of [`ext_data_is_freed_once_per_destructor_level`]:
+    /// (calls, calls that got the data).
+    static EXT_FREE_CALLS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+    static EXT_FREE_WITH_DATA: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+    fn ext_free_cb(data: Option<Rc<dyn Any>>) {
+        use core::sync::atomic::Ordering;
+        EXT_FREE_CALLS.fetch_add(1, Ordering::SeqCst);
+        if data.is_some_and(|d| d.downcast_ref::<u32>() == Some(&7)) {
+            EXT_FREE_WITH_DATA.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// Not upstream: `lv_obj_destruct()` calls `ext_data.free_cb` before
+    /// each level's destructor; `free_cb` is not cleared, so the base levels
+    /// call it again with `NULL` data. `lv_obj_construct()` clears it.
+    #[test]
+    fn ext_data_is_freed_once_per_destructor_level() {
+        use core::sync::atomic::Ordering;
+        let mut ui = Ui::new(UiConfig::default());
+        ui.set_app::<Vec<String>>(Vec::new());
+        let o = raw_obj(&mut ui, &TEST_C, None);
+        ui.obj_set_external_data(o, Some(Rc::new(7u32)), Some(ext_free_cb));
+        assert!(ui.obj(o).unwrap().ext_data.free_cb.is_some());
+        ui.obj_destruct(o);
+        // C -> B -> A: three `lv_obj_destruct()` levels.
+        assert_eq!(EXT_FREE_CALLS.load(Ordering::SeqCst), 3);
+        assert_eq!(EXT_FREE_WITH_DATA.load(Ordering::SeqCst), 1);
+        assert!(ui.obj(o).unwrap().ext_data.data.is_none());
+
+        let p = raw_obj(&mut ui, &TEST_C, None);
+        ui.obj_set_external_data(p, Some(Rc::new(7u32)), Some(ext_free_cb));
+        ui.obj_class_construct(&TEST_C, p);
+        assert!(ui.obj(p).unwrap().ext_data.free_cb.is_none());
+        assert!(ui.obj(p).unwrap().ext_data.data.is_none());
     }
 }
