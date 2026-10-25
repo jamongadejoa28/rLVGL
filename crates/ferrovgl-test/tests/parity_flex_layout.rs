@@ -36,7 +36,7 @@ fn inherit_screen_flex(
     screen
 }
 
-/// Body shared by the `test_wrap_grow_*` functions (`test_align_flex.c:81..222`):
+/// Body shared by the `test_wrap_grow_*` functions (`test_align_flex.c:82..210`):
 /// `count` items, the item at `new_track` starts a new track, `size` applies the
 /// test's own min/max width styles.
 fn wrap_grow(display: &mut TestDisplay, count: i32, new_track: i32, mut size: impl FnMut(&mut Ui, Obj, i32)) {
@@ -162,8 +162,8 @@ fn flex_wrap_grow_max_width_pct() {
         .unwrap();
 }
 
-/// `create_col_wrap()` (`test_align_flex.c:222`) when `column`, otherwise
-/// `create_row_wrap()` (`test_align_flex.c:269`).
+/// `create_col_wrap()` (`test_align_flex.c:211`) when `column`, otherwise
+/// `create_row_wrap()` (`test_align_flex.c:262`).
 fn create_wrap(display: &mut TestDisplay, count: usize, column: bool) -> Obj {
     let screen = display.screen().unwrap();
     let ui = &mut display.ui;
@@ -289,8 +289,8 @@ fn after_row_wrap_grow_size_2() -> (TestDisplay, Obj) {
     (display, screen)
 }
 
-/// `test_col_grow_size_content` (`test_align_flex.c:315..443`) and
-/// `test_row_grow_size_content` (`test_align_flex.c:449..577`) are the same
+/// `test_col_grow_size_content` (`test_align_flex.c:316..443`) and
+/// `test_row_grow_size_content` (`test_align_flex.c:449..576`) are the same
 /// test along the two axes; `row` selects the second one.
 fn grow_size_content(row: bool) {
     let (mut display, screen) = after_row_wrap_grow_size_2();
@@ -449,7 +449,7 @@ fn flex_row_grow_size_content() {
     grow_size_content(true);
 }
 
-/// `test_nested_flex_grow_size_content` (`test_align_flex.c:580..680`).
+/// `test_nested_flex_grow_size_content` (`test_align_flex.c:579..683`).
 #[test]
 fn flex_nested_grow_size_content() {
     let (mut display, screen) = after_row_wrap_grow_size_2();
@@ -540,7 +540,7 @@ fn flex_nested_grow_size_content() {
     assert_eq!(cont_width - fixed_size, ui.obj_get_width(sub_cont));
 }
 
-/// `cont_row_5_create()` (`test_align_flex.c:682`).
+/// `cont_row_5_create()` (`test_align_flex.c:685`).
 fn cont_row_5_create(ui: &mut Ui, screen: Obj) -> Obj {
     let cont = ui.obj_create(Some(screen));
     ui.obj_set_size(cont, coord::SIZE_CONTENT, coord::SIZE_CONTENT);
@@ -556,7 +556,7 @@ fn cont_row_5_create(ui: &mut Ui, screen: Obj) -> Obj {
     cont
 }
 
-/// `hide()` (`test_align_flex.c:700`).
+/// `hide()` (`test_align_flex.c:705`).
 fn hide(ui: &mut Ui, cont: Obj, idx: i32) {
     let child = ui.obj_get_child(cont, idx).unwrap();
     ui.obj_set_hidden(child, true);
@@ -658,7 +658,7 @@ fn flex_grow_on_screen_should_not_crash() {
     display.ui.refr_now(None);
 }
 
-/// `obj_create()` of `test_margin_flex.c:20`.
+/// `obj_create()` of `test_margin_flex.c:19`.
 fn margin_obj_create(ui: &mut Ui, parent: Obj, color: Color) -> Obj {
     let obj = ui.obj_create(Some(parent));
     ui.obj_set_style_bg_color(obj, color, MAIN.into());
@@ -667,7 +667,7 @@ fn margin_obj_create(ui: &mut Ui, parent: Obj, color: Color) -> Obj {
     obj
 }
 
-/// `obj_set_margin()` of `test_margin_flex.c:30`.
+/// `obj_set_margin()` of `test_margin_flex.c:29`.
 fn obj_set_margin(ui: &mut Ui, obj: Obj, left: i32, top: i32, right: i32, bottom: i32) {
     ui.obj_set_style_margin_left(obj, left, MAIN.into());
     ui.obj_set_style_margin_top(obj, top, MAIN.into());
