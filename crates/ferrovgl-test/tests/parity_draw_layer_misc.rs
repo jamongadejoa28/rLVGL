@@ -429,42 +429,50 @@ fn update_layer_type_on_state_change() {
 // libs/test_bin_decoder.c
 // ---------------------------------------------------------------------------
 
-/// `create_image()`
-fn create_image(ui: &mut Ui, src: &ImageSrc) {
+/// `create_image()`; returns the image handle so the caller can check that
+/// it was freed.
+fn create_image(ui: &mut Ui, src: &ImageSrc) -> Obj {
     let img = Image::create(ui, ui.screen_active());
     img.set_src(ui, src.clone());
     ui.obj_center(img.obj());
+    img.obj()
 }
 
-/// `create_image_tile()`
-fn create_image_tile(ui: &mut Ui, src: &ImageSrc) {
+/// `create_image_tile()`; returns the image handle so the caller can check
+/// that it was freed.
+fn create_image_tile(ui: &mut Ui, src: &ImageSrc) -> Obj {
     let img = Image::create(ui, ui.screen_active());
     img.set_src(ui, src.clone());
     ui.obj_center(img.obj());
     ui.obj_set_size(img.obj(), 275, 175);
     img.set_inner_align(ui, ImageAlign::Tile);
+    img.obj()
 }
 
 /// `bin_decoder()` / `bin_decoder_tile()`. `lv_image_cache_drop()` is a no-op
 /// (ferrovgl has no image cache) and `TEST_ASSERT_MEM_LEAK_LESS_THAN` has no
-/// `lv_mem` counterpart; the object count must return to its starting value.
-fn bin_decoder(src: &ImageSrc, screenshot: &str, create: fn(&mut Ui, &ImageSrc)) {
+/// `lv_mem` counterpart; instead every image created here must have been
+/// freed once the screen is cleaned for the last time.
+fn bin_decoder(src: &ImageSrc, screenshot: &str, create: fn(&mut Ui, &ImageSrc) -> Obj) {
     let mut display = TestDisplay::with_default_theme().unwrap();
     let scr = screen(&display);
-    create(&mut display.ui, src);
+    let mut created = Vec::new();
+    created.push(create(&mut display.ui, src));
     display.screenshot_compare(screenshot).unwrap();
     display.ui.obj_clean(scr);
 
     for _ in 0..20 {
         display.ui.obj_clean(scr);
-        create(&mut display.ui, src);
+        created.push(create(&mut display.ui, src));
 
         display.ui.obj_invalidate(scr);
         display.ui.refr_now(None);
     }
     display.screenshot_compare(screenshot).unwrap();
     display.ui.obj_clean(scr);
-    assert_eq!(display.ui.obj_get_child_count(scr), 0);
+    for img in created {
+        assert!(!display.ui.obj_is_valid(img));
+    }
 }
 
 /// `test_bin_decoder_i4`
