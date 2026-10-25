@@ -17,8 +17,10 @@
 //!   [`Label::set_text_selection_start`]/[`Label::set_text_selection_end`]
 //!   instead of the `lv_label_t` fields; those also invalidate the label,
 //!   which lies inside the text area that is invalidated right after.
-//! - A packed character whose bytes are not valid UTF-8 is rejected by
-//!   `add_char()` before `LV_EVENT_INSERT` (C would insert the raw bytes).
+//! - A packed character whose bytes are not valid UTF-8 still goes through
+//!   `LV_EVENT_INSERT` (with a lossy copy as the event text) and the insert
+//!   replace handling, but `add_char()` rejects it where C would call
+//!   `lv_label_ins_text()` with the raw bytes.
 //! - Where C would keep using a text area that a user callback deleted (after
 //!   `LV_EVENT_INSERT`, `LV_EVENT_VALUE_CHANGED` or a layout update) the port
 //!   stops instead.
@@ -1291,6 +1293,13 @@ fn update_cursor_position_on_click(ui: &mut Ui, obj: Obj, code: EventCode) {
 /// `insert_handler()`: returns `LV_RESULT_OK` when no operation were
 /// performed, `LV_RESULT_INVALID` when a user defined text was inserted.
 fn insert_handler(ui: &mut Ui, obj: Obj, txt: &str) -> LvResult {
+    insert_handler_raw(ui, obj, txt, txt.as_bytes())
+}
+
+/// `insert_handler()` for a C string that may not be valid UTF-8: `txt` is
+/// the event parameter (a lossy copy when `raw` is not UTF-8) and `raw` the C
+/// string bytes the replacement is compared with (`lv_strcmp`).
+fn insert_handler_raw(ui: &mut Ui, obj: Obj, txt: &str, raw: &[u8]) -> LvResult {
     ui.widget_static_mut::<TextareaStatics>().ta_insert_replace = None;
     let _ = ui.obj_send_event(obj, EventCode::INSERT, EventParam::Text(txt));
     if state(ui, obj).is_none() {
@@ -1309,7 +1318,7 @@ fn insert_handler(ui: &mut Ui, obj: Obj, txt: &str) -> LvResult {
         }
 
         /*Add the replaced text directly it's different from the original*/
-        if replace != txt {
+        if replace.as_bytes() != raw {
             Textarea(obj).add_text(ui, replace);
             return LvResult::Invalid;
         }
@@ -1537,14 +1546,16 @@ fn add_char(ui: &mut Ui, obj: Obj, c: u32) -> LvResult {
     /*`u32_buf = {c, 0}` read as a C string*/
     let u32_buf = c.to_ne_bytes();
     let end = u32_buf.iter().position(|&b| b == 0).unwrap_or(u32_buf.len());
-    let Ok(letter_buf) = core::str::from_utf8(&u32_buf[..end]) else {
-        /*Not valid UTF-8: a `&str` cannot hold it (C would insert the raw bytes)*/
-        return LvResult::Invalid;
-    };
+    let letter_raw = &u32_buf[..end];
+    /*`LV_EVENT_INSERT` carries a `&str`: bytes that are not valid UTF-8 are sent
+     *as a lossy copy, compared raw with the replacement, and rejected only where
+     *C inserts them into the label (see below)*/
+    let letter_txt = String::from_utf8_lossy(letter_raw);
+    let letter_buf = core::str::from_utf8(letter_raw).ok();
 
     let c2 = c;
 
-    let res = insert_handler(ui, obj, letter_buf);
+    let res = insert_handler_raw(ui, obj, &letter_txt, letter_raw);
     if res != LvResult::Ok {
         return res;
     }
@@ -1571,6 +1582,11 @@ fn add_char(ui: &mut Ui, obj: Obj, c: u32) -> LvResult {
         }
     }
 
+    let Some(letter_buf) = letter_buf else {
+        /*Not valid UTF-8: C would `lv_label_ins_text()` the raw bytes here, but a
+         *`&str` label text cannot hold them, so the character is rejected*/
+        return LvResult::Invalid;
+    };
     let cursor_pos = Textarea(obj).cursor_pos(ui);
     label.insert_text(ui, cursor_pos, letter_buf); /*Insert the character*/
     Textarea(obj).clear_selection(ui); /*Clear selection*/
@@ -1677,6 +1693,40 @@ mod tests {
         ta.add_char(&mut ui, 0x80);
         assert_eq!(ta.text(&ui), "\u{c1}B");
         assert_eq!(ta.cursor_pos(&ui), 2);
+    }
+
+    #[test]
+    fn add_char_sends_insert_before_rejecting_invalid_utf8() {
+        let (mut ui, ta) = setup();
+        let seen = Rc::new(core::cell::RefCell::new(alloc::vec::Vec::<String>::new()));
+        let seen_cb = seen.clone();
+        // test_textarea.c `event_handler()`: replace any non-digit with "123".
+        let cb: EventCallback = Rc::new(move |ui, e| {
+            let txt = match e.param() {
+                EventParam::Text(txt) => Some(txt.to_string()),
+                _ => None,
+            };
+            let digit = txt
+                .as_ref()
+                .and_then(|t| t.as_bytes().first().copied())
+                .is_some_and(|b| b.is_ascii_digit());
+            seen_cb.borrow_mut().push(txt.unwrap_or_default());
+            if !digit {
+                let obj = e.target_obj().unwrap();
+                Textarea(obj).set_insert_replace(ui, Some(SharedStr::Shared(Rc::from("123"))));
+            }
+        });
+        ui.obj_add_event_cb(ta.obj(), cb, EventCode::INSERT, None);
+        // A raw code point (not packed UTF-8): C sends INSERT, then adds "123".
+        ta.add_char(&mut ui, 0xE9);
+        assert_eq!(ta.text(&ui), "123");
+        // The lossy event text keeps a valid prefix: "1" + 0x80 is not replaced
+        // and the raw bytes are rejected where C inserts them into the label.
+        ta.add_char(&mut ui, 0x8031);
+        assert_eq!(ta.text(&ui), "123");
+        assert_eq!(ta.cursor_pos(&ui), 3);
+        // INSERT order: the raw letter, the replacement (via add_text), the raw letter.
+        assert_eq!(*seen.borrow(), ["\u{fffd}", "123", "1\u{fffd}"]);
     }
 
     #[test]
