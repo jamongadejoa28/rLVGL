@@ -28,6 +28,10 @@ allow = ["Bitstream-Vera"]
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# ferrovgl-examples has a path-only dev-dependency on the unpublished ferrovgl-test
+# harness (cargo strips it when packaging). This allows path dev-dependencies only;
+# path dependencies of published crates are still rejected.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
