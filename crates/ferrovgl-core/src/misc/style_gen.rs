@@ -344,9 +344,62 @@ mod tests {
                 .value,
             StyleValue::Num(3)
         );
+        // The generated setters pack exactly like the `lv_style_value_t v = {...}`
+        // initialisers of lv_style_gen.c and go through `lv_style_set_prop()`.
         let mut st = crate::misc::style::Style::new();
-        // `set_prop` is still a todo!() in the skeleton; only check that the
-        // setters exist with the expected signatures.
-        let _ = &mut st;
+        st.set_width(10);
+        st.set_bg_opa(128);
+        st.set_border_side(crate::misc::style::BorderSide::LEFT | crate::misc::style::BorderSide::RIGHT);
+        st.set_bg_image_tiled(true);
+        st.set_text_align(crate::misc::text::TextAlign::Right);
+        st.set_bg_color(Color::hex(0x123456));
+        st.set_anim_duration(500);
+        st.set_layout(2);
+        st.set_flex_grow(3);
+        st.set_image_colorkey(crate::misc::style::ImageColorkey {
+            low: Color::hex(0x000000),
+            high: Color::hex(0x101010),
+        });
+        assert_eq!(st.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(10)));
+        assert_eq!(st.get_prop(StyleProp::BG_OPA), Some(&StyleValue::Num(128)));
+        assert_eq!(st.get_prop(StyleProp::BORDER_SIDE), Some(&StyleValue::Num(0x0C)));
+        assert_eq!(st.get_prop(StyleProp::BG_IMAGE_TILED), Some(&StyleValue::Num(1)));
+        assert_eq!(st.get_prop(StyleProp::TEXT_ALIGN), Some(&StyleValue::Num(3)));
+        assert_eq!(
+            st.get_prop(StyleProp::BG_COLOR),
+            Some(&StyleValue::Color(Color::hex(0x123456)))
+        );
+        assert_eq!(st.get_prop(StyleProp::ANIM_DURATION), Some(&StyleValue::Num(500)));
+        assert_eq!(st.get_prop(StyleProp::LAYOUT), Some(&StyleValue::Num(2)));
+        assert_eq!(st.get_prop(StyleProp::FLEX_GROW), Some(&StyleValue::Num(3)));
+        assert!(matches!(
+            st.get_prop(StyleProp::IMAGE_COLORKEY),
+            Some(StyleValue::Colorkey(k)) if k.high == Color::hex(0x101010)
+        ));
+        assert_eq!(st.len(), 10);
+        // Calling a setter twice overwrites instead of appending.
+        st.set_width(11);
+        assert_eq!(st.len(), 10);
+        assert_eq!(st.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(11)));
+    }
+
+    #[test]
+    fn every_built_in_prop_has_a_setter_in_table_order() {
+        // lv_style_gen.c order: the first and last few functions.
+        assert_eq!(BUILTIN_PROPS[0], StyleProp::WIDTH);
+        assert_eq!(BUILTIN_PROPS[1], StyleProp::MIN_WIDTH);
+        assert_eq!(BUILTIN_PROPS[9], StyleProp::ALIGN);
+        assert_eq!(BUILTIN_PROPS[128], StyleProp::GRID_CELL_ROW_SPAN);
+        assert_eq!(BUILTIN_PROPS[127], StyleProp::GRID_CELL_Y_ALIGN);
+        // Every property with a default or a flag in lv_style.c is in the table.
+        for p in [
+            StyleProp::TEXT_LEADING_TRIM,
+            StyleProp::ROTARY_SENSITIVITY,
+            StyleProp::DROP_SHADOW_QUALITY,
+            StyleProp::BITMAP_MASK_SRC,
+            StyleProp::TRANSLATE_RADIAL,
+        ] {
+            assert!(BUILTIN_PROPS.contains(&p), "{p:?} missing from the setter table");
+        }
     }
 }

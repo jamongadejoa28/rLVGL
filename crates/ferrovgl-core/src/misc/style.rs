@@ -6,8 +6,6 @@
 //! like LVGL. `StyleProp` and `Part` are open newtypes (like the C `uint8_t`
 //! / `uint32_t`) so custom properties and custom parts need no extra type.
 
-#![allow(unused_variables)] // skeleton: bodies are todo!()
-
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
@@ -16,6 +14,7 @@ use crate::draw::draw_buf::{DrawBuf, ImageDsc};
 use crate::draw::grad::GradDsc;
 use crate::font::{Font, FontRef};
 use crate::misc::anim::{Anim, AnimPath};
+use crate::misc::check_arg_failed;
 use crate::misc::color::{Color, ColorFilter, OPA_COVER};
 use crate::misc::types::coord;
 
@@ -452,6 +451,9 @@ impl StyleProp {
 /// `LV_STYLE_NUM_BUILT_IN_PROPS`
 pub const NUM_BUILT_IN_PROPS: usize = StyleProp::NUM_BUILT_IN as usize;
 
+/// `lv_style_const_prop_id_inv`
+pub const CONST_PROP_ID_INV: StyleProp = StyleProp::INV;
+
 /// `lv_style_get_prop_group()`: group of a property. If a property from a
 /// group is set in a style the `(1 << group)` bit of `has_group` is set.
 /// Returns 0..=31; 31 marks all custom properties.
@@ -500,7 +502,9 @@ pub const fn builtin_prop_flags(prop: StyleProp) -> u8 {
         P::BASE_DIR => I | L,
         P::BITMAP_MASK_SRC => LY,
         P::DROP_SHADOW_RADIUS | P::DROP_SHADOW_OFFSET_X | P::DROP_SHADOW_OFFSET_Y | P::DROP_SHADOW_OPA => E,
+        #[cfg(feature = "flex")] /*LV_USE_FLEX*/
         P::FLEX_FLOW | P::FLEX_MAIN_PLACE | P::FLEX_CROSS_PLACE | P::FLEX_TRACK_PLACE | P::FLEX_GROW => L,
+        #[cfg(feature = "grid")] /*LV_USE_GRID*/
         P::GRID_COLUMN_DSC_ARRAY
         | P::GRID_ROW_DSC_ARRAY
         | P::GRID_COLUMN_ALIGN
@@ -552,6 +556,80 @@ pub const fn lookup_flags(prop: StyleProp) -> u8 {
 #[inline]
 pub const fn prop_has_flag(prop: StyleProp, flag: u8) -> bool {
     lookup_flags(prop) & flag != 0
+}
+
+/// `lv_style_register_prop()`: register a custom property with `flag` and
+/// return its id (`StyleProp::INV` on allocation failure in C, which cannot
+/// happen here).
+///
+/// There is no global state, so the two `lv_global_t` members are passed in
+/// explicitly: `custom_table` is `style_custom_prop_flag_lookup_table` (its
+/// length is `style_custom_table_size`; an empty table is the C `NULL`) and
+/// `last_custom_prop_id` is `style_last_custom_prop_id`. They live in the
+/// context as [`crate::core::Ui::style_custom_prop_flags`] and
+/// [`crate::core::Ui::style_last_custom_prop_id`], and
+/// `Ui::style_register_prop` is a thin wrapper around this function.
+///
+/// The table grows in 32-entry steps exactly like the C `lv_realloc` path
+/// (`test_custom_prop_ids` checks that) and the returned id is the
+/// `(lv_style_prop_t)` (8-bit) truncation of the counter, as upstream.
+pub fn register_prop(custom_table: &mut Vec<u8>, last_custom_prop_id: &mut u32, flag: u8) -> StyleProp {
+    if custom_table.is_empty() {
+        /*lv_style_custom_prop_flag_lookup_table == NULL: size 0, restart the ids*/
+        *last_custom_prop_id = StyleProp::LAST_BUILT_IN.0 as u32;
+    }
+
+    /*
+     * Allocate the lookup table if it's not yet available.
+     */
+    let mut required_size = (*last_custom_prop_id + 1 - StyleProp::LAST_BUILT_IN.0 as u32) as usize;
+    if custom_table.len() < required_size {
+        /* Round required_size up to the nearest 32-byte value */
+        required_size = (required_size + 31) & !31;
+        custom_table.resize(required_size, 0);
+    }
+    *last_custom_prop_id += 1;
+    /* This should never happen - we should bail out above */
+    custom_table[(*last_custom_prop_id - StyleProp::NUM_BUILT_IN as u32) as usize] = flag;
+    StyleProp(*last_custom_prop_id as u8)
+}
+
+/// `lv_style_get_num_custom_props()`: number of custom properties registered
+/// so far, derived from the `style_last_custom_prop_id` counter (see
+/// [`register_prop`]). Returned as `u32` like `Ui::style_get_num_custom_props`
+/// (C narrows it to `lv_style_prop_t`).
+#[inline]
+pub const fn get_num_custom_props(last_custom_prop_id: u32) -> u32 {
+    last_custom_prop_id - StyleProp::LAST_BUILT_IN.0 as u32
+}
+
+/// `lv_style_prop_lookup_flags()` including custom properties: the same
+/// `ANY` / `INV` early returns as [`lookup_flags`], then the built-in table,
+/// then `custom_table` (the `style_custom_prop_flag_lookup_table` slice kept
+/// in the `Ui`; an empty slice is the C `NULL` table). Unknown ids yield 0.
+pub const fn lookup_flags_with_custom(prop: StyleProp, custom_table: &[u8]) -> u8 {
+    if prop.0 == StyleProp::ANY.0 {
+        return STYLE_PROP_FLAG_ALL; /*Any prop can have any flags*/
+    }
+    if prop.0 == StyleProp::INV.0 {
+        return 0;
+    }
+
+    if prop.0 < StyleProp::NUM_BUILT_IN {
+        return builtin_prop_flags(prop);
+    }
+    let prop = (prop.0 - StyleProp::NUM_BUILT_IN) as usize;
+    if prop < custom_table.len() {
+        return custom_table[prop];
+    }
+    0
+}
+
+/// `lv_style_prop_has_flag()` including custom properties, see
+/// [`lookup_flags_with_custom`].
+#[inline]
+pub const fn prop_has_flag_with_custom(prop: StyleProp, flag: u8, custom_table: &[u8]) -> bool {
+    lookup_flags_with_custom(prop, custom_table) & flag != 0
 }
 
 /// A `'static` or reference-counted pointer to shared, immutable data.
@@ -932,9 +1010,26 @@ impl ConstStyle {
         self.props.is_empty()
     }
 
-    /// `lv_style_get_prop()` on a constant style.
+    /// `lv_style_is_const()`: always `true`.
+    #[inline]
+    pub const fn is_const(&self) -> bool {
+        true
+    }
+
+    /// `lv_style_get_prop()` / `lv_style_get_prop_internal()` on a constant
+    /// style: a linear search from the first entry. An `LV_STYLE_PROP_INV`
+    /// entry (`LV_STYLE_CONST_PROPS_END`) terminates the array like in C, so
+    /// nothing after it is visible and `INV` itself is never found.
     pub fn get_prop(&self, prop: StyleProp) -> Option<StyleValue> {
-        todo!()
+        for entry in self.props {
+            if entry.prop == StyleProp::INV {
+                break;
+            }
+            if entry.prop == prop {
+                return Some(entry.value.to_value());
+            }
+        }
+        None
     }
 }
 
@@ -988,6 +1083,25 @@ impl StyleTransitionDsc {
             delay,
             user_data: None,
         }
+    }
+
+    /// `lv_style_transition_dsc_init()` on an existing descriptor, with the
+    /// full C parameter list: `path` `None` is `path_cb == NULL` and selects
+    /// `lv_anim_path_linear`.
+    pub fn init(
+        &mut self,
+        props: TracksLike,
+        path: Option<AnimPath>,
+        time: u32,
+        delay: u32,
+        user_data: Option<Rc<dyn core::any::Any>>,
+    ) {
+        /*lv_memzero(tr, sizeof(lv_style_transition_dsc_t)); then every member is assigned*/
+        self.props = props;
+        self.path = path.unwrap_or(AnimPath::Linear);
+        self.time = time;
+        self.delay = delay;
+        self.user_data = user_data;
     }
 }
 
@@ -1157,20 +1271,51 @@ impl Style {
         }
     }
 
-    /// `lv_style_reset()`: remove every property.
+    /// `lv_style_reset()`: remove every property. Frees the storage and
+    /// clears `has_group` (`lv_free` + `lv_memzero`).
     pub fn reset(&mut self) {
-        todo!()
+        *self = Style::new();
     }
 
     /// `lv_style_copy()`: replace the content of `self` with a copy of `src`.
     pub fn copy_from(&mut self, src: &Style) {
-        todo!()
+        self.reset();
+
+        self.merge_from(src);
     }
 
     /// `lv_style_merge()`: copy the properties of `src` into `self` without
-    /// resetting it first.
+    /// resetting it first. Properties already in `self` are overwritten in
+    /// place, new ones are appended in `src` order (it is a `set_prop` loop).
     pub fn merge_from(&mut self, src: &Style) {
-        todo!()
+        /*Source is empty*/
+        if src.props.is_empty() {
+            return;
+        }
+
+        /* Merge the styles */
+        for entry in &src.props {
+            self.set_prop(entry.prop, entry.value.clone());
+        }
+    }
+
+    /// `lv_style_merge()` with a constant source
+    /// (the `lv_style_is_const_internal(src)` branch): an `LV_STYLE_PROP_INV`
+    /// entry terminates the source array.
+    pub fn merge_from_const(&mut self, src: &ConstStyle) {
+        for entry in src.props {
+            if entry.prop == StyleProp::INV {
+                break;
+            }
+            self.set_prop(entry.prop, entry.value.to_value());
+        }
+    }
+
+    /// `lv_style_copy()` with a constant source.
+    pub fn copy_from_const(&mut self, src: &ConstStyle) {
+        self.reset();
+
+        self.merge_from_const(src);
     }
 
     /// `lv_style_is_const()`: always `false`; constant styles are [`ConstStyle`].
@@ -1179,19 +1324,55 @@ impl Style {
         false
     }
 
-    /// `lv_style_remove_prop()`: returns `true` if the property was found and removed.
+    /// `lv_style_remove_prop()`: returns `true` if the property was found and
+    /// removed. The other properties keep their order (C rebuilds the array
+    /// skipping the removed entry) and `has_group` is left as is, like
+    /// upstream.
     pub fn remove_prop(&mut self, prop: StyleProp) -> bool {
-        todo!()
+        if self.props.is_empty() {
+            return false;
+        }
+
+        match self.props.iter().position(|entry| entry.prop == prop) {
+            Some(i) => {
+                self.props.remove(i);
+                true
+            }
+            None => false,
+        }
     }
 
-    /// `lv_style_set_prop()`: set or replace a property.
+    /// `lv_style_set_prop()`: set or replace a property. The list is searched
+    /// from the end; a hit is overwritten in place (position and `has_group`
+    /// unchanged), otherwise the entry is appended and the property's group
+    /// bit is set. `StyleProp::INV` is rejected (`LV_CHECK_ARG`).
     pub fn set_prop(&mut self, prop: StyleProp, value: StyleValue) {
-        todo!()
+        if prop == StyleProp::INV {
+            check_arg_failed("prop != LV_STYLE_PROP_INV");
+            return;
+        }
+
+        for entry in self.props.iter_mut().rev() {
+            if entry.prop == prop {
+                entry.value = value;
+                return;
+            }
+        }
+
+        /*Set the new property and value*/
+        self.props.push(StyleEntry { prop, value });
+
+        let group = get_prop_group(prop.0);
+        self.has_group |= 1u32 << group;
     }
 
-    /// `lv_style_get_prop()`
+    /// `lv_style_get_prop()` / `lv_style_get_prop_internal()`: the entry with
+    /// `prop`, searched from the start (`None` is `LV_STYLE_RES_NOT_FOUND`).
     pub fn get_prop(&self, prop: StyleProp) -> Option<&StyleValue> {
-        todo!()
+        self.props
+            .iter()
+            .find(|entry| entry.prop == prop)
+            .map(|entry| &entry.value)
     }
 
     /// `lv_style_is_empty()`
@@ -1373,6 +1554,18 @@ mod tests {
         assert!(prop_has_flag(StyleProp::ANY, STYLE_PROP_FLAG_LAYER_UPDATE));
         // Gaps between built-in numbers are 0 like the C table.
         assert_eq!(lookup_flags(StyleProp(6)), 0);
+        // LV_USE_FLEX / LV_USE_GRID gate their rows of the table.
+        #[cfg(feature = "flex")]
+        assert_eq!(lookup_flags(StyleProp::FLEX_GROW), STYLE_PROP_FLAG_LAYOUT_UPDATE);
+        #[cfg(not(feature = "flex"))]
+        assert_eq!(lookup_flags(StyleProp::FLEX_GROW), 0);
+        #[cfg(feature = "grid")]
+        assert_eq!(
+            lookup_flags(StyleProp::GRID_CELL_Y_ALIGN),
+            STYLE_PROP_FLAG_LAYOUT_UPDATE
+        );
+        #[cfg(not(feature = "grid"))]
+        assert_eq!(lookup_flags(StyleProp::GRID_CELL_Y_ALIGN), 0);
     }
 
     #[test]
@@ -1451,5 +1644,377 @@ mod tests {
             StyleValue::Color(Color::hex(0xFF0000))
         );
         assert_eq!(S.props[1].to_entry().value, StyleValue::Num(5));
+    }
+
+    // tests/src/test_cases/test_style.c: test_custom_prop_ids (the global
+    // table is a local Vec + counter here, see `register_prop`).
+    #[test]
+    fn custom_prop_ids() {
+        let mut table: Vec<u8> = Vec::new();
+        let mut last_id = StyleProp::LAST_BUILT_IN.0 as u32;
+        let mut fake_flag: u8 = 0;
+        let initial_custom_props = get_num_custom_props(last_id);
+        let max_props_to_register = 64u32;
+        for i in 0..max_props_to_register {
+            let prop = register_prop(&mut table, &mut last_id, fake_flag);
+            /* Should have a higher index than the last built-in prop */
+            assert!(prop.0 > StyleProp::LAST_BUILT_IN.0);
+            if i == 0 {
+                /* Should be equal to the first expected index of a custom prop */
+                assert_eq!(
+                    StyleProp::NUM_BUILT_IN as u32 + initial_custom_props,
+                    prop.0 as u32
+                );
+            }
+            /*We should find our flags*/
+            assert_eq!(fake_flag, lookup_flags_with_custom(prop, &table));
+            assert!(prop.is_custom());
+            fake_flag = if fake_flag == 0xff { 0 } else { fake_flag + 1 };
+        }
+        assert_eq!(
+            initial_custom_props + max_props_to_register,
+            get_num_custom_props(last_id)
+        );
+        /*
+         * Check that the resizing algorithm works correctly, given that 64 props
+         * were registered + whatever's built-in.
+         */
+        assert_eq!(table.len(), 64);
+    }
+
+    #[test]
+    fn custom_flag_lookup_edge_cases() {
+        let empty: [u8; 0] = [];
+        assert_eq!(
+            lookup_flags_with_custom(StyleProp::ANY, &empty),
+            STYLE_PROP_FLAG_ALL
+        );
+        assert_eq!(lookup_flags_with_custom(StyleProp::INV, &empty), 0);
+        assert_eq!(
+            lookup_flags_with_custom(StyleProp::PAD_TOP, &empty),
+            STYLE_PROP_FLAG_EXT_DRAW_UPDATE | STYLE_PROP_FLAG_LAYOUT_UPDATE
+        );
+        // A custom id without a table (C: table == NULL) has no flags.
+        assert_eq!(lookup_flags_with_custom(StyleProp(178), &empty), 0);
+
+        let mut table = Vec::new();
+        let mut last = StyleProp::LAST_BUILT_IN.0 as u32;
+        let p = register_prop(&mut table, &mut last, STYLE_PROP_FLAG_INHERITABLE);
+        assert_eq!(p, StyleProp(178));
+        assert_eq!(table.len(), 32);
+        assert!(prop_has_flag_with_custom(p, STYLE_PROP_FLAG_INHERITABLE, &table));
+        assert!(!prop_has_flag_with_custom(
+            p,
+            STYLE_PROP_FLAG_LAYOUT_UPDATE,
+            &table
+        ));
+        // Inside the 32-entry allocation but unregistered: 0; outside: 0.
+        assert_eq!(lookup_flags_with_custom(StyleProp(179), &table), 0);
+        assert_eq!(lookup_flags_with_custom(StyleProp(254), &table), 0);
+        // The 33rd registration grows the table to 64 (32-byte rounding).
+        for _ in 0..31 {
+            register_prop(&mut table, &mut last, 0);
+        }
+        assert_eq!(table.len(), 32);
+        let p33 = register_prop(&mut table, &mut last, 9);
+        assert_eq!(p33, StyleProp(178 + 32));
+        assert_eq!(table.len(), 64);
+        assert_eq!(lookup_flags_with_custom(p33, &table), 9);
+        assert_eq!(get_num_custom_props(last), 33);
+        // An emptied table restarts the ids like the C `NULL` check.
+        table.clear();
+        let p = register_prop(&mut table, &mut last, 7);
+        assert_eq!(p, StyleProp(178));
+        assert_eq!(get_num_custom_props(last), 1);
+        assert_eq!(lookup_flags_with_custom(p, &table), 7);
+    }
+
+    // test_style.c: test_const_style (the lookup half; attaching a const
+    // style to an object belongs to lv_obj_style.c).
+    #[test]
+    fn const_style_get_prop() {
+        static CONST_STYLE_PROPS: [ConstStyleEntry; 3] = [
+            ConstStyleEntry::width(51),
+            ConstStyleEntry::height(50),
+            /*LV_STYLE_CONST_PROPS_END*/
+            ConstStyleEntry::new(StyleProp::INV, ConstStyleValue::Num(0)),
+        ];
+        static CONST_STYLE: ConstStyle = ConstStyle::new(&CONST_STYLE_PROPS);
+        assert!(CONST_STYLE.is_const());
+        assert_eq!(CONST_STYLE.get_prop(StyleProp::WIDTH), Some(StyleValue::Num(51)));
+        assert_eq!(CONST_STYLE.get_prop(StyleProp::HEIGHT), Some(StyleValue::Num(50)));
+        assert_eq!(CONST_STYLE.get_prop(StyleProp::X), None);
+        assert_eq!(CONST_STYLE.get_prop(StyleProp::INV), None);
+
+        // Entries after the INV terminator are invisible, for lookup and merge.
+        static TERMINATED: [ConstStyleEntry; 3] = [
+            ConstStyleEntry::width(1),
+            ConstStyleEntry::new(StyleProp::INV, ConstStyleValue::Num(0)),
+            ConstStyleEntry::height(2),
+        ];
+        let t = ConstStyle::new(&TERMINATED);
+        assert_eq!(t.get_prop(StyleProp::WIDTH), Some(StyleValue::Num(1)));
+        assert_eq!(t.get_prop(StyleProp::HEIGHT), None);
+
+        let mut s = Style::new();
+        s.merge_from_const(&t);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(1)));
+        s.copy_from_const(&CONST_STYLE);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(51)));
+        assert_eq!(s.get_prop(StyleProp::HEIGHT), Some(&StyleValue::Num(50)));
+        assert!(!s.is_const());
+    }
+
+    // test_style.c: test_style_copy
+    #[test]
+    fn style_copy() {
+        let copied_bg_color = Color::hex(0x0000ff);
+        let copied_border_color = Color::hex(0x00ff00);
+        let copied_outline_color = Color::hex(0xffff00);
+
+        let mut style1 = Style::new();
+        style1.set_bg_color(Color::hex(0xff0000)); // this should get overwritten
+        style1.set_outline_color(copied_outline_color);
+
+        let mut style2 = Style::new();
+        style2.set_bg_color(copied_bg_color);
+        style2.set_border_color(copied_border_color);
+
+        let mut copied_style = Style::new();
+        copied_style.copy_from(&style1);
+        copied_style.copy_from(&style2); // This should reset `copied_style` then duplicate the properties of `style2`
+
+        assert_eq!(
+            copied_style.get_prop(StyleProp::BG_COLOR),
+            Some(&StyleValue::Color(copied_bg_color))
+        );
+        assert_eq!(
+            copied_style.get_prop(StyleProp::BORDER_COLOR),
+            Some(&StyleValue::Color(copied_border_color))
+        );
+        assert_eq!(copied_style.get_prop(StyleProp::OUTLINE_COLOR), None);
+
+        /* Changing the original style should not impact the style that copied it */
+        style2.set_bg_color(Color::hex(0x00ff00));
+        assert_eq!(
+            copied_style.get_prop(StyleProp::BG_COLOR),
+            Some(&StyleValue::Color(copied_bg_color))
+        );
+
+        style1.reset();
+        style2.reset();
+        copied_style.reset();
+        assert!(copied_style.is_empty());
+        assert_eq!(copied_style.len(), 0);
+        assert_eq!(copied_style.has_group, 0);
+    }
+
+    // test_style.c: test_style_merge
+    #[test]
+    fn style_merge() {
+        let merged_bg_color = Color::hex(0x0000ff);
+        let merged_border_color = Color::hex(0x00ff00);
+        let merged_outline_color = Color::hex(0xffff00);
+
+        let mut style1 = Style::new();
+        style1.set_bg_color(Color::hex(0xff0000)); // this should get overwritten
+        style1.set_outline_color(merged_outline_color);
+
+        let mut style2 = Style::new();
+        style2.set_bg_color(merged_bg_color);
+        style2.set_border_color(merged_border_color);
+
+        let mut merged_style = Style::new();
+        merged_style.merge_from(&style1);
+        merged_style.merge_from(&style2);
+
+        assert_eq!(
+            merged_style.get_prop(StyleProp::BG_COLOR),
+            Some(&StyleValue::Color(merged_bg_color))
+        );
+        assert_eq!(
+            merged_style.get_prop(StyleProp::BORDER_COLOR),
+            Some(&StyleValue::Color(merged_border_color))
+        );
+        assert_eq!(
+            merged_style.get_prop(StyleProp::OUTLINE_COLOR),
+            Some(&StyleValue::Color(merged_outline_color))
+        );
+        // Overwritten in place: bg_color keeps its first position.
+        assert_eq!(merged_style.len(), 3);
+        assert_eq!(merged_style.props[0].prop, StyleProp::BG_COLOR);
+        assert_eq!(merged_style.props[1].prop, StyleProp::OUTLINE_COLOR);
+        assert_eq!(merged_style.props[2].prop, StyleProp::BORDER_COLOR);
+
+        /* Changing the original style should not impact the style that copied it */
+        style2.set_bg_color(Color::hex(0x00ff00));
+        assert_eq!(
+            merged_style.get_prop(StyleProp::BG_COLOR),
+            Some(&StyleValue::Color(merged_bg_color))
+        );
+    }
+
+    #[test]
+    fn merge_from_empty_source_is_a_no_op() {
+        let mut dst = Style::new();
+        dst.set_width(5);
+        let src = Style::new();
+        dst.merge_from(&src);
+        assert_eq!(dst.len(), 1);
+        dst.copy_from(&src);
+        assert!(dst.is_empty());
+        assert_eq!(dst.has_group, 0);
+    }
+
+    #[test]
+    fn set_prop_replaces_in_place_and_tracks_groups() {
+        let mut s = Style::new();
+        assert_eq!(s.has_group, 0);
+        s.set_width(10);
+        s.set_bg_color(Color::WHITE);
+        s.set_radius(3);
+        assert_eq!(s.len(), 3);
+        assert_eq!(
+            s.has_group,
+            (1 << get_prop_group(StyleProp::WIDTH.0))
+                | (1 << get_prop_group(StyleProp::BG_COLOR.0))
+                | (1 << get_prop_group(StyleProp::RADIUS.0))
+        );
+        assert_eq!(s.has_group, (1 << 0) | (1 << 18) | (1 << 30));
+        // Overwriting keeps the position and the count.
+        s.set_width(20);
+        assert_eq!(s.len(), 3);
+        assert_eq!(s.props[0].prop, StyleProp::WIDTH);
+        assert_eq!(s.props[0].value, StyleValue::Num(20));
+        assert_eq!(s.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(20)));
+        // The value kind is not checked, like the C union.
+        s.set_prop(StyleProp::WIDTH, StyleValue::Color(Color::BLACK));
+        assert_eq!(s.props[0].value, StyleValue::Color(Color::BLACK));
+        assert_eq!(s.get_prop(StyleProp::HEIGHT), None);
+        // Custom properties land in group 31.
+        s.set_prop(StyleProp(200), StyleValue::Num(1));
+        assert_ne!(s.has_group & (1 << 31), 0);
+        assert_eq!(s.get_prop(StyleProp(200)), Some(&StyleValue::Num(1)));
+    }
+
+    #[test]
+    fn remove_prop_keeps_order() {
+        let mut s = Style::new();
+        assert!(!s.remove_prop(StyleProp::WIDTH)); // prop_cnt == 0
+        s.set_width(1);
+        s.set_height(2);
+        s.set_x(3);
+        assert!(!s.remove_prop(StyleProp::Y));
+        assert_eq!(s.len(), 3);
+        assert!(s.remove_prop(StyleProp::HEIGHT));
+        assert_eq!(s.len(), 2);
+        assert_eq!(s.props[0].prop, StyleProp::WIDTH);
+        assert_eq!(s.props[1].prop, StyleProp::X);
+        assert_eq!(s.get_prop(StyleProp::HEIGHT), None);
+        assert!(!s.remove_prop(StyleProp::HEIGHT));
+        // `has_group` is a superset cache; removal does not clear it (as in C).
+        let g = s.has_group;
+        assert!(s.remove_prop(StyleProp::WIDTH));
+        assert!(s.remove_prop(StyleProp::X));
+        assert!(s.is_empty());
+        assert_eq!(s.has_group, g);
+        // A re-added property is appended again.
+        s.set_x(9);
+        assert_eq!(s.props[0].prop, StyleProp::X);
+        assert_eq!(s.len(), 1);
+    }
+
+    #[cfg(not(feature = "check-arg-panic"))]
+    #[test]
+    fn set_prop_inv_is_rejected() {
+        let mut s = Style::new();
+        s.set_prop(StyleProp::INV, StyleValue::Num(1));
+        assert!(s.is_empty());
+        assert_eq!(s.has_group, 0);
+    }
+
+    #[cfg(feature = "check-arg-panic")]
+    #[test]
+    #[should_panic(expected = "argument check failed")]
+    fn set_prop_inv_asserts() {
+        let mut s = Style::new();
+        s.set_prop(StyleProp::INV, StyleValue::Num(1));
+    }
+
+    // lv_style.c: lv_style_set_size .. lv_style_set_transform_scale
+    #[test]
+    fn compound_setters_expand_like_lv_style_c() {
+        let mut s = Style::new();
+        s.set_size(10, 20);
+        assert_eq!(s.get_prop(StyleProp::WIDTH), Some(&StyleValue::Num(10)));
+        assert_eq!(s.get_prop(StyleProp::HEIGHT), Some(&StyleValue::Num(20)));
+
+        s.set_pad_all(4);
+        // Insertion order: left, right, top, bottom.
+        assert_eq!(s.props[2].prop, StyleProp::PAD_LEFT);
+        assert_eq!(s.props[3].prop, StyleProp::PAD_RIGHT);
+        assert_eq!(s.props[4].prop, StyleProp::PAD_TOP);
+        assert_eq!(s.props[5].prop, StyleProp::PAD_BOTTOM);
+        s.set_pad_hor(1);
+        s.set_pad_ver(2);
+        assert_eq!(s.get_prop(StyleProp::PAD_LEFT), Some(&StyleValue::Num(1)));
+        assert_eq!(s.get_prop(StyleProp::PAD_RIGHT), Some(&StyleValue::Num(1)));
+        assert_eq!(s.get_prop(StyleProp::PAD_TOP), Some(&StyleValue::Num(2)));
+        assert_eq!(s.get_prop(StyleProp::PAD_BOTTOM), Some(&StyleValue::Num(2)));
+        s.set_pad_gap(3);
+        assert_eq!(s.get_prop(StyleProp::PAD_ROW), Some(&StyleValue::Num(3)));
+        assert_eq!(s.get_prop(StyleProp::PAD_COLUMN), Some(&StyleValue::Num(3)));
+
+        s.set_margin_all(5);
+        s.set_margin_hor(6);
+        s.set_margin_ver(7);
+        assert_eq!(s.get_prop(StyleProp::MARGIN_LEFT), Some(&StyleValue::Num(6)));
+        assert_eq!(s.get_prop(StyleProp::MARGIN_RIGHT), Some(&StyleValue::Num(6)));
+        assert_eq!(s.get_prop(StyleProp::MARGIN_TOP), Some(&StyleValue::Num(7)));
+        assert_eq!(s.get_prop(StyleProp::MARGIN_BOTTOM), Some(&StyleValue::Num(7)));
+
+        s.set_transform_scale(300);
+        assert_eq!(
+            s.get_prop(StyleProp::TRANSFORM_SCALE_X),
+            Some(&StyleValue::Num(300))
+        );
+        assert_eq!(
+            s.get_prop(StyleProp::TRANSFORM_SCALE_Y),
+            Some(&StyleValue::Num(300))
+        );
+        assert_eq!(s.len(), 2 + 4 + 2 + 4 + 2);
+    }
+
+    #[test]
+    fn transition_dsc_init_defaults_the_path() {
+        static PROPS: [StyleProp; 2] = [StyleProp::BG_COLOR, StyleProp::WIDTH];
+        let mut tr = StyleTransitionDsc::new_static(&PROPS, AnimPath::EaseIn, 10, 20);
+        assert_eq!(tr.path, AnimPath::EaseIn);
+        assert_eq!(tr.time, 10);
+        tr.init(SharedRef::Static(&PROPS), None, 300, 5, None);
+        assert_eq!(tr.path, AnimPath::Linear); /*path_cb == NULL -> lv_anim_path_linear*/
+        assert_eq!(tr.time, 300);
+        assert_eq!(tr.delay, 5);
+        assert_eq!(&*tr.props, &PROPS[..]);
+        assert!(tr.user_data.is_none());
+        tr.init(
+            SharedRef::Static(&PROPS),
+            Some(AnimPath::Bounce),
+            1,
+            2,
+            Some(Rc::new(5u8)),
+        );
+        assert_eq!(tr.path, AnimPath::Bounce);
+        assert!(tr.user_data.is_some());
+        // Stored transitions compare by identity, like `const lv_style_transition_dsc_t *`.
+        let shared: TransitionRef = SharedRef::Shared(Rc::new(tr));
+        let mut s = Style::new();
+        s.set_transition(shared.clone());
+        assert_eq!(
+            s.get_prop(StyleProp::TRANSITION),
+            Some(&StyleValue::Transition(shared))
+        );
     }
 }
